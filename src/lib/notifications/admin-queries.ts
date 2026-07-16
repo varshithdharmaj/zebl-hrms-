@@ -26,12 +26,23 @@ export async function getNotificationsForAdmin(params: {
 }
 
 export async function getNotificationStats() {
-  const [pending, failed, sent] = await Promise.all([
-    prisma.notification.count({ where: { status: NotificationDeliveryStatus.pending } }),
-    prisma.notification.count({ where: { status: NotificationDeliveryStatus.failed } }),
-    prisma.notification.count({
-      where: { status: NotificationDeliveryStatus.sent },
-    }),
-  ]);
-  return { pending, failed, sent };
+  const groups = await prisma.notification.groupBy({
+    by: ["status"],
+    _count: { id: true },
+    where: {
+      status: {
+        in: [
+          NotificationDeliveryStatus.pending,
+          NotificationDeliveryStatus.failed,
+          NotificationDeliveryStatus.sent,
+        ],
+      },
+    },
+  });
+
+  return {
+    pending: groups.find((g) => g.status === NotificationDeliveryStatus.pending)?._count.id ?? 0,
+    failed: groups.find((g) => g.status === NotificationDeliveryStatus.failed)?._count.id ?? 0,
+    sent: groups.find((g) => g.status === NotificationDeliveryStatus.sent)?._count.id ?? 0,
+  };
 }

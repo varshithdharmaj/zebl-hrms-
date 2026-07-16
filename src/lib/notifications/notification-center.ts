@@ -33,10 +33,18 @@ export async function getNotificationCenterItems(
   }
 
   if (canAccessAdmin(session.role)) {
-    const [failed, queue] = await Promise.all([
-      prisma.notification.count({ where: { status: NotificationDeliveryStatus.failed } }),
-      prisma.notification.count({ where: { status: NotificationDeliveryStatus.pending } }),
-    ]);
+    const groups = await prisma.notification.groupBy({
+      by: ["status"],
+      _count: { id: true },
+      where: {
+        status: {
+          in: [NotificationDeliveryStatus.failed, NotificationDeliveryStatus.pending],
+        },
+      },
+    });
+
+    const failed = groups.find((g) => g.status === NotificationDeliveryStatus.failed)?._count.id ?? 0;
+    const queue = groups.find((g) => g.status === NotificationDeliveryStatus.pending)?._count.id ?? 0;
 
     if (failed > 0) {
       items.push({

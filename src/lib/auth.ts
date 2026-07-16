@@ -44,12 +44,14 @@ async function resolveSessionFromToken(token: string): Promise<SessionUser | nul
   return buildSessionUser(user);
 }
 
-export async function getSession(): Promise<SessionUser | null> {
+import { cache } from "react";
+
+export const getSession = cache(async (): Promise<SessionUser | null> => {
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;
   return resolveSessionFromToken(token);
-}
+});
 
 /** JWT-only check for Edge middleware (no DB). Pair with session-version cache. */
 export async function getSessionFromToken(token: string): Promise<SessionUser | null> {

@@ -6,14 +6,30 @@ import { Bell } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NotificationCenterItem } from "@/lib/notifications/notification-center";
 
+interface NotificationCenterResponse {
+  items: NotificationCenterItem[];
+}
+
+let activeCenterFetch: Promise<NotificationCenterResponse> | null = null;
+
 export function NotificationCenterButton() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationCenterItem[]>([]);
 
   useEffect(() => {
-    fetch("/api/notifications/center")
-      .then((r) => r.json())
-      .then((d: { items: NotificationCenterItem[] }) => {
+    if (!activeCenterFetch) {
+      activeCenterFetch = fetch("/api/notifications/center")
+        .then((r) => {
+          if (!r.ok) throw new Error("API failed");
+          return r.json() as Promise<NotificationCenterResponse>;
+        })
+        .finally(() => {
+          activeCenterFetch = null;
+        });
+    }
+
+    activeCenterFetch
+      .then((d) => {
         setItems(
           (d.items ?? []).map((i) => ({
             ...i,

@@ -2,6 +2,7 @@
   "name": "zebl-attendance-manager",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "postinstall": "prisma generate",
     "predev": "prisma generate && tsx prisma/scripts/check-database-env.ts && tsx prisma/scripts/ping-database.ts",
