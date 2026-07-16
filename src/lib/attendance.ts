@@ -71,23 +71,43 @@ export const EXPECTED_EXCEL_COLUMNS = [
   "Remarks",
 ] as const;
 
+export const COLUMN_ALIASES: Record<string, string[]> = {
+  "employee code": ["employee code", "e. code", "e code", "code", "emp code", "emp. code"],
+  "employee name": ["employee name", "name", "emp name", "emp. name", "employee_name"],
+  "shift": ["shift"],
+  "in time": ["in time", "intime", "in_time", "check in", "checkin"],
+  "out time": ["out time", "outtime", "out_time", "check out", "checkout"],
+  "work duration": ["work duration", "work dur.", "work dur", "work_duration", "duration"],
+  "ot": ["ot", "overtime", "over time"],
+  "status": ["status"],
+  "remarks": ["remarks", "remark"],
+};
+
 export function normalizeColumnName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 export function validateExcelColumns(headers: string[]): string | null {
   const normalized = headers.map(normalizeColumnName);
-  const expected = EXPECTED_EXCEL_COLUMNS.map((c) => normalizeColumnName(c));
 
-  for (const col of expected) {
-    if (!normalized.includes(col)) {
-      return `Missing required column: ${col}`;
+  for (const expectedCol of EXPECTED_EXCEL_COLUMNS) {
+    const key = normalizeColumnName(expectedCol);
+    const aliases = COLUMN_ALIASES[key] ?? [key];
+    const hasMatch = aliases.some((alias) => normalized.includes(alias));
+    if (!hasMatch) {
+      return `Missing required column: ${expectedCol}`;
     }
   }
   return null;
 }
 
 export function getColumnIndex(headers: string[], columnName: string): number {
-  const target = normalizeColumnName(columnName);
-  return headers.findIndex((h) => normalizeColumnName(h) === target);
+  const normalized = headers.map(normalizeColumnName);
+  const key = normalizeColumnName(columnName);
+  const aliases = COLUMN_ALIASES[key] ?? [key];
+  for (const alias of aliases) {
+    const idx = normalized.indexOf(alias);
+    if (idx !== -1) return idx;
+  }
+  return -1;
 }
