@@ -1,6 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import bcrypt from "bcryptjs";
+import { prisma } from "@/lib/prisma";
 import {
   clearSessionCookie,
   getDefaultRedirect,
@@ -102,4 +104,75 @@ export async function logoutAction() {
   }
   await clearSessionCookie();
   redirect("/login");
+}
+
+export type PasswordActionState = {
+  error?: string;
+  success?: string;
+};
+
+export async function changePasswordAction(
+  _prevState: PasswordActionState,
+  formData: FormData
+): Promise<PasswordActionState> {
+  const session = await getSession();
+  if (!session) {
+    return { error: "Unauthorized." };
+  }
+
+  const currentPassword = String(formData.get("currentPassword") ?? "");
+  const newPassword = String(formData.get("newPassword") ?? "");
+  const confirmPassword = String(formData.get("confirmPassword") ?? "");
+
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    return { error: "All fields are required." };
+  }
+
+  if (newPassword !== confirmPassword) {
+    return { error: "New password and confirmation password do not match." };
+  }
+
+  if (newPassword.length < 3) {
+    return { error: "New password must be at least 3 characters long." };
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: session.id },
+      select: { password: true },
+    });
+
+    if (!user || !user.password) {
+      return { error: "User account not found." };
+    }
+
+    const isCurrentValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isCurrentValid) {
+      return { error: "Incorrect current password." };
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: session.id },
+      data: {
+        password: passwordHash,
+        sessionVersion: { increment: 1 },
+      },
+    });
+
+    const clientIp = await getRequestClientIp();
+    await writeAuditLog({
+      entityType: "user",
+      entityId: session.id,
+      action: AUDIT_ACTIONS.AUTH_SESSION_INVALIDATED,
+      actorUserId: session.id,
+      actorEmail: session.email,
+      metadata: { reason: "password_changed", clientIp },
+    });
+
+    return { success: "Password changed successfully." };
+  } catch (e) {
+    console.error("Change password error:", e);
+    return { error: "An error occurred while changing your password." };
+  }
 }

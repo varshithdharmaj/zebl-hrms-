@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { NotificationPreferencesForm } from "@/components/employee/notification-preferences-form";
+import { ChangePasswordForm } from "@/components/employee/change-password-form";
 import { getSession } from "@/lib/auth";
 import { canAccessManagerShell } from "@/lib/permissions";
 import { getNotificationPreferencesForUser } from "@/actions/notifications";
@@ -18,6 +19,7 @@ export default async function ManagerSettingsPage() {
         description="Manage how you receive leave and approval notifications."
       />
       <NotificationPreferencesForm preferences={prefs} />
+      <ChangePasswordForm />
     </div>
   );
 }

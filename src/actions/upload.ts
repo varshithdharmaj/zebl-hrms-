@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import * as XLSX from "xlsx";
+import { UserRole, AuthProvider } from "@prisma/client";
+import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/auth-guards";
 import {
@@ -142,6 +144,26 @@ export async function uploadAttendanceAction(
             employeeCode,
             name: employeeName || employeeCode,
             shift: cellValue(r, idx.shift) || null,
+          },
+        });
+
+        // Auto-create User account with default password "123"
+        const defaultPasswordHash = await bcrypt.hash("123", 10);
+        const email = `${employeeCode.toLowerCase()}@zebl.com`;
+        const newUser = await prisma.user.create({
+          data: {
+            email,
+            password: defaultPasswordHash,
+            role: UserRole.employee,
+            authProvider: AuthProvider.local,
+            employeeId: created.id,
+            sessionVersion: 1,
+          },
+        });
+
+        await prisma.notificationPreference.create({
+          data: {
+            userId: newUser.id,
           },
         });
 
