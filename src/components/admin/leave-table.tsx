@@ -94,24 +94,26 @@ export function AdminLeaveTable({ leaves }: { leaves: Leave[] }) {
         return (
           <DataTableRow key={leave.id}>
             <DataTableCell>
-              <p className="font-medium">{leave.employee.name}</p>
-              <p className="text-xs text-muted-foreground">{leave.employee.employeeCode}</p>
+              <p className="font-semibold text-slate-900">{leave.employee.name}</p>
+              <p className="text-xs text-slate-500 font-medium">{leave.employee.employeeCode}</p>
             </DataTableCell>
             <DataTableCell>
-              <p className="text-sm font-medium">{leave.leaveType}</p>
-              <p className="text-xs text-muted-foreground">
+              <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-800">
+                {leave.leaveType}
+              </span>
+              <p className="mt-0.5 text-xs text-slate-500">
                 {LEAVE_TYPE_LABELS[leave.leaveType as LeaveType]}
               </p>
             </DataTableCell>
-            <DataTableCell className="text-sm text-muted-foreground">
+            <DataTableCell className="text-xs font-medium text-slate-700 whitespace-nowrap">
               {formatDate(leave.startDate)} – {formatDate(leave.endDate)}
             </DataTableCell>
-            <DataTableCell className="tabular-nums">{formatLeaveDays(leave.days)}</DataTableCell>
-            <DataTableCell className="max-w-[200px] truncate">{leave.reason}</DataTableCell>
+            <DataTableCell className="font-semibold text-slate-900 tabular-nums">{formatLeaveDays(leave.days)}</DataTableCell>
+            <DataTableCell className="max-w-[200px] truncate text-slate-700">{leave.reason}</DataTableCell>
             <DataTableCell>
               <ApprovalBadge workflowStatus={leave.workflowStatus} />
               {leave.rejectionReason && (
-                <p className="mt-1 max-w-[180px] text-xs text-danger">{leave.rejectionReason}</p>
+                <p className="mt-1 max-w-[180px] text-xs font-medium text-rose-600">{leave.rejectionReason}</p>
               )}
             </DataTableCell>
             <DataTableCell>
@@ -125,7 +127,7 @@ export function AdminLeaveTable({ leaves }: { leaves: Leave[] }) {
                 <CancelApprovedForm leaveId={leave.id} />
               )}
               <details className="mt-2">
-                <summary className="cursor-pointer text-xs text-muted-foreground">Timeline</summary>
+                <summary className="cursor-pointer text-xs font-medium text-slate-500 hover:text-slate-900">Timeline</summary>
                 <div className="mt-2 max-w-xs">
                   <LeaveWorkflowTimeline
                     workflowStatus={leave.workflowStatus}

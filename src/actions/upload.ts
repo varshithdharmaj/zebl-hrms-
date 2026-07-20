@@ -60,8 +60,15 @@ export async function uploadAttendanceAction(
   const file = formData.get("file") as File | null;
   const attendanceDateStr = String(formData.get("attendanceDate") ?? "").trim();
 
+  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB limit
+  const MAX_ROWS = 2000; // 2000 rows per file
+
   if (!file || file.size === 0) {
     return { error: "Please select an Excel file." };
+  }
+
+  if (file.size > MAX_FILE_SIZE) {
+    return { error: "File size exceeds 5MB limit." };
   }
 
   if (!attendanceDateStr) {
@@ -115,6 +122,10 @@ export async function uploadAttendanceAction(
 
     if (dataRows.length === 0) {
       return { error: "No valid employee rows found." };
+    }
+
+    if (dataRows.length > MAX_ROWS) {
+      return { error: `File contains ${dataRows.length} rows. Maximum allowed per upload is ${MAX_ROWS} rows.` };
     }
 
     let imported = 0;

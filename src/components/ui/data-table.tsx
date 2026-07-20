@@ -18,11 +18,11 @@ export function DataTable({
     <div className={cn("w-full overflow-x-auto", className)}>
       <table className="w-full min-w-[640px] text-left text-sm">
         <thead>
-          <tr className="border-b border-border bg-muted/50">
+          <tr className="border-b border-border bg-slate-50/80">
             {columns.map((col) => (
               <th
                 key={col}
-                className="sticky top-0 z-10 whitespace-nowrap bg-muted/95 px-5 py-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-muted-foreground backdrop-blur-sm"
+                className="sticky top-0 z-10 whitespace-nowrap bg-slate-50/90 px-4 py-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-slate-500"
               >
                 {col}
               </th>
@@ -34,7 +34,7 @@ export function DataTable({
             <tr>
               <td
                 colSpan={columns.length}
-                className="px-5 py-16 text-center text-sm text-muted-foreground"
+                className="px-5 py-12 text-center text-sm text-muted-foreground"
               >
                 {emptyMessage}
               </td>
@@ -56,7 +56,7 @@ export function DataTableRow({
   className?: string;
 }) {
   return (
-    <tr className={cn("transition-colors hover:bg-muted/30", className)}>{children}</tr>
+    <tr className={cn("transition-colors hover:bg-slate-50/60", className)}>{children}</tr>
   );
 }
 

@@ -9,8 +9,18 @@ export type { WorkflowNotificationEvent } from "@/lib/notifications/notification
 export async function emitWorkflowNotification(
   event: WorkflowNotificationEvent
 ): Promise<void> {
-  await handleWorkflowNotificationEvent(event);
-  await handleWorkflowIntegrationEvent(event);
+  try {
+    await handleWorkflowNotificationEvent(event);
+  } catch (err) {
+    console.error("[workflow-notifications] Notification dispatch error:", err);
+  }
+
+  try {
+    await handleWorkflowIntegrationEvent(event);
+  } catch (err) {
+    console.error("[workflow-integrations] Integration dispatch error:", err);
+  }
+
   void processIntegrationJobs({ limit: 10 }).catch((err) => {
     console.error("[integrations] background process error:", err);
   });

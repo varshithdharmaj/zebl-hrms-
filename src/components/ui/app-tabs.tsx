@@ -27,17 +27,20 @@ export function AppTabs({
               onClick={() => onChange(tab.id)}
               className={cn(
                 "relative shrink-0 pb-3 text-sm font-medium transition-colors",
-                isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                isActive ? "text-slate-900 font-semibold" : "text-slate-500 hover:text-slate-900"
               )}
             >
               {tab.label}
               {tab.count !== undefined && tab.count > 0 && (
-                <span className="ml-1.5 rounded-md bg-muted px-1.5 py-0.5 text-xs tabular-nums text-muted-foreground">
+                <span className={cn(
+                  "ml-1.5 rounded-full px-2 py-0.5 text-xs tabular-nums font-semibold",
+                  isActive ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"
+                )}>
                   {tab.count}
                 </span>
               )}
               {isActive && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-foreground" />
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-slate-900" />
               )}
             </button>
           );

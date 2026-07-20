@@ -1,5 +1,3 @@
-"use client";
-
 import { ApprovalStepStatus } from "@prisma/client";
 import { getApproverRoleLabel } from "@/lib/workflow/approver-role-labels";
 import { WORKFLOW_STATUS_LABELS } from "@/lib/workflow/workflow-status";

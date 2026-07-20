@@ -132,7 +132,7 @@ describe("workflow and approval tokens (integration)", () => {
       console.warn("Integration workflow tests skipped:", e);
       ready = false;
     }
-  });
+  }, 30000);
 
   afterAll(async () => {
     if (!ready || !leaveId) return;
@@ -149,7 +149,7 @@ describe("workflow and approval tokens (integration)", () => {
       where: { employeeCode: { startsWith: "M" } },
     });
     await prisma.$disconnect();
-  });
+  }, 30000);
 
   run("approves via manager workflow step", async () => {
     const manager = await prisma.user.findUniqueOrThrow({ where: { id: managerUserId } });
@@ -247,7 +247,7 @@ describe("workflow and approval tokens (integration)", () => {
         approvalStepId: lr.currentStepId!,
         approverUserId: hr.id,
         action: ApprovalTokenAction.approve,
-        tokenHash: "test",
+        tokenHash: `test-${crypto.randomUUID()}`,
         expiresAt: new Date(Date.now() + 3600_000),
       },
     });
@@ -256,6 +256,21 @@ describe("workflow and approval tokens (integration)", () => {
       where: { id: rollbackLeaveId },
       data: { version: { increment: 1 } },
     });
+
+    const originalFindUniqueToken = prisma.approvalToken.findUnique.bind(prisma.approvalToken);
+    vi.spyOn(prisma.approvalToken, "findUnique").mockImplementation((async (args: any) => {
+      const res = (await originalFindUniqueToken(args)) as any;
+      if (res && res.id === tokenId && res.leaveRequest) {
+        return {
+          ...res,
+          leaveRequest: {
+            ...res.leaveRequest,
+            version: 0,
+          },
+        };
+      }
+      return res;
+    }) as any);
 
     const signed = signToken(tokenId, ApprovalTokenAction.approve);
     const result = await consumeApprovalToken({ signedToken: signed });
@@ -269,6 +284,7 @@ describe("workflow and approval tokens (integration)", () => {
     await prisma.leaveRequest.delete({ where: { id: rollbackLeaveId } });
     await prisma.user.delete({ where: { id: empUser.id } });
     await prisma.employee.delete({ where: { id: emp.id } });
+    vi.restoreAllMocks();
   });
 
   run("rejects with sufficient comment", async () => {

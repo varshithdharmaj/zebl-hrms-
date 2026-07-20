@@ -1,6 +1,10 @@
+"use client";
+
+import { useState } from "react";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppTopBar, AppTopBarDesktop } from "@/components/layout/app-top-bar";
 import type { SessionUser } from "@/lib/session";
+import { cn } from "@/lib/utils";
 
 export function AppShell({
   user,
@@ -11,12 +15,23 @@ export function AppShell({
   children: React.ReactNode;
   variant?: "default" | "wide";
 }) {
+  const [collapsed, setCollapsed] = useState(false);
   const displayName = user.employeeName ?? user.email;
 
   return (
     <div className="min-h-screen bg-background">
-      <AppSidebar role={user.role} userName={displayName} />
-      <div className="lg:pl-[var(--sidebar-width)]">
+      <AppSidebar
+        role={user.role}
+        userName={displayName}
+        collapsed={collapsed}
+        onToggleCollapse={() => setCollapsed(!collapsed)}
+      />
+      <div
+        className={cn(
+          "transition-[padding] duration-300 ease-in-out",
+          collapsed ? "lg:pl-20" : "lg:pl-64"
+        )}
+      >
         <AppTopBar />
         <main
           className={

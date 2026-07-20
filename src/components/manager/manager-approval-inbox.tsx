@@ -158,54 +158,62 @@ export function ManagerApprovalInbox({ items }: { items: PendingApprovalItem[] }
 
   if (items.length === 0) {
     return (
-      <SectionCard title="No pending approvals" description="Your inbox is clear.">
-        <p className="text-sm text-muted-foreground">
-          Requests from your team will appear here when they reach your approval step.
-        </p>
+      <SectionCard title="No pending approvals" description="Your approval queue is completely clear.">
+        <div className="py-8 text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 ring-1 ring-emerald-600/20">
+            ✓
+          </div>
+          <p className="text-sm font-medium text-slate-900">All caught up!</p>
+          <p className="mt-1 text-xs text-slate-500">
+            New leave requests submitted by your direct reports will automatically arrive here.
+          </p>
+        </div>
       </SectionCard>
     );
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 p-3">
-        <Button type="button" variant="outline" size="sm" onClick={selectAll}>
-          {selected.size === sorted.length ? "Clear selection" : "Select all"}
-        </Button>
-        <form action={bulkApproveAction} className="inline">
-          <input type="hidden" name="items" value={JSON.stringify(bulkItems)} />
-          <Button type="submit" size="sm" disabled={bulkPending || selected.size === 0}>
-            Bulk approve ({selected.size})
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-subtle">
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={selectAll}>
+            {selected.size === sorted.length ? "Deselect all" : "Select all"}
           </Button>
-        </form>
-        {bulkState.success && (
-          <span className="text-sm text-success">{bulkState.success}</span>
-        )}
-        {bulkState.error && <span className="text-sm text-danger">{bulkState.error}</span>}
-        <span className="ml-auto text-xs text-muted-foreground hidden sm:inline">
-          Tip: click a row to preview · ⌘K search · Esc close panel
+          <form action={bulkApproveAction} className="inline">
+            <input type="hidden" name="items" value={JSON.stringify(bulkItems)} />
+            <Button type="submit" size="sm" disabled={bulkPending || selected.size === 0}>
+              {bulkPending ? "Approving…" : `Approve selected (${selected.size})`}
+            </Button>
+          </form>
+          {bulkState.success && (
+            <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md">{bulkState.success}</span>
+          )}
+          {bulkState.error && <span className="text-xs font-semibold text-rose-700 bg-rose-50 px-2 py-1 rounded-md">{bulkState.error}</span>}
+        </div>
+        <span className="text-xs text-slate-400 font-medium hidden sm:inline">
+          Click row to preview · Press <kbd className="rounded border border-slate-200 bg-slate-100 px-1 py-0.5 text-[10px]">A</kbd> to approve active
         </span>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-border">
+      <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-subtle">
         <table className="w-full min-w-[640px] text-sm">
-          <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+          <thead className="bg-slate-50/80 text-left text-[0.6875rem] font-bold uppercase tracking-wider text-slate-500 border-b border-border">
             <tr>
-              <th className="px-3 py-2 w-8" />
-              <th className="px-3 py-2">Employee</th>
-              <th className="px-3 py-2">
-                <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleSort("start")}>
+              <th className="px-4 py-3 w-8" />
+              <th className="px-4 py-3">Employee</th>
+              <th className="px-4 py-3">
+                <button type="button" className="inline-flex items-center gap-1 font-bold" onClick={() => toggleSort("start")}>
                   Dates {sort === "start" && (sortAsc ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
                 </button>
               </th>
-              <th className="px-3 py-2">
-                <button type="button" onClick={() => toggleSort("days")}>Days</button>
+              <th className="px-4 py-3">
+                <button type="button" className="font-bold" onClick={() => toggleSort("days")}>Days</button>
               </th>
-              <th className="px-3 py-2">
-                <button type="button" onClick={() => toggleSort("sla")}>SLA</button>
+              <th className="px-4 py-3">
+                <button type="button" className="font-bold" onClick={() => toggleSort("sla")}>SLA</button>
               </th>
-              <th className="px-3 py-2">Flags</th>
-              <th className="px-3 py-2 text-right">Actions</th>
+              <th className="px-4 py-3">Flags</th>
+              <th className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -213,44 +221,45 @@ export function ManagerApprovalInbox({ items }: { items: PendingApprovalItem[] }
               <tr
                 key={item.leave.id}
                 className={cn(
-                  "cursor-pointer transition-colors hover:bg-muted/30",
-                  previewId === item.leave.id && "bg-primary-muted/40"
+                  "cursor-pointer transition-colors hover:bg-slate-50/70",
+                  previewId === item.leave.id && "bg-slate-100/80"
                 )}
                 onClick={() => setPreviewId(item.leave.id)}
               >
-                <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                   <input
                     type="checkbox"
                     checked={selected.has(item.leave.id)}
                     onChange={() => toggleSelect(item.leave.id)}
                     aria-label={`Select ${item.leave.employeeName}`}
+                    className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
                   />
                 </td>
-                <td className="px-3 py-2">
-                  <p className="font-medium">{item.leave.employeeName}</p>
-                  <p className="text-xs text-muted-foreground">{item.leave.leaveType}</p>
+                <td className="px-4 py-3">
+                  <p className="font-semibold text-slate-900">{item.leave.employeeName}</p>
+                  <p className="text-xs text-slate-500 font-medium">{item.leave.leaveType}</p>
                 </td>
-                <td className="px-3 py-2 text-xs whitespace-nowrap">
+                <td className="px-4 py-3 text-xs font-medium text-slate-700 whitespace-nowrap">
                   {formatDate(item.leave.startDate)} – {formatDate(item.leave.endDate)}
                 </td>
-                <td className="px-3 py-2 tabular-nums">{formatLeaveDays(item.leave.days)}</td>
-                <td className="px-3 py-2 w-28">
+                <td className="px-4 py-3 font-semibold text-slate-900 tabular-nums">{formatLeaveDays(item.leave.days)}</td>
+                <td className="px-4 py-3 w-28">
                   <WorkflowProgressBar
                     percent={item.sla.percentElapsed}
                     overdue={item.sla.overdue}
                     label={item.sla.label}
                   />
                 </td>
-                <td className="px-3 py-2">
+                <td className="px-4 py-3">
                   {item.overlapWarnings.length > 0 && (
-                    <span className="inline-flex items-center gap-1 text-xs text-warning" title={item.overlapWarnings[0]?.message}>
+                    <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-amber-600/20" title={item.overlapWarnings[0]?.message}>
                       <AlertTriangle className="h-3.5 w-3.5" />
-                      {item.overlapWarnings.length}
+                      {item.overlapWarnings.length} overlap
                     </span>
                   )}
                 </td>
-                <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
-                  <div className="flex justify-end gap-1">
+                <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex justify-end gap-1.5">
                     <span id={`approve-${item.leave.id}`}>
                       <ApproveButton leaveId={item.leave.id} version={item.leave.version} />
                     </span>

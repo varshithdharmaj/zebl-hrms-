@@ -36,6 +36,7 @@ export async function getGraphAccessToken(forceRefresh = false): Promise<string 
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
+    signal: AbortSignal.timeout(8000),
   });
 
   if (!res.ok) {

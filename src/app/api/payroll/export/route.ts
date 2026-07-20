@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { canAccessAdmin } from "@/lib/permissions";
 import { writeAuditLog, AUDIT_ACTIONS } from "@/lib/audit";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { getPayrollSettings } from "@/lib/payroll/payroll-settings";
 import { parsePayrollPeriodKey } from "@/lib/payroll/payroll-period";
 import {
@@ -14,6 +15,19 @@ export async function GET(request: Request) {
   const session = await getSession();
   if (!session || !canAccessAdmin(session.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const rateCheck = checkRateLimit(`payroll-export:${session.id}`, 10, 60 * 1000);
+  if (!rateCheck.allowed) {
+    return NextResponse.json(
+      { error: "Export rate limit exceeded. Please wait a minute." },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": Math.ceil(rateCheck.retryAfterMs / 1000).toString(),
+        },
+      }
+    );
   }
 
   const url = new URL(request.url);

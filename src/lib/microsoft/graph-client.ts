@@ -50,6 +50,7 @@ export async function graphRequest<T>(
           ...(options.correlationId ? { "client-request-id": options.correlationId } : {}),
         },
         body: options.body ? JSON.stringify(options.body) : undefined,
+        signal: AbortSignal.timeout(options.timeout ?? 8000),
       });
 
       if (res.status === 429 || res.status === 503) {

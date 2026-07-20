@@ -18,7 +18,7 @@ export function WorkspacePageHeader({
   badge?: React.ReactNode;
 }) {
   return (
-    <section className="rounded-[var(--radius-card)] border border-border bg-card p-6 shadow-card lg:p-8">
+    <section className="rounded-xl border border-border bg-card p-6 shadow-subtle lg:p-7">
       {backHref && (
         <Button variant="ghost" size="sm" asChild className="-ml-2 mb-5 w-fit">
           <Link href={backHref}>

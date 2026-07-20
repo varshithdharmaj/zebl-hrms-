@@ -23,12 +23,12 @@ export function LeaveRequestForm() {
         <input type="hidden" name="leaveType" value={leaveType} />
         {state.error && <ErrorAlert message={state.error} />}
         {state.success && (
-          <p className="rounded-lg border border-success/20 bg-success-muted px-4 py-3 text-sm text-success">
+          <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-800">
             {state.success}
           </p>
         )}
-        <div className="space-y-2">
-          <Label>Leave type</Label>
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold text-slate-700">Leave type</Label>
           <Select value={leaveType} onValueChange={setLeaveType}>
             <SelectTrigger>
               <SelectValue />
@@ -43,21 +43,21 @@ export function LeaveRequestForm() {
           </Select>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="startDate">Start</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="startDate" className="text-xs font-semibold text-slate-700">Start date</Label>
             <Input id="startDate" name="startDate" type="date" required />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="endDate">End</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="endDate" className="text-xs font-semibold text-slate-700">End date</Label>
             <Input id="endDate" name="endDate" type="date" required />
           </div>
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="reason">Reason</Label>
-          <Textarea id="reason" name="reason" required placeholder="Brief reason" rows={3} />
+        <div className="space-y-1.5">
+          <Label htmlFor="reason" className="text-xs font-semibold text-slate-700">Reason</Label>
+          <Textarea id="reason" name="reason" required placeholder="State your reason for leave..." rows={3} />
         </div>
-        <Button type="submit" disabled={pending}>
-          {pending ? "Submitting…" : "Submit request"}
+        <Button type="submit" disabled={pending} className="w-full sm:w-auto">
+          {pending ? "Submitting request…" : "Submit leave request"}
         </Button>
       </form>
     </SectionCard>

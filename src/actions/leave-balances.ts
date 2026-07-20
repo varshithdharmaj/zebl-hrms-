@@ -70,6 +70,15 @@ export async function syncEmployeeAccrualsAction(employeeId: number): Promise<Ac
 }
 
 export async function getEmployeeProfileLeaveData(employeeId: number) {
+  const session = await getSession();
+  if (!session) return { balances: [], history: [] };
+
+  const canAccess =
+    canAccessAdmin(session.role) ||
+    session.role === "manager" ||
+    session.employeeId === employeeId;
+  if (!canAccess) return { balances: [], history: [] };
+
   await processPendingLeaveAccruals(employeeId);
   const [balances, history] = await Promise.all([
     getLeaveBalanceSummaries(employeeId),

@@ -42,7 +42,7 @@ export function Sheet({
     <div className="fixed inset-0 z-50 flex" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
       <button
         type="button"
-        className="absolute inset-0 bg-black/40"
+        className="absolute inset-0 bg-slate-900/40"
         aria-label="Close panel"
         onClick={onClose}
       />

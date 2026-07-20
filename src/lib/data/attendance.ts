@@ -30,7 +30,7 @@ export async function getEmployeeDashboardData(
   );
   const dayEnd = endOfDay(selectedDate);
 
-  const [dayRecord, periodRecords, recentRecords] = await Promise.all([
+  const [dayRecord, periodRecords] = await Promise.all([
     prisma.attendanceRecord.findFirst({
       where: {
         employeeId,
@@ -44,15 +44,9 @@ export async function getEmployeeDashboardData(
       },
       orderBy: { attendanceDate: "asc" },
     }),
-    prisma.attendanceRecord.findMany({
-      where: {
-        employeeId,
-        attendanceDate: { gte: rangeStart, lte: rangeEnd },
-      },
-      orderBy: { attendanceDate: "desc" },
-      take: RANGE_RECORD_LIMIT,
-    }),
   ]);
+
+  const recentRecords = [...periodRecords].reverse().slice(0, RANGE_RECORD_LIMIT);
 
   const workingDays = periodRecords.length;
   const periodPresent = periodRecords.filter((r) => r.status === "Present").length;

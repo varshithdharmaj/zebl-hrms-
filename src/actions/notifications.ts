@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
+import { canAccessAdmin, PermissionError } from "@/lib/permissions";
 import {
   getSessionOrThrow,
   requireAdminSession,
@@ -91,5 +93,10 @@ export async function updateNotificationPreferencesAction(
 }
 
 export async function getNotificationPreferencesForUser(userId: string) {
+  const session = await getSessionOrThrow();
+  if (session.id !== userId && !canAccessAdmin(session.role)) {
+    throw new PermissionError("Unauthorized");
+  }
+
   return getUserPreferences(userId);
 }

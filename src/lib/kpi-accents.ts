@@ -7,24 +7,24 @@ export const kpiAccentStyles: Record<
   { icon: string; ring: string }
 > = {
   blue: {
-    icon: "bg-accent-blue-muted text-accent-blue",
-    ring: "ring-accent-blue/10",
+    icon: "bg-blue-50/80 text-blue-700 border border-blue-200/60",
+    ring: "ring-0",
   },
   green: {
-    icon: "bg-accent-green-muted text-accent-green",
-    ring: "ring-accent-green/10",
+    icon: "bg-emerald-50/80 text-emerald-700 border border-emerald-200/60",
+    ring: "ring-0",
   },
   violet: {
-    icon: "bg-accent-violet-muted text-accent-violet",
-    ring: "ring-accent-violet/10",
+    icon: "bg-purple-50/80 text-purple-700 border border-purple-200/60",
+    ring: "ring-0",
   },
   amber: {
-    icon: "bg-accent-amber-muted text-accent-amber",
-    ring: "ring-accent-amber/10",
+    icon: "bg-amber-50/80 text-amber-700 border border-amber-200/60",
+    ring: "ring-0",
   },
   teal: {
-    icon: "bg-accent-teal-muted text-accent-teal",
-    ring: "ring-accent-teal/10",
+    icon: "bg-teal-50/80 text-teal-700 border border-teal-200/60",
+    ring: "ring-0",
   },
 };
 

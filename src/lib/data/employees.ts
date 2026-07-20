@@ -19,7 +19,7 @@ export async function getEmployeeById(id: number) {
   });
 }
 
-export async function getEmployees(search?: string) {
+export async function getEmployees(search?: string, limit = 200) {
   const where = search
     ? {
         OR: [
@@ -35,5 +35,6 @@ export async function getEmployees(search?: string) {
     where,
     include: { user: { select: { email: true } } },
     orderBy: { name: "asc" },
+    take: Math.min(Math.max(1, limit), 500),
   });
 }

@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { isUniqueConstraintError } from "@/lib/db/prisma-errors";
 
@@ -7,7 +8,7 @@ const DEFAULT_SETTINGS_ID = "default";
  * Returns the singleton integration_settings row.
  * Uses find-or-create (not upsert) to avoid parallel upsert races on `id`.
  */
-export async function getIntegrationSettings() {
+export const getIntegrationSettings = cache(async () => {
   const existing = await prisma.integrationSettings.findUnique({
     where: { id: DEFAULT_SETTINGS_ID },
   });
@@ -25,7 +26,7 @@ export async function getIntegrationSettings() {
     }
     throw error;
   }
-}
+});
 
 export function getTeamsWebhookFromEnv(): string | undefined {
   return process.env.TEAMS_WEBHOOK_URL?.trim() || undefined;

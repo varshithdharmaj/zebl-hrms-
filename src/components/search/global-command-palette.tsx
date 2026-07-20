@@ -68,7 +68,7 @@ export function GlobalCommandPalette() {
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/50 px-4 pt-[12vh]">
+    <div className="fixed inset-0 z-[60] flex items-start justify-center bg-slate-900/40 px-4 pt-[12vh]">
       <div
         className="w-full max-w-xl overflow-hidden rounded-xl border border-border bg-card shadow-2xl"
         role="dialog"

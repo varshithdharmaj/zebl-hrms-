@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { isUniqueConstraintError } from "@/lib/db/prisma-errors";
 import type { PayrollSettingsSnapshot } from "@/lib/payroll/payroll-types";
@@ -7,7 +8,7 @@ export { resolveShiftPayrollRules } from "@/lib/payroll/payroll-types";
 
 const DEFAULT_ID = "default";
 
-export async function getPayrollSettings(): Promise<PayrollSettingsSnapshot> {
+export const getPayrollSettings = cache(async (): Promise<PayrollSettingsSnapshot> => {
   const row = await ensurePayrollSettingsRow();
   let shiftRules: PayrollSettingsSnapshot["shiftRules"] = {};
   try {
@@ -26,7 +27,7 @@ export async function getPayrollSettings(): Promise<PayrollSettingsSnapshot> {
     graceMinutes: row.graceMinutes,
     shiftRules,
   };
-}
+});
 
 function assertPayrollSettingsClient() {
   if (!prisma.payrollSettings) {

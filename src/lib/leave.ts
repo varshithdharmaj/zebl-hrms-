@@ -240,37 +240,6 @@ export async function processPendingLeaveAccruals(employeeId: number): Promise<v
   });
 }
 
-async function sumUsedFromTransactions(employeeId: number, leaveType: LeaveType): Promise<number> {
-  const transactions = await prisma.leaveTransaction.findMany({
-    where: { employeeId, leaveType },
-  });
-
-  return transactions.reduce((sum, tx) => {
-    if (tx.transactionType === "deduction") return sum + tx.amount;
-    if (tx.transactionType === "manual_adjustment" && tx.amount < 0) {
-      return sum + Math.abs(tx.amount);
-    }
-    return sum;
-  }, 0);
-}
-
-async function sumAccruedFromTransactions(
-  employeeId: number,
-  leaveType: LeaveType
-): Promise<number> {
-  const transactions = await prisma.leaveTransaction.findMany({
-    where: { employeeId, leaveType },
-  });
-
-  return transactions.reduce((sum, tx) => {
-    if (tx.transactionType === "accrual") return sum + tx.amount;
-    if (tx.transactionType === "manual_adjustment" && tx.amount > 0) {
-      return sum + tx.amount;
-    }
-    return sum;
-  }, 0);
-}
-
 export async function getLeaveBalanceSummaries(
   employeeId: number,
   options?: { processAccruals?: boolean }
@@ -291,32 +260,70 @@ export async function getLeaveBalanceSummaries(
     SL: balance.slBalance,
   };
 
-  const summaries = await Promise.all(
-    LEAVE_TYPES.map(async (leaveType) => {
-      const used = await sumUsedFromTransactions(employeeId, leaveType);
-      const remaining = remainingMap[leaveType];
-      const total = remaining + used;
+  const aggregations = await prisma.leaveTransaction.groupBy({
+    by: ["leaveType", "transactionType"],
+    where: { employeeId },
+    _sum: {
+      amount: true,
+    },
+  });
 
-      let note: string | undefined;
-      if (leaveType === "EL" && !elEligible) {
-        const eligibility = getEligibilityDate(employee.joiningDate);
-        note = `Eligible from ${eligibility.toLocaleDateString("en-IN", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        })}`;
+  const manualAdjustments = await prisma.leaveTransaction.findMany({
+    where: {
+      employeeId,
+      transactionType: "manual_adjustment",
+    },
+    select: {
+      leaveType: true,
+      amount: true,
+    },
+  });
+
+  const summaries = LEAVE_TYPES.map((leaveType) => {
+    let used = 0;
+    let accrued = 0;
+
+    const typeAggs = aggregations.filter((a) => a.leaveType === leaveType);
+    for (const group of typeAggs) {
+      const sum = group._sum.amount ?? 0;
+      if (group.transactionType === "deduction") {
+        used += sum;
+      } else if (group.transactionType === "accrual") {
+        accrued += sum;
       }
+    }
 
-      return {
-        leaveType,
-        remaining,
-        used,
-        total: total > 0 ? total : await sumAccruedFromTransactions(employeeId, leaveType),
-        eligible: leaveType !== "EL" || elEligible,
-        note,
-      };
-    })
-  );
+    const typeManuals = manualAdjustments.filter((m) => m.leaveType === leaveType);
+    for (const tx of typeManuals) {
+      if (tx.amount < 0) {
+        used += Math.abs(tx.amount);
+      } else if (tx.amount > 0) {
+        accrued += tx.amount;
+      }
+    }
+
+    const remaining = remainingMap[leaveType];
+    const total = remaining + used;
+
+    let note: string | undefined;
+    if (leaveType === "EL" && !elEligible) {
+      const eligibility = getEligibilityDate(employee.joiningDate);
+      note = `Eligible from ${eligibility.toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })}`;
+    }
+
+    return {
+      leaveType,
+      remaining,
+      used,
+      total: total > 0 ? total : accrued,
+      eligible: leaveType !== "EL" || elEligible,
+      note,
+    };
+  });
 
   return summaries;
 }

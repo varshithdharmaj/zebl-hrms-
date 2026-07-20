@@ -37,11 +37,11 @@ export type PayrollTableRow = {
 const initial: PayrollActionState = {};
 
 const decisionBadgeClass: Record<PayrollHrDecision, string> = {
-  no_action: "text-muted-foreground",
-  apply_leave: "text-amber-800 dark:text-amber-200",
-  salary_deduction: "text-red-800 dark:text-red-300",
-  warning: "text-orange-800 dark:text-orange-200",
-  approved_exception: "text-emerald-800 dark:text-emerald-200",
+  no_action: "text-slate-500 font-medium",
+  apply_leave: "text-amber-800 font-semibold",
+  salary_deduction: "text-rose-800 font-semibold",
+  warning: "text-orange-800 font-semibold",
+  approved_exception: "text-emerald-800 font-semibold",
 };
 
 function HrDecisionForm({ row }: { row: PayrollTableRow }) {
@@ -50,14 +50,14 @@ function HrDecisionForm({ row }: { row: PayrollTableRow }) {
     PAYROLL_HR_DECISION_OPTIONS.find((o) => o.value === row.hrDecision)?.label ?? "No Action";
 
   return (
-    <form action={formAction} className="w-[9.5rem] space-y-1">
+    <form action={formAction} className="w-[10rem] space-y-1">
       <input type="hidden" name="summaryId" value={row.id} />
       <div className="flex gap-1">
         <select
           name="hrDecision"
           defaultValue={row.hrDecision}
           title={currentLabel}
-          className="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-1.5 text-[0.6875rem] leading-tight"
+          className="h-7 min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-1.5 text-[0.6875rem] font-medium leading-tight text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400"
         >
           {PAYROLL_HR_DECISION_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
@@ -70,7 +70,7 @@ function HrDecisionForm({ row }: { row: PayrollTableRow }) {
           size="sm"
           variant="outline"
           disabled={pending}
-          className="h-7 shrink-0 px-2 text-[0.6875rem]"
+          className="h-7 shrink-0 px-2 text-[0.6875rem] font-semibold"
         >
           {pending ? "…" : "Save"}
         </Button>
@@ -78,14 +78,14 @@ function HrDecisionForm({ row }: { row: PayrollTableRow }) {
       <Input
         name="remarks"
         defaultValue={row.remarks ?? ""}
-        placeholder="Notes"
-        className="h-7 rounded-md px-2 text-[0.6875rem]"
+        placeholder="HR Notes..."
+        className="h-7 rounded-md px-2 text-[0.6875rem] border-slate-200"
       />
       {state.error && (
-        <p className="text-[0.625rem] leading-snug text-danger">{state.error}</p>
+        <p className="text-[0.625rem] font-semibold leading-snug text-rose-600">{state.error}</p>
       )}
       {state.success && (
-        <p className="text-[0.625rem] leading-snug text-success">Saved</p>
+        <p className="text-[0.625rem] font-semibold leading-snug text-emerald-600">Saved</p>
       )}
       {!state.success && !state.error && (
         <p className={cn("truncate text-[0.625rem]", decisionBadgeClass[row.hrDecision])}>
@@ -116,40 +116,58 @@ export function PayrollAttendanceTable({ rows }: { rows: PayrollTableRow[] }) {
     >
       {rows.length === 0 ? (
         <DataTableRow>
-          <DataTableCell colSpan={12} className="py-10 text-center text-muted-foreground">
-            No payroll summaries for this period and filters.
+          <DataTableCell colSpan={12} className="py-12 text-center text-sm text-slate-500">
+            No payroll summaries match your selected period and filters.
           </DataTableCell>
         </DataTableRow>
       ) : (
         rows.map((row) => (
           <DataTableRow key={row.id}>
             <DataTableCell className="align-top">
-              <p className="font-medium">{row.employee.name}</p>
-              <p className="text-xs text-muted-foreground">{row.employee.employeeCode}</p>
+              <p className="font-semibold text-slate-900">{row.employee.name}</p>
+              <p className="text-xs font-medium text-slate-500">{row.employee.employeeCode}</p>
             </DataTableCell>
             <DataTableCell className="align-top">
               <AttendanceShiftCell shift={row.employee.shift} compact />
             </DataTableCell>
-            <DataTableCell className="tabular-nums align-top">{row.workingDays}</DataTableCell>
-            <DataTableCell className="tabular-nums align-top whitespace-nowrap">
+            <DataTableCell className="tabular-nums font-semibold text-slate-900 align-top">{row.workingDays}</DataTableCell>
+            <DataTableCell className="tabular-nums font-medium text-slate-700 align-top whitespace-nowrap">
               {formatMinutesAsHours(row.requiredMinutes)}
             </DataTableCell>
-            <DataTableCell className="tabular-nums align-top whitespace-nowrap">
+            <DataTableCell className="tabular-nums font-semibold text-slate-900 align-top whitespace-nowrap">
               {formatMinutesAsHours(row.actualMinutes)}
             </DataTableCell>
-            <DataTableCell className="tabular-nums align-top whitespace-nowrap text-amber-800 dark:text-amber-200">
-              {formatMinutesAsHours(row.shortfallMinutes)}
+            <DataTableCell className="tabular-nums align-top whitespace-nowrap">
+              {row.shortfallMinutes > 0 ? (
+                <span className="inline-flex rounded-md bg-amber-50 px-1.5 py-0.5 text-xs font-semibold text-amber-800 ring-1 ring-amber-600/20">
+                  {formatMinutesAsHours(row.shortfallMinutes)}
+                </span>
+              ) : (
+                <span className="text-xs text-slate-400">0h 00m</span>
+              )}
             </DataTableCell>
-            <DataTableCell className="tabular-nums align-top whitespace-nowrap text-emerald-800 dark:text-emerald-200">
-              {formatMinutesAsHours(row.otMinutes)}
+            <DataTableCell className="tabular-nums align-top whitespace-nowrap">
+              {row.otMinutes > 0 ? (
+                <span className="inline-flex rounded-md bg-emerald-50 px-1.5 py-0.5 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-600/20">
+                  {formatMinutesAsHours(row.otMinutes)}
+                </span>
+              ) : (
+                <span className="text-xs text-slate-400">0h 00m</span>
+              )}
             </DataTableCell>
-            <DataTableCell className="tabular-nums align-top">{row.leaveDays}</DataTableCell>
-            <DataTableCell className="tabular-nums align-top">{row.absentDays}</DataTableCell>
-            <DataTableCell className="tabular-nums align-top">{row.lateCount}</DataTableCell>
-            <DataTableCell className="align-top max-w-[11rem] text-xs text-muted-foreground">
+            <DataTableCell className="tabular-nums font-medium text-slate-700 align-top">{row.leaveDays}</DataTableCell>
+            <DataTableCell className="tabular-nums align-top">
+              {row.absentDays > 0 ? (
+                <span className="font-bold text-rose-600">{row.absentDays}</span>
+              ) : (
+                <span className="text-slate-400">0</span>
+              )}
+            </DataTableCell>
+            <DataTableCell className="tabular-nums font-medium text-slate-700 align-top">{row.lateCount}</DataTableCell>
+            <DataTableCell className="align-top max-w-[11rem] text-xs font-medium text-slate-600">
               {row.recommendedDeduction ?? "—"}
             </DataTableCell>
-            <DataTableCell className="align-top w-[10rem] max-w-[10rem]">
+            <DataTableCell className="align-top w-[10.5rem] max-w-[10.5rem]">
               <HrDecisionForm row={row} />
             </DataTableCell>
           </DataTableRow>

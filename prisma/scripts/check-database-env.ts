@@ -28,6 +28,11 @@ function loadEnvFile(filename: string): void {
 loadEnvFile(".env");
 loadEnvFile(".env.local");
 
+if (process.env.ZEBL_SKIP_DB_STARTUP?.trim() === "true") {
+  console.log("[AMS] ZEBL_SKIP_DB_STARTUP=true — skipping database env check");
+  process.exit(0);
+}
+
 const url = process.env.DATABASE_URL?.trim() ?? "";
 
 function fail(message: string, hint?: string): never {
@@ -35,6 +40,16 @@ function fail(message: string, hint?: string): never {
   console.error(message);
   if (hint) console.error(`\nHint: ${hint}\n`);
   process.exit(1);
+}
+
+function sanitizeUrl(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.password) parsed.password = "*****";
+    return parsed.toString();
+  } catch {
+    return rawUrl.replace(/\/\/[^:]+:[^@]+@/, "//*****:*****@");
+  }
 }
 
 if (!url) {
@@ -46,14 +61,14 @@ if (!url) {
 
 if (url.startsWith("file:") || url.includes("sqlite")) {
   fail(
-    `DATABASE_URL is SQLite (${url}). Prisma schema requires PostgreSQL.`,
+    `DATABASE_URL is SQLite (${sanitizeUrl(url)}). Prisma schema requires PostgreSQL.`,
     'Update .env: DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DATABASE" — see docs/DATABASE_SETUP.md'
   );
 }
 
 if (!url.startsWith("postgresql://") && !url.startsWith("postgres://")) {
   fail(
-    `DATABASE_URL must start with postgresql:// or postgres://. Got: ${url.slice(0, 50)}…`,
+    `DATABASE_URL must start with postgresql:// or postgres://. Got: ${sanitizeUrl(url).slice(0, 50)}…`,
     "See .env.example for Docker, Neon, Supabase, or Railway formats."
   );
 }

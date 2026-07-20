@@ -37,7 +37,7 @@ export async function register() {
     if (!dbProbe.ok) {
       console.error(`[zebl] ${dbProbe.message}`);
       if (dbProbe.hint) console.error(dbProbe.hint);
-      const skip = process.env.ZEBL_SKIP_DB_STARTUP === "true";
+      const skip = process.env.ZEBL_SKIP_DB_STARTUP?.trim() === "true";
       const isDev = process.env.NODE_ENV !== "production";
       if (!skip && isDev) {
         throw new Error(

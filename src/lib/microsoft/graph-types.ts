@@ -53,6 +53,7 @@ export type GraphRequestOptions = {
   body?: unknown;
   accessToken?: string;
   correlationId?: string;
+  timeout?: number;
 };
 
 export type GraphRequestResult<T> =

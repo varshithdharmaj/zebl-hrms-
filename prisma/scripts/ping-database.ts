@@ -30,6 +30,11 @@ function loadEnvFile(filename: string): void {
 loadEnvFile(".env");
 loadEnvFile(".env.local");
 
+if (process.env.ZEBL_SKIP_DB_STARTUP?.trim() === "true") {
+  console.log("[AMS] ZEBL_SKIP_DB_STARTUP=true — skipping database ping check");
+  process.exit(0);
+}
+
 function parseHost(url: string): { host: string; port: number; database: string } {
   try {
     const parsed = new URL(url.replace(/^postgres:\/\//, "postgresql://"));

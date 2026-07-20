@@ -38,31 +38,31 @@
 }
 
 :root {
-  --background: #f4f6fa;
+  --background: #f8fafc;
   --foreground: #0f172a;
   --card: #ffffff;
   --muted: #f1f5f9;
   --muted-foreground: #64748b;
-  --border: #e8edf4;
-  --input: #e8edf4;
-  --ring: #6366f1;
-  --primary: #4f46e5;
-  --primary-hover: #4338ca;
-  --primary-muted: #eef2ff;
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #64748b;
+  --primary: #0f172a;
+  --primary-hover: #1e293b;
+  --primary-muted: #f1f5f9;
   --primary-foreground: #ffffff;
-  --sidebar: #fafbfc;
+  --sidebar: #ffffff;
   --sidebar-foreground: #334155;
-  --sidebar-border: #e8edf4;
-  --sidebar-accent: #eef2ff;
-  --accent-blue: #3b82f6;
+  --sidebar-border: #e2e8f0;
+  --sidebar-accent: #f1f5f9;
+  --accent-blue: #2563eb;
   --accent-blue-muted: #eff6ff;
-  --accent-green: #10b981;
+  --accent-green: #059669;
   --accent-green-muted: #ecfdf5;
-  --accent-violet: #8b5cf6;
+  --accent-violet: #6d28d9;
   --accent-violet-muted: #f5f3ff;
-  --accent-amber: #f59e0b;
+  --accent-amber: #d97706;
   --accent-amber-muted: #fffbeb;
-  --accent-teal: #14b8a6;
+  --accent-teal: #0d9488;
   --accent-teal-muted: #f0fdfa;
   --success: #059669;
   --success-muted: #ecfdf5;
@@ -75,7 +75,7 @@
   --page-max-wide: none;
   --dashboard-gap: 1.25rem;
   --dashboard-gap-lg: 1.5rem;
-  --radius-card: 1rem;
+  --radius-card: 0.75rem;
 }
 
 * {
@@ -96,31 +96,27 @@ body {
 }
 
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
+  background: #cbd5e1;
+  border-radius: 3px;
 }
 
 @utility shadow-subtle {
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.03);
 }
 
 @utility shadow-card {
-  box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.04),
-    0 4px 16px rgba(15, 23, 42, 0.03);
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.04), 0 1px 2px -1px rgba(15, 23, 42, 0.02);
 }
 
 @utility shadow-elevated {
-  box-shadow:
-    0 4px 6px -1px rgba(15, 23, 42, 0.05),
-    0 12px 28px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.05), 0 2px 4px -2px rgba(15, 23, 42, 0.03);
 }
 
 /* Premium HR dashboard shell */

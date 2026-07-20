@@ -20,7 +20,7 @@ export function SectionCard({
   return (
     <section
       className={cn(
-        "overflow-hidden rounded-[var(--radius-card)] border border-border bg-card shadow-card",
+        "overflow-hidden rounded-xl border border-border bg-card shadow-subtle",
         className
       )}
     >

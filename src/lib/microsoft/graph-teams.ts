@@ -123,7 +123,10 @@ export async function postToTeamsWebhook(
 }
 
 export function signTeamsCallback(body: string, timestamp: string): string {
-  const secret = process.env.TEAMS_CALLBACK_SECRET ?? process.env.AUTH_SECRET ?? "";
+  const secret = process.env.TEAMS_CALLBACK_SECRET ?? process.env.AUTH_SECRET;
+  if (!secret) {
+    throw new Error("Missing TEAMS_CALLBACK_SECRET or AUTH_SECRET for Teams callback signature");
+  }
   return createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex");
 }
 

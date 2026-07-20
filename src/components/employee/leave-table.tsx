@@ -66,18 +66,18 @@ export function EmployeeLeaveTable({ leaves }: { leaves: Leave[] }) {
           return (
             <DataTableRow key={leave.id}>
               <DataTableCell>
-                <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium">
+                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-800">
                   {leave.leaveType}
                 </span>
               </DataTableCell>
-              <DataTableCell>{formatDate(leave.startDate)}</DataTableCell>
-              <DataTableCell>{formatDate(leave.endDate)}</DataTableCell>
-              <DataTableCell className="tabular-nums">{formatLeaveDays(leave.days)}</DataTableCell>
-              <DataTableCell>{leave.reason}</DataTableCell>
+              <DataTableCell className="text-xs font-medium text-slate-700 whitespace-nowrap">{formatDate(leave.startDate)}</DataTableCell>
+              <DataTableCell className="text-xs font-medium text-slate-700 whitespace-nowrap">{formatDate(leave.endDate)}</DataTableCell>
+              <DataTableCell className="font-semibold text-slate-900 tabular-nums">{formatLeaveDays(leave.days)}</DataTableCell>
+              <DataTableCell className="text-slate-700">{leave.reason}</DataTableCell>
               <DataTableCell>
                 <ApprovalBadge workflowStatus={leave.workflowStatus} />
                 {leave.rejectionReason && (
-                  <p className="mt-1 text-xs text-danger">{leave.rejectionReason}</p>
+                  <p className="mt-1 text-xs font-medium text-rose-600">{leave.rejectionReason}</p>
                 )}
               </DataTableCell>
               <DataTableCell>
@@ -90,12 +90,12 @@ export function EmployeeLeaveTable({ leaves }: { leaves: Leave[] }) {
                       variant="outline"
                       disabled={withdrawPending}
                     >
-                      Withdraw
+                      {withdrawPending ? "Withdrawing…" : "Withdraw"}
                     </Button>
                   </form>
                 )}
                 <details className="mt-2">
-                  <summary className="cursor-pointer text-xs text-muted-foreground">
+                  <summary className="cursor-pointer text-xs font-medium text-slate-500 hover:text-slate-900">
                     Track progress
                   </summary>
                   <div className="mt-2 min-w-[200px]">
