@@ -7,6 +7,8 @@ import { getEmployeeAttendanceSummary, getEmployeeById } from "@/lib/queries";
 import { getManagerCandidates } from "@/lib/org";
 import { defaultDateRange } from "@/lib/utils";
 import type { EmployeeStatus } from "@/lib/employee-types";
+import { getSession } from "@/lib/auth";
+import { toAppUserRole } from "@/lib/roles";
 
 export default async function EmployeeProfilePage({
   params,
@@ -23,6 +25,8 @@ export default async function EmployeeProfilePage({
 
   const employee = await getEmployeeById(id);
   if (!employee) notFound();
+  const session = await getSession();
+  if (!session) notFound();
 
   const { start: defaultStart, end: defaultEnd } = defaultDateRange();
 
@@ -59,14 +63,26 @@ export default async function EmployeeProfilePage({
     id: employee.id,
     employeeCode: employee.employeeCode,
     name: employee.name,
+    firstName: employee.firstName,
+    lastName: employee.lastName,
+    preferredName: employee.preferredName,
+    gender: employee.gender,
+    dateOfBirth: employee.dateOfBirth,
     email: employee.email,
     phone: employee.phone,
+    alternatePhone: employee.alternatePhone,
+    address: employee.address,
+    emergencyContact: employee.emergencyContact,
     department: employee.department,
     designation: employee.designation,
+    employmentType: employee.employmentType,
+    workLocation: employee.workLocation,
     shift: employee.shift,
     joiningDate: employee.joiningDate,
     employeeStatus: employee.employeeStatus as EmployeeStatus,
-    user: employee.user,
+    user: employee.user
+      ? { ...employee.user, role: toAppUserRole(employee.user.role) }
+      : null,
     manager: employee.manager,
     directReportsCount: employee._count.directReports,
   };
@@ -81,6 +97,8 @@ export default async function EmployeeProfilePage({
       defaultEnd={defaultEnd}
       managerCandidates={managerCandidates}
       overviewStats={overviewStats}
+      currentUserId={session.id}
+      currentUserRole={session.role}
     />
   );
 }

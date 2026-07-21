@@ -4,7 +4,7 @@ import {
   apiUnauthorized,
   requireApiSession,
 } from "@/lib/api/leave-api";
-import { canApproveLeave } from "@/lib/permissions";
+import { canAccessAdmin } from "@/lib/permissions";
 import {
   enrichPendingLeaveRows,
   getPendingApprovalsForActor,
@@ -15,7 +15,9 @@ export async function GET() {
   try {
     const session = await requireApiSession();
     if (!session) return apiUnauthorized();
-    if (!canApproveLeave(session.role)) {
+    // HR/Super Admin or a linked employee (line-manager). Results are hierarchy-scoped
+    // by getPendingApprovalsForActor (empty for non-approvers).
+    if (!canAccessAdmin(session.role) && session.employeeId == null) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

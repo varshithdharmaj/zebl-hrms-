@@ -4,7 +4,7 @@ import {
   apiUnauthorized,
   requireApiSession,
 } from "@/lib/api/leave-api";
-import { canApproveLeave } from "@/lib/permissions";
+import { canAccessAdmin } from "@/lib/permissions";
 import {
   rejectWorkflow,
   toWorkflowActor,
@@ -17,7 +17,9 @@ export async function POST(
   try {
     const session = await requireApiSession();
     if (!session) return apiUnauthorized();
-    if (!canApproveLeave(session.role)) {
+    // Coarse gate: HR/Super Admin or a linked employee (potential approver). Per-step
+    // authorization is enforced by canUserApproveStep inside rejectWorkflow.
+    if (!canAccessAdmin(session.role) && session.employeeId == null) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

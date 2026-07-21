@@ -1,6 +1,6 @@
 import type { UserRole as PrismaUserRole } from "@prisma/client";
 
-export const USER_ROLES = ["admin", "hr_admin", "manager", "employee"] as const;
+export const USER_ROLES = ["super_admin", "hr", "employee"] as const;
 
 export type AppUserRole = (typeof USER_ROLES)[number];
 
@@ -17,14 +17,16 @@ export function toAppUserRole(role: PrismaUserRole): AppUserRole {
 }
 
 export const ROLE_LABELS: Record<AppUserRole, string> = {
-  admin: "Administrator",
-  hr_admin: "HR Admin",
-  manager: "Manager",
+  super_admin: "Super Admin",
+  hr: "HR",
   employee: "Employee",
 };
 
-/** Roles that use the admin dashboard shell */
-export const ADMIN_SHELL_ROLES: AppUserRole[] = ["admin", "hr_admin"];
+/** Roles that use the admin dashboard shell (HR administration + platform admin). */
+export const ADMIN_SHELL_ROLES: AppUserRole[] = ["super_admin", "hr"];
 
-/** Roles linked to an employee record for workforce features */
-export const WORKFORCE_ROLES: AppUserRole[] = ["employee", "manager"];
+/**
+ * Roles linked to an employee record for workforce self-service features.
+ * Manager/approval capability is derived from the Employee hierarchy, not the role.
+ */
+export const WORKFORCE_ROLES: AppUserRole[] = ["employee"];

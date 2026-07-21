@@ -33,6 +33,9 @@ export async function register() {
       }
     }
 
+    // probeDatabaseConnection is skipped in Cloudflare Workers deployments
+    // via ZEBL_SKIP_DB_STARTUP=true set in wrangler.jsonc. The pg adapter
+    // handles DB connectivity on actual requests without a startup TCP probe.
     const dbProbe = await probeDatabaseConnection();
     if (!dbProbe.ok) {
       console.error(`[zebl] ${dbProbe.message}`);

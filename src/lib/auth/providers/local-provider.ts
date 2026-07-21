@@ -48,6 +48,14 @@ export async function authenticateLocalUser(
     return { ok: false, code: "invalid_credentials", message: "Invalid email or password." };
   }
 
+  if (!user.isActive) {
+    return {
+      ok: false,
+      code: "inactive_employee",
+      message: "Your account has been deactivated. Contact your administrator.",
+    };
+  }
+
   if (
     isWorkforceRole(toAppUserRole(user.role)) &&
     user.employee &&

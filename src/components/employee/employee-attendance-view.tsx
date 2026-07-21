@@ -18,6 +18,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { DateRangeFilter } from "@/components/ui/date-range-filter";
+import { ChartCard } from "@/components/ui/chart-card";
 import {
   getEmployeeAttendanceHistory,
   getEmployeeAttendanceSummary,
@@ -105,6 +106,8 @@ export async function EmployeeAttendanceView({
           className="sm:col-span-2 lg:col-span-1"
         />
       </StatsGrid>
+
+      <ChartCard title="Attendance trend" description={rangeLabel} records={summary.records} />
 
       <SectionCard
         title="All records"

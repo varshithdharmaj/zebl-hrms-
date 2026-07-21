@@ -16,7 +16,10 @@ function parseJsonMapping(raw: string | undefined): Record<string, AppUserRole> 
     const out: Record<string, AppUserRole> = {};
     for (const [key, value] of Object.entries(parsed)) {
       const role = parseAppUserRole(value);
-      if (role) out[key] = role;
+      // SSO must never grant Super Admin. Any mapping that resolves to super_admin is
+      // downgraded to hr — the highest privilege SSO is allowed to auto-assign.
+      if (!role) continue;
+      out[key] = role === "super_admin" ? "hr" : role;
     }
     return out;
   } catch {

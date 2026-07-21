@@ -1,7 +1,6 @@
 import { Suspense } from "react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { DashboardToolbar } from "@/components/employee/dashboard-toolbar";
-import { minutesToHours } from "@/lib/utils";
 import { Sparkles } from "lucide-react";
 
 export function DashboardWelcome({
@@ -10,10 +9,6 @@ export function DashboardWelcome({
   displayDate,
   dateIso,
   status,
-  workedMinutes,
-  presentDays,
-  attendancePercent,
-  rangeLabel,
   defaultDate,
   defaultStart,
   defaultEnd,
@@ -23,10 +18,6 @@ export function DashboardWelcome({
   displayDate: string;
   dateIso: string;
   status: string;
-  workedMinutes: number;
-  presentDays: number;
-  attendancePercent: number;
-  rangeLabel: string;
   defaultDate: string;
   defaultStart: string;
   defaultEnd: string;
@@ -54,32 +45,7 @@ export function DashboardWelcome({
             </h1>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <StatusBadge status={status} />
-            <div className="flex flex-wrap gap-4 text-sm">
-              <span className="text-muted-foreground">
-                Today{" "}
-                <strong className="font-semibold text-foreground tabular-nums">
-                  {minutesToHours(workedMinutes)}
-                </strong>
-              </span>
-              <span className="text-muted-foreground">
-                Period{" "}
-                <strong className="font-semibold text-foreground tabular-nums">{presentDays}</strong>{" "}
-                present
-              </span>
-              <span className="text-muted-foreground">
-                Rate{" "}
-                <strong className="font-semibold text-foreground tabular-nums">
-                  {attendancePercent}%
-                </strong>
-              </span>
-            </div>
-          </div>
-
-          <p className="text-sm text-muted-foreground">
-            Showing analytics for <span className="font-medium text-foreground">{rangeLabel}</span>
-          </p>
+          <StatusBadge status={status} />
         </div>
 
         <div className="w-full shrink-0 rounded-xl border border-border bg-muted/40 p-5 xl:w-[min(100%,22rem)]">

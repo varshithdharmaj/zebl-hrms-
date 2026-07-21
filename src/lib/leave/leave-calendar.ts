@@ -61,6 +61,31 @@ export async function getUpcomingHolidays(limit = 8) {
   });
 }
 
+export async function getHolidaysForRange(start: Date, end: Date) {
+  return prisma.holiday.findMany({
+    where: { holidayDate: { gte: start, lte: end } },
+    orderBy: { holidayDate: "asc" },
+  });
+}
+
+/** Single-employee variant of getLeaveCalendarEvents, for the employee's own heatmap. */
+export async function getApprovedLeaveForEmployeeRange(
+  employeeId: number,
+  start: Date,
+  end: Date
+) {
+  return prisma.leaveRequest.findMany({
+    where: {
+      employeeId,
+      workflowStatus: LeaveWorkflowStatus.approved,
+      startDate: { lte: end },
+      endDate: { gte: start },
+    },
+    select: { id: true, leaveType: true, startDate: true, endDate: true },
+    orderBy: { startDate: "asc" },
+  });
+}
+
 export async function getCalendarDepartments(): Promise<string[]> {
   const rows = await prisma.employee.findMany({
     where: { department: { not: null }, isActive: true },

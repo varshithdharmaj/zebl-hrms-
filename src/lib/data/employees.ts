@@ -4,7 +4,21 @@ export async function getEmployeeById(id: number) {
   return prisma.employee.findUnique({
     where: { id },
     include: {
-      user: { select: { email: true, role: true } },
+      user: {
+        select: {
+          id: true,
+          email: true,
+          username: true,
+          role: true,
+          authProvider: true,
+          isActive: true,
+          accountStatus: true,
+          mustChangePassword: true,
+          profilePhotoUrl: true,
+          lockedAt: true,
+          lastLoginAt: true,
+        },
+      },
       manager: {
         select: {
           id: true,

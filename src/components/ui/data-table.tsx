@@ -51,12 +51,19 @@ export function DataTable({
 export function DataTableRow({
   children,
   className,
+  onClick,
 }: {
   children: React.ReactNode;
   className?: string;
+  onClick?: React.MouseEventHandler<HTMLTableRowElement>;
 }) {
   return (
-    <tr className={cn("transition-colors hover:bg-slate-50/60", className)}>{children}</tr>
+    <tr
+      className={cn("transition-colors hover:bg-slate-50/60", className)}
+      onClick={onClick}
+    >
+      {children}
+    </tr>
   );
 }
 

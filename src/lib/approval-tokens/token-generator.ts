@@ -148,7 +148,7 @@ export async function createTokensForCurrentStep(leaveRequestId: number): Promis
     approverUserId = user?.id ?? null;
   } else if (step.approverRole === "hr_admin") {
     const hr = await prisma.user.findFirst({
-      where: { role: { in: ["admin", "hr_admin"] } },
+      where: { role: { in: ["super_admin", "hr"] } },
       select: { id: true },
     });
     approverUserId = hr?.id ?? null;

@@ -12,7 +12,9 @@ export async function canViewDepartmentAnalytics(
   department: string
 ): Promise<boolean> {
   if (canAccessAdmin(session.role)) return true;
-  if (session.role !== "manager" || !session.employeeId) return false;
+  // Department analytics visibility for line-managers is derived from the Employee
+  // hierarchy (they manage reports in that department), independent of app role.
+  if (!session.employeeId) return false;
   const team = await prisma.employee.findMany({
     where: { managerId: session.employeeId, isActive: true },
     select: { department: true },

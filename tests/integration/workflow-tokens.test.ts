@@ -86,14 +86,15 @@ describe("workflow and approval tokens (integration)", () => {
     const managerUser = await prisma.user.create({
       data: {
         email: `manager-${suffix}@test.local`,
-        role: UserRole.manager,
+        // A line-manager is an employee who is an approver via the org hierarchy.
+        role: UserRole.employee,
         employeeId: managerEmp.id,
       },
     });
     managerUserId = managerUser.id;
 
     const hrUser = await prisma.user.findFirst({
-      where: { role: { in: [UserRole.admin, UserRole.hr_admin] } },
+      where: { role: { in: [UserRole.super_admin, UserRole.hr] } },
     });
     if (!hrUser) throw new Error("Seed admin user required for integration tests.");
     hrUserId = hrUser.id;
@@ -158,7 +159,7 @@ describe("workflow and approval tokens (integration)", () => {
       toWorkflowActor({
         id: manager.id,
         email: manager.email,
-        role: "manager",
+        role: "employee",
         employeeId: manager.employeeId,
       })
     );
@@ -215,7 +216,7 @@ describe("workflow and approval tokens (integration)", () => {
       },
     });
     const hr = await prisma.user.findFirstOrThrow({
-      where: { role: { in: [UserRole.admin, UserRole.hr_admin] } },
+      where: { role: { in: [UserRole.super_admin, UserRole.hr] } },
     });
 
     await initializeEmployeeLeaveBalances(emp.id, { el: 0, cl: 12, sl: 12 }, "integration-test");
@@ -306,7 +307,7 @@ describe("workflow and approval tokens (integration)", () => {
       },
     });
     const hr = await prisma.user.findFirstOrThrow({
-      where: { role: { in: [UserRole.admin, UserRole.hr_admin] } },
+      where: { role: { in: [UserRole.super_admin, UserRole.hr] } },
     });
 
     await initializeEmployeeLeaveBalances(emp.id, { el: 0, cl: 12, sl: 12 }, "integration-test");

@@ -11,4 +11,3 @@ export {
 } from "@/lib/data/attendance";
 export { getEmployeeById, getEmployees } from "@/lib/data/employees";
 export { getLeaveRequests, getEmployeeLeavePageData } from "@/lib/data/leaves";
-export { getManagerDashboardStats } from "@/lib/data/dashboard";

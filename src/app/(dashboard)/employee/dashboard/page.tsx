@@ -7,12 +7,17 @@ import { getSession } from "@/lib/auth";
 export default async function EmployeeDashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string; start?: string; end?: string }>;
+  searchParams: Promise<{
+    date?: string;
+    start?: string;
+    end?: string;
+    heatmapMonth?: string;
+  }>;
 }) {
   const session = await getSession();
   if (!session?.employeeId) redirect("/login");
 
-  const { date, start, end } = await searchParams;
+  const { date, start, end, heatmapMonth } = await searchParams;
 
   return (
     <Suspense fallback={<PageSkeleton />}>
@@ -22,6 +27,7 @@ export default async function EmployeeDashboardPage({
         selectedDate={date}
         startDate={start}
         endDate={end}
+        heatmapMonth={heatmapMonth}
       />
     </Suspense>
   );

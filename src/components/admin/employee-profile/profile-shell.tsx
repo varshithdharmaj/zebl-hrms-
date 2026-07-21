@@ -12,19 +12,44 @@ import { LeaveHistoryTab } from "@/components/admin/employee-profile/leave-histo
 import type { EmployeeStatus } from "@/lib/employee-types";
 import type { LeaveBalanceSummary } from "@/lib/leave";
 import type { ManagerSummary } from "@/lib/org-types";
+import type { AppUserRole } from "@/lib/roles";
+import type { AccountStatus, AuthProvider } from "@prisma/client";
+import { AccountManagementTab } from "@/components/admin/employee-profile/account-management-tab";
 
 export type ProfileEmployee = {
   id: number;
   employeeCode: string;
   name: string;
+  firstName: string | null;
+  lastName: string | null;
+  preferredName: string | null;
+  gender: string | null;
+  dateOfBirth: Date | null;
   email: string | null;
   phone: string | null;
+  alternatePhone: string | null;
+  address: string | null;
+  emergencyContact: string | null;
   department: string | null;
   designation: string | null;
+  employmentType: string | null;
+  workLocation: string | null;
   shift: string | null;
   joiningDate: Date;
   employeeStatus: EmployeeStatus;
-  user: { email: string } | null;
+  user: {
+    id: string;
+    email: string;
+    username: string | null;
+    role: AppUserRole;
+    authProvider: AuthProvider;
+    isActive: boolean;
+    accountStatus: AccountStatus;
+    mustChangePassword: boolean;
+    profilePhotoUrl: string | null;
+    lockedAt: Date | null;
+    lastLoginAt: Date | null;
+  } | null;
   manager: ManagerSummary | null;
   directReportsCount: number;
 };
@@ -65,6 +90,7 @@ const TABS: TabDef[] = [
   { id: "attendance", label: "Attendance" },
   { id: "balances", label: "Leave balances" },
   { id: "history", label: "Leave history" },
+  { id: "account", label: "Account Management" },
 ];
 
 export function EmployeeProfileShell({
@@ -76,6 +102,8 @@ export function EmployeeProfileShell({
   defaultEnd,
   managerCandidates,
   overviewStats,
+  currentUserId,
+  currentUserRole,
 }: {
   employee: ProfileEmployee;
   attendance: AttendanceSummary;
@@ -90,6 +118,8 @@ export function EmployeeProfileShell({
     attendancePercent: number;
     lastAttendance: Date | null;
   };
+  currentUserId: string;
+  currentUserRole: AppUserRole;
 }) {
   const [activeTab, setActiveTab] = useState("overview");
 
@@ -125,6 +155,13 @@ export function EmployeeProfileShell({
           <LeaveBalancesTab employeeId={employee.id} balances={balances} />
         )}
         {activeTab === "history" && <LeaveHistoryTab history={history} />}
+        {activeTab === "account" && (
+          <AccountManagementTab
+            employee={employee}
+            currentUserId={currentUserId}
+            currentUserRole={currentUserRole}
+          />
+        )}
       </div>
     </div>
   );

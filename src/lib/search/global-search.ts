@@ -51,18 +51,23 @@ export async function globalSearch(
     });
   }
 
-  const leaveWhere = {
+  const textMatch = {
     OR: [
       { reason: { contains: q, mode: "insensitive" as const } },
       { employee: { name: { contains: q, mode: "insensitive" as const } } },
       { employee: { employeeCode: { contains: q, mode: "insensitive" as const } } },
     ],
-    ...(isAdmin
-      ? {}
-      : session.role === "manager" && session.employeeId
-        ? { employee: { managerId: session.employeeId } }
-        : { employeeId: session.employeeId ?? -1 }),
   };
+  // Non-admins see their own leaves plus their direct reports' (hierarchy-scoped).
+  const scope = isAdmin
+    ? {}
+    : {
+        OR: [
+          { employeeId: session.employeeId ?? -1 },
+          { employee: { managerId: session.employeeId ?? -1 } },
+        ],
+      };
+  const leaveWhere = { AND: [textMatch, scope] };
 
   const leaves = await prisma.leaveRequest.findMany({
     where: leaveWhere,

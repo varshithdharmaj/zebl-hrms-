@@ -14,6 +14,8 @@ import {
   validateExcelColumns,
 } from "@/lib/attendance";
 import { startOfDay } from "@/lib/utils";
+import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
+import { getRequestSecurityContext } from "@/lib/security/request-context";
 
 export type UploadState = {
   error?: string;
@@ -216,6 +218,23 @@ export async function uploadAttendanceAction(
     await prisma.attendanceUpload.update({
       where: { id: upload.id },
       data: { recordCount: imported },
+    });
+    await writeAuditLog({
+      entityType: "attendance_upload",
+      entityId: String(upload.id),
+      action: AUDIT_ACTIONS.ATTENDANCE_UPLOAD_COMPLETED,
+      actorUserId: session.id,
+      actorEmail: session.email,
+      employeeId: session.employeeId,
+      module: "attendance",
+      description: "Attendance workbook import completed.",
+      requestContext: await getRequestSecurityContext(),
+      metadata: {
+        attendanceDate: attendanceDate.toISOString(),
+        fileName: file.name,
+        imported,
+        skipped,
+      },
     });
 
     revalidatePath("/admin/dashboard");

@@ -75,9 +75,8 @@ export async function applyLeaveAction(
     });
 
     revalidatePath("/employee/leaves");
+    revalidatePath("/employee/approvals");
     revalidatePath("/admin/leaves");
-    revalidatePath("/manager/approvals");
-    revalidatePath("/manager/dashboard");
     return { success: "Leave request submitted for approval." };
   } catch (e) {
     const message = e instanceof WorkflowError ? e.message : "Failed to submit leave request.";

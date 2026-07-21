@@ -69,7 +69,7 @@ export async function runEscalationScan(correlationId: string): Promise<{
       days: leave.days,
       reason: sanitizeText(leave.reason),
       workflowStatus: leave.workflowStatus,
-      viewUrl: `${getAppBaseUrl()}/manager/approvals`,
+      viewUrl: `${getAppBaseUrl()}/employee/approvals`,
     };
 
     const approverUser = step.approver?.user;
@@ -102,7 +102,7 @@ export async function runEscalationScan(correlationId: string): Promise<{
     }
 
     const hrUsers = await prisma.user.findMany({
-      where: { role: { in: ["admin", "hr_admin"] } },
+      where: { role: { in: ["super_admin", "hr"] } },
       select: { email: true, id: true },
     });
     for (const hr of hrUsers) {

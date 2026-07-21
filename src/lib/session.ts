@@ -10,6 +10,8 @@ export type SessionUser = {
   employeeName: string | null;
   sessionVersion: number;
   authProvider: AuthProvider;
+  sessionId?: string;
+  mustChangePassword?: boolean;
 };
 
 export type SessionTokenPayload = SessionUser;
@@ -24,8 +26,8 @@ function getSecret() {
   return new TextEncoder().encode(secret);
 }
 
-export async function createSessionToken(user: SessionUser): Promise<string> {
-  return new SignJWT({
+export async function createSessionToken(user: SessionUser, sessionId?: string): Promise<string> {
+  const jwt = new SignJWT({
     id: user.id,
     email: user.email,
     role: user.role,
@@ -33,11 +35,13 @@ export async function createSessionToken(user: SessionUser): Promise<string> {
     employeeName: user.employeeName,
     sessionVersion: user.sessionVersion,
     authProvider: user.authProvider,
+    mustChangePassword: user.mustChangePassword ?? false,
   })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("7d")
-    .sign(getSecret());
+    .setExpirationTime("7d");
+  if (sessionId) jwt.setJti(sessionId);
+  return jwt.sign(getSecret());
 }
 
 export async function verifySessionToken(token: string): Promise<SessionTokenPayload | null> {
@@ -56,6 +60,8 @@ export async function verifySessionToken(token: string): Promise<SessionTokenPay
       employeeName: (payload.employeeName as string | null) ?? null,
       sessionVersion: (payload.sessionVersion as number) ?? 1,
       authProvider,
+      sessionId: typeof payload.jti === "string" ? payload.jti : undefined,
+      mustChangePassword: payload.mustChangePassword === true,
     };
   } catch {
     return null;

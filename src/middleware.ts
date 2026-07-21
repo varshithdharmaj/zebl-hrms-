@@ -2,11 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { verifySessionToken, COOKIE_NAME } from "@/lib/session";
 import { getRoleHomePath } from "@/lib/routing";
-import {
-  canAccessAdmin,
-  canAccessEmployeeShell,
-  canAccessManagerShell,
-} from "@/lib/permissions";
+import { canAccessAdmin, canAccessEmployeeShell } from "@/lib/permissions";
 import { isSessionVersionStale } from "@/lib/session-version-cache";
 import type { AppUserRole } from "@/lib/roles";
 import { isApprovalPublicPath, isPublicPath } from "@/lib/public-routes";
@@ -75,10 +71,6 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname.startsWith("/admin") && !canAccessAdmin(session.role)) {
-    return redirectToRoleHome(request, session.role);
-  }
-
-  if (pathname.startsWith("/manager") && !canAccessManagerShell(session.role)) {
     return redirectToRoleHome(request, session.role);
   }
 

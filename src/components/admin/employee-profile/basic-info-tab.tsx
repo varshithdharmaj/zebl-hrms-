@@ -42,11 +42,38 @@ export function BasicInfoTab({
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="employeeCode">Employee code</Label>
-            <Input id="employeeCode" name="employeeCode" defaultValue={employee.employeeCode} required />
+            <Input id="employeeCode" value={employee.employeeCode} disabled />
           </div>
           <div className="space-y-2">
             <Label htmlFor="name">Full name</Label>
             <Input id="name" name="name" defaultValue={employee.name} required />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="firstName">First name</Label>
+            <Input id="firstName" name="firstName" defaultValue={employee.firstName ?? ""} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="lastName">Last name</Label>
+            <Input id="lastName" name="lastName" defaultValue={employee.lastName ?? ""} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="preferredName">Preferred name</Label>
+            <Input id="preferredName" name="preferredName" defaultValue={employee.preferredName ?? ""} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="gender">Gender</Label>
+            <Input id="gender" name="gender" defaultValue={employee.gender ?? ""} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="dateOfBirth">Date of birth</Label>
+            <Input
+              id="dateOfBirth"
+              name="dateOfBirth"
+              type="date"
+              defaultValue={employee.dateOfBirth
+                ? new Date(employee.dateOfBirth).toISOString().split("T")[0]
+                : ""}
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
@@ -57,12 +84,37 @@ export function BasicInfoTab({
             <Input id="phone" name="phone" defaultValue={employee.phone ?? ""} />
           </div>
           <div className="space-y-2">
+            <Label htmlFor="alternatePhone">Alternate phone</Label>
+            <Input id="alternatePhone" name="alternatePhone" defaultValue={employee.alternatePhone ?? ""} />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="address">Address</Label>
+            <Input id="address" name="address" defaultValue={employee.address ?? ""} />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="emergencyContact">Emergency contact</Label>
+            <Input
+              id="emergencyContact"
+              name="emergencyContact"
+              defaultValue={employee.emergencyContact ?? ""}
+              placeholder="Name and phone number"
+            />
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="department">Department</Label>
             <Input id="department" name="department" defaultValue={employee.department ?? ""} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="designation">Designation</Label>
             <Input id="designation" name="designation" defaultValue={employee.designation ?? ""} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="employmentType">Employment type</Label>
+            <Input id="employmentType" name="employmentType" defaultValue={employee.employmentType ?? ""} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="workLocation">Work location</Label>
+            <Input id="workLocation" name="workLocation" defaultValue={employee.workLocation ?? ""} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="shift">Shift</Label>

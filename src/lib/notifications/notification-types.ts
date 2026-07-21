@@ -27,7 +27,16 @@ export type LeaveEmailPayload = {
   approvalLinkExpiresAt?: string;
 };
 
-export type NotificationPayload = LeaveEmailPayload & Record<string, unknown>;
+export type TicketEmailPayload = {
+  ticketNumber: string;
+  subject?: string;
+  message?: string;
+  newStatus?: string;
+  resolutionNotes?: string | null;
+  isAnonymous?: boolean;
+};
+
+export type NotificationPayload = LeaveEmailPayload | TicketEmailPayload | Record<string, unknown>;
 
 export type EnqueueNotificationInput = {
   type: NotificationType;

@@ -48,7 +48,7 @@ export async function getApproverEmail(approverId: number): Promise<ResolvedReci
 
 export async function getHrRecipients(): Promise<ResolvedRecipient[]> {
   const users = await prisma.user.findMany({
-    where: { role: { in: [UserRole.admin, UserRole.hr_admin] } },
+    where: { role: { in: [UserRole.super_admin, UserRole.hr] } },
     select: { id: true, email: true },
   });
   return users.map((u) => ({ email: u.email, userId: u.id, role: "hr" }));

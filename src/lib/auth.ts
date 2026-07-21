@@ -6,13 +6,16 @@ import {
   verifySessionToken,
   type SessionUser,
 } from "@/lib/session";
-import { toAppUserRole } from "@/lib/roles";
 import { getDefaultRedirectForRole } from "@/lib/routing";
 import { clearSessionCookie, setSessionCookie } from "@/lib/auth/cookies";
 import { buildSessionUser } from "@/lib/auth/session-bridge";
 import { authenticateLocalUser } from "@/lib/auth/providers/local-provider";
 import { setCachedSessionVersion } from "@/lib/session-version-cache";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
+import {
+  closeAllUserSessions,
+  validateAndTouchSession,
+} from "@/lib/security/login-history-service";
 
 export type { SessionUser };
 
@@ -38,10 +41,17 @@ async function resolveSessionFromToken(token: string): Promise<SessionUser | nul
   }
 
   if (!user) return null;
+  if (!user.isActive) return null;
   if (user.sessionVersion !== payload.sessionVersion) return null;
+  if (
+    payload.sessionId &&
+    !(await validateAndTouchSession(payload.sessionId, user.id))
+  ) {
+    return null;
+  }
 
   setCachedSessionVersion(user.id, user.sessionVersion);
-  return buildSessionUser(user);
+  return { ...buildSessionUser(user), sessionId: payload.sessionId };
 }
 
 import { cache } from "react";
@@ -64,6 +74,7 @@ export async function invalidateUserSessions(userId: string): Promise<void> {
     data: { sessionVersion: { increment: 1 } },
     select: { sessionVersion: true },
   });
+  await closeAllUserSessions(userId, "revoked");
   setCachedSessionVersion(userId, user.sessionVersion);
 }
 

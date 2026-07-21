@@ -54,7 +54,7 @@ export async function bulkApproveLeavesAction(
       metadata: { operation: "bulk_approve", processed, failed, count: items.length },
     });
 
-    revalidatePath("/manager/approvals");
+    revalidatePath("/employee/approvals");
     revalidatePath("/admin/leaves");
     revalidatePath("/admin/dashboard");
 
@@ -114,7 +114,7 @@ export async function bulkRejectLeavesAction(
       metadata: { operation: "bulk_reject", processed, failed, count: items.length },
     });
 
-    revalidatePath("/manager/approvals");
+    revalidatePath("/employee/approvals");
     revalidatePath("/admin/leaves");
 
     return {

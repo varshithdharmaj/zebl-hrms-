@@ -176,6 +176,14 @@ export async function provisionMicrosoftUser(
     });
   }
 
+  if (!user.isActive) {
+    return {
+      ok: false,
+      code: "inactive_employee",
+      message: "Your account has been deactivated. Contact your administrator.",
+    };
+  }
+
   if (
     user.employee &&
     (user.employee.employeeStatus !== "Active" || !user.employee.isActive)

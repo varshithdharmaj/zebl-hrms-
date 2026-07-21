@@ -1,4 +1,4 @@
-export const EMPLOYEE_STATUSES = ["Active", "Inactive", "Resigned"] as const;
+export const EMPLOYEE_STATUSES = ["Active", "Inactive", "Resigned", "Terminated"] as const;
 export type EmployeeStatus = (typeof EMPLOYEE_STATUSES)[number];
 
 export function isValidEmployeeStatus(value: string): value is EmployeeStatus {

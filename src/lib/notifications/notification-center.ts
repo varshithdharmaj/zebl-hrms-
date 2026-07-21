@@ -1,6 +1,6 @@
 import { NotificationDeliveryStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { canAccessAdmin, canApproveLeave } from "@/lib/permissions";
+import { canAccessAdmin } from "@/lib/permissions";
 import type { SessionUser } from "@/lib/session";
 import { getPendingApprovalsForActor } from "@/lib/workflow/pending-approvals";
 
@@ -18,18 +18,18 @@ export async function getNotificationCenterItems(
 ): Promise<NotificationCenterItem[]> {
   const items: NotificationCenterItem[] = [];
 
-  if (canApproveLeave(session.role)) {
-    const pending = await getPendingApprovalsForActor(session);
-    if (pending.length > 0) {
-      items.push({
-        id: "pending-approvals",
-        title: `${pending.length} leave approval(s)`,
-        description: "Awaiting your decision",
-        href: session.role === "manager" ? "/manager/approvals" : "/admin/leaves",
-        severity: "warning",
-        createdAt: new Date(),
-      });
-    }
+  // Pending approvals are scoped by getPendingApprovalsForActor: HR queue for admins,
+  // hierarchy-assigned steps for line-managers (empty for everyone else).
+  const pending = await getPendingApprovalsForActor(session);
+  if (pending.length > 0) {
+    items.push({
+      id: "pending-approvals",
+      title: `${pending.length} leave approval(s)`,
+      description: "Awaiting your decision",
+      href: canAccessAdmin(session.role) ? "/admin/leaves" : "/employee/approvals",
+      severity: "warning",
+      createdAt: new Date(),
+    });
   }
 
   if (canAccessAdmin(session.role)) {

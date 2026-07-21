@@ -9,15 +9,36 @@ datasource db {
 }
 
 enum UserRole {
-  admin
-  hr_admin
-  manager
+  super_admin
+  hr
   employee
 }
 
 enum AuthProvider {
   local
   microsoft
+}
+
+enum LoginSessionStatus {
+  active
+  logged_out
+  expired
+  revoked
+  failed
+}
+
+enum AccountStatus {
+  active
+  inactive
+  locked
+  suspended
+  pending
+  terminated
+}
+
+enum AttendanceOverrideType {
+  working_day
+  weekly_off
 }
 
 enum LeaveRequestStatus {
@@ -58,6 +79,15 @@ enum NotificationType {
   leave_withdrawn
   leave_cancelled
   escalation_reminder
+  ticket_created
+  ticket_assigned
+  ticket_updated
+  ticket_employee_replied
+  ticket_status_changed
+  ticket_resolved
+  ticket_reopened
+  ticket_anonymous_created
+  ticket_anonymous_updated
 }
 
 enum NotificationChannel {
@@ -121,6 +151,51 @@ enum AnomalySeverity {
   high
 }
 
+enum TicketCategory {
+  attendance
+  leave
+  payroll
+  salary
+  it_technical
+  hr
+  workplace
+  facilities
+  suggestion
+  other
+}
+
+enum TicketType {
+  complaint
+  service_request
+  suggestion
+  meeting_request
+  anonymous_complaint
+  other
+}
+
+enum TicketPriority {
+  low
+  medium
+  high
+}
+
+enum TicketStatus {
+  new
+  open
+  in_progress
+  waiting_for_employee
+  on_hold
+  resolved
+  closed
+  canceled
+}
+
+enum TicketMessageVisibility {
+  public_update
+  internal_note
+  employee_reply
+}
+
 model User {
   id             String       @id @default(cuid())
   email          String       @unique
@@ -133,13 +208,25 @@ model User {
   profilePhotoUrl     String?      @map("profile_photo_url")
   authMetadata        String       @default("{}") @map("auth_metadata")
   sessionVersion      Int          @default(1) @map("session_version")
+  isActive            Boolean      @default(true) @map("is_active")
+  username            String?      @unique
+  accountStatus       AccountStatus @default(active) @map("account_status")
+  mustChangePassword  Boolean      @default(false) @map("must_change_password")
+  lockedAt            DateTime?    @map("locked_at")
+  lockedReason        String?      @map("locked_reason")
   employeeId          Int?         @unique
   employee              Employee?               @relation(fields: [employeeId], references: [id])
   notificationPreference NotificationPreference?
+  assignedTickets       Ticket[]                @relation("AssignedHandler")
+  ticketMessages        TicketMessage[]
+  ticketHistoryEntries  TicketHistory[]
+  loginSessions         LoginSession[]
   createdAt             DateTime                @default(now())
   updatedAt             DateTime                @updatedAt
 
   @@index([role])
+  @@index([role, isActive])
+  @@index([accountStatus])
   @@map("users")
 }
 
@@ -147,10 +234,20 @@ model Employee {
   id                Int                    @id @default(autoincrement())
   employeeCode      String                 @unique @map("employee_code")
   name              String
+  firstName         String?                @map("first_name")
+  lastName          String?                @map("last_name")
+  preferredName     String?                @map("preferred_name")
+  gender            String?
+  dateOfBirth       DateTime?              @map("date_of_birth")
   email             String?
   phone             String?
+  alternatePhone    String?                @map("alternate_phone")
+  address           String?
+  emergencyContact  String?                @map("emergency_contact")
   department        String?
   designation       String?
+  employmentType    String?                @map("employment_type")
+  workLocation      String?                @map("work_location")
   shift             String?
   joiningDate       DateTime               @default(now()) @map("joining_date")
   employeeStatus    String                 @default("Active") @map("employee_status")
@@ -170,6 +267,8 @@ model Employee {
   leaveTransactions LeaveTransaction[]
   approvalSteps     LeaveApprovalStep[]
   payrollSummaries  PayrollAttendanceSummary[]
+  raisedTickets     Ticket[]
+  loginSessions     LoginSession[]
 
   @@index([managerId])
   @@index([employeeStatus])
@@ -484,14 +583,60 @@ model AuditLog {
   action      String
   actorUserId String?  @map("actor_user_id")
   actorEmail  String?  @map("actor_email")
+  employeeId  Int?     @map("employee_id")
+  module      String?  
+  description String?
+  oldValue    Json?    @map("old_value")
+  newValue    Json?    @map("new_value")
   metadata    String   @default("{}")
+  status      String   @default("success")
+  ipAddress   String?  @map("ip_address")
+  browser     String?
+  device      String?
+  operatingSystem String? @map("operating_system")
+  userAgent   String?  @map("user_agent")
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@index([entityType, entityId])
   @@index([action])
   @@index([actorUserId])
+  @@index([employeeId])
+  @@index([module, action])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+model LoginSession {
+  id              String             @id @default(cuid())
+  userId          String?            @map("user_id")
+  user            User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employeeId      Int?               @map("employee_id")
+  employee        Employee?          @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  attemptedEmail  String?            @map("attempted_email")
+  loginAt         DateTime           @default(now()) @map("login_at")
+  logoutAt        DateTime?          @map("logout_at")
+  lastActivityAt  DateTime           @default(now()) @map("last_activity_at")
+  status          LoginSessionStatus @default(active)
+  ipAddress       String?            @map("ip_address")
+  browser         String?
+  browserVersion  String?            @map("browser_version")
+  device          String?
+  operatingSystem String?            @map("operating_system")
+  userAgent       String?            @map("user_agent")
+  sessionToken    String?            @unique @map("session_token")
+  sessionDuration Int?               @map("session_duration")
+  failureReason   String?            @map("failure_reason")
+  isCurrent       Boolean            @default(true) @map("is_current")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([employeeId])
+  @@index([loginAt])
+  @@index([status])
+  @@index([userId, status, lastActivityAt])
+  @@index([attemptedEmail, loginAt])
+  @@map("login_sessions")
 }
 
 enum WorkerRunStatus {
@@ -563,4 +708,106 @@ model PayrollAttendanceSummary {
   @@index([payrollPeriodStart, payrollPeriodEnd])
   @@index([hrDecision])
   @@map("payroll_attendance_summaries")
+}
+
+/// Attendance scheduling — the source of truth for weekly working days and
+/// expected work minutes. Deliberately separate from PayrollSettings: payroll
+/// governs pay calculation, this governs attendance-day classification.
+model AttendanceSettings {
+  id                  String   @id @default("default")
+  mondayWorking       Boolean  @default(true)  @map("monday_working")
+  tuesdayWorking      Boolean  @default(true)  @map("tuesday_working")
+  wednesdayWorking    Boolean  @default(true)  @map("wednesday_working")
+  thursdayWorking     Boolean  @default(true)  @map("thursday_working")
+  fridayWorking       Boolean  @default(true)  @map("friday_working")
+  saturdayWorking     Boolean  @default(false) @map("saturday_working")
+  sundayWorking       Boolean  @default(false) @map("sunday_working")
+  expectedWorkMinutes Int      @default(480)   @map("expected_work_minutes")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("attendance_settings")
+}
+
+model AttendanceDateOverride {
+  id        Int                    @id @default(autoincrement())
+  date      DateTime               @unique
+  type      AttendanceOverrideType
+  reason    String?
+  createdBy String?                @map("created_by")
+  createdAt DateTime               @default(now()) @map("created_at")
+
+  @@index([date])
+  @@map("attendance_date_overrides")
+}
+
+model Ticket {
+  id                 String        @id @default(cuid())
+  ticketNumber       String        @unique @map("ticket_number")
+  subject            String
+  description        String
+  category           TicketCategory
+  type               TicketType
+  priority           TicketPriority @default(medium)
+  status             TicketStatus   @default(new)
+  isAnonymous        Boolean        @default(false) @map("is_anonymous")
+  raisedByEmployeeId Int            @map("raised_by_employee_id")
+  raisedByEmployee   Employee       @relation(fields: [raisedByEmployeeId], references: [id], onDelete: Cascade)
+  department         String?
+  assignedToUserId   String?        @map("assigned_to_user_id")
+  assignedToUser     User?          @relation("AssignedHandler", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  resolutionNotes    String?        @map("resolution_notes")
+  resolvedAt         DateTime?      @map("resolved_at")
+  closedAt           DateTime?      @map("closed_at")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+  messages           TicketMessage[]
+  history            TicketHistory[]
+
+  @@index([ticketNumber])
+  @@index([status])
+  @@index([priority])
+  @@index([category])
+  @@index([raisedByEmployeeId])
+  @@index([assignedToUserId])
+  @@index([isAnonymous])
+  @@index([createdAt])
+  @@index([status, isAnonymous])
+  @@index([assignedToUserId, status])
+  @@map("tickets")
+}
+
+model TicketMessage {
+  id           String                  @id @default(cuid())
+  ticketId     String                  @map("ticket_id")
+  ticket       Ticket                  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  visibility   TicketMessageVisibility
+  body         String
+  authorUserId String                  @map("author_user_id")
+  author       User                    @relation(fields: [authorUserId], references: [id], onDelete: Cascade)
+  createdAt    DateTime                @default(now()) @map("created_at")
+
+  @@index([ticketId])
+  @@index([ticketId, createdAt])
+  @@index([authorUserId])
+  @@map("ticket_messages")
+}
+
+model TicketHistory {
+  id           String   @id @default(cuid())
+  ticketId     String   @map("ticket_id")
+  ticket       Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  action       String
+  fieldChanged String?  @map("field_changed")
+  oldValue     String?  @map("old_value")
+  newValue     String?  @map("new_value")
+  actorUserId  String   @map("actor_user_id")
+  actor        User     @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
+  metadata     String   @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([ticketId])
+  @@index([ticketId, createdAt])
+  @@index([action])
+  @@index([actorUserId])
+  @@map("ticket_history")
 }

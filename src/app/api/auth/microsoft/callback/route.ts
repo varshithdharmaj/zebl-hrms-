@@ -13,6 +13,8 @@ import {
 } from "@/lib/auth/oauth-state";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getClientIp, getUserAgent } from "@/lib/request-meta";
+import { recordFailedLogin } from "@/lib/security/login-history-service";
+import { parseUserAgent } from "@/lib/security/request-context";
 
 function loginErrorRedirect(request: Request, error: string, description?: string) {
   const login = new URL("/login", request.url);
@@ -28,6 +30,10 @@ export async function GET(request: Request) {
 
   const clientIp = getClientIp(request.headers);
   const userAgent = getUserAgent(request.headers);
+  const requestContext = {
+    ipAddress: clientIp ?? "unknown",
+    ...parseUserAgent(userAgent ?? "Unknown"),
+  };
   const limit = checkRateLimit(`sso-callback:${clientIp ?? "unknown"}`, 40, 15 * 60 * 1000);
   if (!limit.allowed) {
     return loginErrorRedirect(request, "rate_limited");
@@ -36,10 +42,19 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const oauthError = url.searchParams.get("error");
   if (oauthError) {
+    await recordFailedLogin({
+      attemptedEmail: "microsoft-sso",
+      reason: oauthError,
+      context: requestContext,
+    });
     await writeAuditLog({
       entityType: "auth",
       entityId: "microsoft",
       action: AUDIT_ACTIONS.AUTH_LOGIN_FAILURE,
+      module: "authentication",
+      description: "Microsoft login was denied.",
+      status: "failure",
+      requestContext,
       metadata: {
         provider: "microsoft",
         reason: oauthError,
@@ -89,10 +104,19 @@ export async function GET(request: Request) {
       },
     });
   } else {
+    await recordFailedLogin({
+      attemptedEmail: "microsoft-sso",
+      reason: result.redirectError,
+      context: requestContext,
+    });
     await writeAuditLog({
       entityType: "auth",
       entityId: "microsoft",
       action: AUDIT_ACTIONS.AUTH_LOGIN_FAILURE,
+      module: "authentication",
+      description: "Microsoft login failed.",
+      status: "failure",
+      requestContext,
       metadata: {
         provider: "microsoft",
         reason: result.redirectError,

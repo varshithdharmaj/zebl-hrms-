@@ -4,7 +4,7 @@ import { WidgetCard } from "@/components/ui/widget-card";
 import { Button } from "@/components/ui/button";
 import { formatLeaveDays, LEAVE_TYPE_LABELS, type LeaveType } from "@/lib/leave-types";
 import type { LeaveBalanceSummary } from "@/lib/leave";
-import { cn, minutesToHours } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 const leaveAccent: Record<LeaveType, string> = {
   EL: "text-accent-green",
@@ -14,17 +14,9 @@ const leaveAccent: Record<LeaveType, string> = {
 
 export function DashboardWidgets({
   balances,
-  attendancePercent,
-  presentDays,
-  overtimeMinutes,
-  rangeLabel,
   employeeName,
 }: {
   balances: LeaveBalanceSummary[];
-  attendancePercent: number;
-  presentDays: number;
-  overtimeMinutes: number;
-  rangeLabel: string;
   employeeName: string | null;
 }) {
   const firstName = employeeName?.split(" ")[0] ?? "there";
@@ -61,33 +53,6 @@ export function DashboardWidgets({
             <CalendarPlus className="h-3.5 w-3.5" />
           </Link>
         </Button>
-      </WidgetCard>
-
-      <WidgetCard title="Period snapshot" description={rangeLabel}>
-        <div className="space-y-4">
-          <div>
-            <div className="mb-2 flex justify-between text-sm">
-              <span className="text-muted-foreground">Attendance rate</span>
-              <span className="font-semibold tabular-nums">{attendancePercent}%</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full rounded-full bg-primary transition-all"
-                style={{ width: `${Math.min(attendancePercent, 100)}%` }}
-              />
-            </div>
-          </div>
-          <dl className="grid grid-cols-2 gap-2 text-sm">
-            <div className="rounded-lg bg-muted/40 px-3 py-2">
-              <dt className="text-xs text-muted-foreground">Present</dt>
-              <dd className="font-semibold tabular-nums">{presentDays}</dd>
-            </div>
-            <div className="rounded-lg bg-muted/40 px-3 py-2">
-              <dt className="text-xs text-muted-foreground">Overtime</dt>
-              <dd className="font-semibold tabular-nums">{minutesToHours(overtimeMinutes)}</dd>
-            </div>
-          </dl>
-        </div>
       </WidgetCard>
 
       <div className="rounded-[var(--radius-card)] border border-border bg-gradient-to-br from-primary-muted via-card to-accent-violet-muted/30 p-5 shadow-card">

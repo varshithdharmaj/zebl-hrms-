@@ -6,7 +6,7 @@ import {
 } from "@/lib/api/leave-api";
 import { getLeaveWorkflowDto } from "@/lib/workflow/leave-workflow";
 import { prisma } from "@/lib/prisma";
-import { canAccessAdmin, canApproveLeave } from "@/lib/permissions";
+import { canAccessAdmin } from "@/lib/permissions";
 
 export async function GET(
   _request: Request,
@@ -30,10 +30,17 @@ export async function GET(
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
+    // Owner, HR/Super Admin, or an employee assigned as an approver on this leave.
+    const isAssignedApprover =
+      session.employeeId != null &&
+      (await prisma.leaveApprovalStep.count({
+        where: { leaveRequestId: leaveId, approverId: session.employeeId },
+      })) > 0;
+
     const canView =
       session.employeeId === leave.employeeId ||
       canAccessAdmin(session.role) ||
-      canApproveLeave(session.role);
+      isAssignedApprover;
 
     if (!canView) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });

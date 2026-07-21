@@ -8,12 +8,15 @@ import {
   getDefaultRedirect,
   getRequestClientIp,
   getSession,
+  invalidateUserSessions,
   invalidateUserSessionsWithAudit,
 } from "@/lib/auth";
 import { authenticateLocalUser } from "@/lib/auth/providers/local-provider";
 import { establishSession } from "@/lib/auth/session-bridge";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
 import { checkRateLimit, resetRateLimit } from "@/lib/rate-limit";
+import { getRequestSecurityContext } from "@/lib/security/request-context";
+import { closeSession, recordFailedLogin } from "@/lib/security/login-history-service";
 
 export type AuthState = {
   error?: string;
@@ -34,15 +37,25 @@ export async function loginAction(
   }
 
   const clientIp = await getRequestClientIp();
+  const requestContext = await getRequestSecurityContext();
   const rateKey = `login:${clientIp}:${email.toLowerCase()}`;
   const limit = checkRateLimit(rateKey, LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_MS);
 
   if (!limit.allowed) {
+    await recordFailedLogin({
+      attemptedEmail: email,
+      reason: "rate_limited",
+      context: requestContext,
+    });
     await writeAuditLog({
       entityType: "auth",
       entityId: email.toLowerCase(),
       action: AUDIT_ACTIONS.AUTH_LOGIN_FAILURE,
       actorEmail: email.toLowerCase(),
+      module: "authentication",
+      description: "Login attempt was rate limited.",
+      status: "failure",
+      requestContext,
       metadata: { reason: "rate_limited", clientIp },
     });
     const minutes = Math.ceil(limit.retryAfterMs / 60000);
@@ -51,11 +64,20 @@ export async function loginAction(
 
   const auth = await authenticateLocalUser({ email, password, clientIp });
   if (!auth.ok) {
+    await recordFailedLogin({
+      attemptedEmail: email,
+      reason: auth.code,
+      context: requestContext,
+    });
     await writeAuditLog({
       entityType: "auth",
       entityId: email.toLowerCase(),
       action: AUDIT_ACTIONS.AUTH_LOGIN_FAILURE,
       actorEmail: email.toLowerCase(),
+      module: "authentication",
+      description: "Local login attempt failed.",
+      status: "failure",
+      requestContext,
       metadata: { reason: auth.code, clientIp, provider: "local" },
     });
     return { error: auth.message };
@@ -79,6 +101,10 @@ export async function loginAction(
     action: AUDIT_ACTIONS.AUTH_LOGIN_SUCCESS,
     actorUserId: sessionUser.id,
     actorEmail: sessionUser.email,
+    employeeId: sessionUser.employeeId,
+    module: "authentication",
+    description: "User logged in successfully.",
+    requestContext,
     metadata: { authProvider: sessionUser.authProvider, clientIp, provider: "local" },
   });
 
@@ -89,16 +115,25 @@ export async function logoutAction() {
   const session = await getSession();
   const clientIp = await getRequestClientIp();
   if (session) {
-    await invalidateUserSessionsWithAudit(session.id, {
-      userId: session.id,
-      email: session.email,
-    }, "logout");
+    if (session.sessionId) {
+      await closeSession(session.sessionId);
+    } else {
+      await invalidateUserSessionsWithAudit(session.id, {
+        userId: session.id,
+        email: session.email,
+      }, "legacy_logout");
+    }
+    const requestContext = await getRequestSecurityContext();
     await writeAuditLog({
       entityType: "user",
       entityId: session.id,
       action: AUDIT_ACTIONS.AUTH_LOGOUT,
       actorUserId: session.id,
       actorEmail: session.email,
+      employeeId: session.employeeId,
+      module: "authentication",
+      description: "User logged out.",
+      requestContext,
       metadata: { authProvider: session.authProvider, clientIp },
     });
   }
@@ -132,8 +167,8 @@ export async function changePasswordAction(
     return { error: "New password and confirmation password do not match." };
   }
 
-  if (newPassword.length < 3) {
-    return { error: "New password must be at least 3 characters long." };
+  if (newPassword.length < 8) {
+    return { error: "New password must be at least 8 characters long." };
   }
 
   try {
@@ -156,17 +191,23 @@ export async function changePasswordAction(
       where: { id: session.id },
       data: {
         password: passwordHash,
-        sessionVersion: { increment: 1 },
+        mustChangePassword: false,
       },
     });
+    await invalidateUserSessions(session.id);
 
     const clientIp = await getRequestClientIp();
+    const requestContext = await getRequestSecurityContext();
     await writeAuditLog({
       entityType: "user",
       entityId: session.id,
-      action: AUDIT_ACTIONS.AUTH_SESSION_INVALIDATED,
+      action: AUDIT_ACTIONS.AUTH_PASSWORD_CHANGED,
       actorUserId: session.id,
       actorEmail: session.email,
+      employeeId: session.employeeId,
+      module: "authentication",
+      description: "User changed their password; all sessions were invalidated.",
+      requestContext,
       metadata: { reason: "password_changed", clientIp },
     });
 

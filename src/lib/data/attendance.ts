@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getOperationalShiftFilterOption } from "@/lib/attendance-shift";
 import { parsePayrollPeriodKey } from "@/lib/payroll/payroll-period";
 import { getPayrollSettings } from "@/lib/payroll/payroll-settings";
+import { aggregateAttendanceForRange } from "@/lib/attendance/aggregate-range";
 import {
   startOfDay,
   endOfDay,
@@ -47,18 +48,7 @@ export async function getEmployeeDashboardData(
   ]);
 
   const recentRecords = [...periodRecords].reverse().slice(0, RANGE_RECORD_LIMIT);
-
-  const workingDays = periodRecords.length;
-  const periodPresent = periodRecords.filter((r) => r.status === "Present").length;
-  const periodShortHours = periodRecords.filter((r) => r.status === "Short Hours").length;
-  const periodOT = periodRecords.reduce((sum, r) => sum + r.overtimeMinutes, 0);
-  const attendancePercent =
-    workingDays > 0 ? Math.round((periodPresent / workingDays) * 100) : 0;
-
-  const lastRecord = await prisma.attendanceRecord.findFirst({
-    where: { employeeId },
-    orderBy: { attendanceDate: "desc" },
-  });
+  const aggregate = aggregateAttendanceForRange(periodRecords);
 
   return {
     selectedDate: toISODate(selectedDate),
@@ -72,13 +62,12 @@ export async function getEmployeeDashboardData(
       status: dayRecord?.status ?? "No Record",
     },
     period: {
-      presentDays: periodPresent,
-      shortHoursCount: periodShortHours,
-      overtimeMinutes: periodOT,
-      attendancePercent,
+      presentDays: aggregate.presentDays,
+      shortHoursCount: aggregate.shortHoursCount,
+      overtimeMinutes: aggregate.overtimeMinutes,
+      attendancePercent: aggregate.attendancePercent,
       rangeLabel,
     },
-    lastAttendanceDate: lastRecord?.attendanceDate ?? null,
     periodRecords,
     recentRecords,
   };
@@ -103,12 +92,7 @@ export async function getEmployeeAttendanceSummary(
     take: RANGE_RECORD_LIMIT,
   });
 
-  const workingDays = records.length;
-  const presentDays = records.filter((r) => r.status === "Present").length;
-  const shortHoursCount = records.filter((r) => r.status === "Short Hours").length;
-  const overtimeMinutes = records.reduce((sum, r) => sum + r.overtimeMinutes, 0);
-  const attendancePercent =
-    workingDays > 0 ? Math.round((presentDays / workingDays) * 100) : 0;
+  const aggregate = aggregateAttendanceForRange(records);
 
   const lastRecord = await prisma.attendanceRecord.findFirst({
     where: { employeeId },
@@ -119,10 +103,10 @@ export async function getEmployeeAttendanceSummary(
     rangeLabel,
     selectedStart: startIso,
     selectedEnd: endIso,
-    presentDays,
-    shortHoursCount,
-    overtimeMinutes,
-    attendancePercent,
+    presentDays: aggregate.presentDays,
+    shortHoursCount: aggregate.shortHoursCount,
+    overtimeMinutes: aggregate.overtimeMinutes,
+    attendancePercent: aggregate.attendancePercent,
     lastAttendanceDate: lastRecord?.attendanceDate ?? null,
     records,
   };

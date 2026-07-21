@@ -4,9 +4,10 @@ import { StatsGridSection } from "@/components/employee/dashboard/stats-grid-sec
 import { HistorySection } from "@/components/employee/dashboard/history-section";
 import { DashboardWidgets } from "@/components/employee/dashboard/dashboard-widgets";
 import { AttendanceTimeline } from "@/components/employee/attendance-timeline";
-import { ChartCard } from "@/components/ui/chart-card";
+import { AttendanceHeatmap } from "@/components/employee/dashboard/attendance-heatmap";
 import { getEmployeeDashboardData } from "@/lib/queries";
 import { getLeaveBalanceSummaries } from "@/lib/leave";
+import { getEmployeeAttendanceHeatmapData } from "@/lib/attendance/heatmap-data";
 import { startOfDay } from "@/lib/utils";
 
 export async function EmployeeDashboard({
@@ -15,18 +16,21 @@ export async function EmployeeDashboard({
   selectedDate,
   startDate,
   endDate,
+  heatmapMonth,
 }: {
   employeeId: number;
   employeeName: string | null;
   selectedDate?: string;
   startDate?: string;
   endDate?: string;
+  heatmapMonth?: string;
 }) {
   const today = startOfDay().toISOString().split("T")[0];
 
-  const [data, balances] = await Promise.all([
+  const [data, balances, heatmap] = await Promise.all([
     getEmployeeDashboardData(employeeId, selectedDate, startDate, endDate),
     getLeaveBalanceSummaries(employeeId, { processAccruals: false }),
+    getEmployeeAttendanceHeatmapData(employeeId, heatmapMonth),
   ]);
 
   const firstName = employeeName?.split(" ")[0] ?? "there";
@@ -53,10 +57,6 @@ export async function EmployeeDashboard({
           displayDate={displayDate}
           dateIso={data.selectedDate}
           status={data.day.status}
-          workedMinutes={data.day.workedMinutes}
-          presentDays={data.period.presentDays}
-          attendancePercent={data.period.attendancePercent}
-          rangeLabel={data.period.rangeLabel}
           defaultDate={today}
           defaultStart={data.selectedStart}
           defaultEnd={data.selectedEnd}
@@ -81,11 +81,7 @@ export async function EmployeeDashboard({
             selectedDateLabel={selectedDayLabel}
           />
           <Suspense fallback={null}>
-            <ChartCard
-              title="Attendance trend"
-              description={data.period.rangeLabel}
-              records={data.periodRecords}
-            />
+            <AttendanceHeatmap month={heatmap} />
           </Suspense>
         </div>
 
@@ -101,10 +97,6 @@ export async function EmployeeDashboard({
       <aside className="hr-dashboard__rail">
         <DashboardWidgets
           balances={balances}
-          attendancePercent={data.period.attendancePercent}
-          presentDays={data.period.presentDays}
-          overtimeMinutes={data.period.overtimeMinutes}
-          rangeLabel={data.period.rangeLabel}
           employeeName={employeeName}
         />
       </aside>

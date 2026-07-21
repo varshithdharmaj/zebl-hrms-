@@ -10,10 +10,12 @@ export function AppShell({
   user,
   children,
   variant = "default",
+  showApprovals = false,
 }: {
   user: SessionUser;
   children: React.ReactNode;
   variant?: "default" | "wide";
+  showApprovals?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const displayName = user.employeeName ?? user.email;
@@ -25,6 +27,7 @@ export function AppShell({
         userName={displayName}
         collapsed={collapsed}
         onToggleCollapse={() => setCollapsed(!collapsed)}
+        showApprovals={showApprovals}
       />
       <div
         className={cn(

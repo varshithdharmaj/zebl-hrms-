@@ -73,10 +73,18 @@ export async function getEmployeeProfileLeaveData(employeeId: number) {
   const session = await getSession();
   if (!session) return { balances: [], history: [] };
 
+  // HR/Super Admin, the employee themselves, or their direct manager (hierarchy-scoped).
+  const isDirectManager =
+    session.employeeId != null &&
+    session.employeeId !== employeeId &&
+    (await prisma.employee.count({
+      where: { id: employeeId, managerId: session.employeeId },
+    })) > 0;
+
   const canAccess =
     canAccessAdmin(session.role) ||
-    session.role === "manager" ||
-    session.employeeId === employeeId;
+    session.employeeId === employeeId ||
+    isDirectManager;
   if (!canAccess) return { balances: [], history: [] };
 
   await processPendingLeaveAccruals(employeeId);

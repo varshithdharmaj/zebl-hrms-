@@ -5,8 +5,8 @@ import {
   Prisma,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { AUDIT_ACTIONS } from "@/lib/audit";
-import { canAccessAdmin } from "@/lib/permissions";
+import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
+import { canAccessAdmin, isSuperAdmin } from "@/lib/permissions";
 import {
   countLeaveDays,
   deductLeaveForApproval,
@@ -84,18 +84,21 @@ export function canUserApproveStep(
     return false;
   }
 
-  if (actor.role === "admin") return true;
+  // Super Admin has full authority over any step.
+  if (isSuperAdmin(actor.role)) return true;
 
+  // HR final-approval step: Super Admin + HR.
   if (step.approverRole === ApproverRole.hr_admin) {
-    return canAccessAdmin(actor.role) || actor.role === "hr_admin";
+    return canAccessAdmin(actor.role);
   }
 
+  // Manager / skip-level steps are authorized by the Employee hierarchy: the actor must be
+  // the employee assigned as the approver on this step, regardless of their app role.
   if (
     step.approverRole === ApproverRole.manager ||
     step.approverRole === ApproverRole.skip_level_manager
   ) {
     return (
-      actor.role === "manager" &&
       actor.employeeId !== null &&
       step.approverId !== null &&
       actor.employeeId === step.approverId
@@ -136,17 +139,16 @@ async function auditWorkflow(
   },
   tx?: Prisma.TransactionClient
 ): Promise<void> {
-  const client = tx ?? prisma;
-  await client.auditLog.create({
-    data: {
-      entityType: "leave_request",
-      entityId: String(params.leaveId),
-      action: params.action,
-      actorUserId: params.actor.userId,
-      actorEmail: params.actor.email,
-      metadata: JSON.stringify(params.metadata),
-    },
-  });
+  await writeAuditLog({
+    entityType: "leave_request",
+    entityId: String(params.leaveId),
+    action: params.action,
+    actorUserId: params.actor.userId,
+    actorEmail: params.actor.email,
+    employeeId: params.actor.employeeId,
+    module: "leave",
+    metadata: params.metadata,
+  }, tx);
 }
 
 async function finalizeApproval(

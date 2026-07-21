@@ -1,0 +1,36 @@
+# General Guidance & Token Optimization Rules
+
+## Token & Efficiency Constraints
+1. **Be Concise**: Never generate conversational filler, pleasantries, or explanations of basic syntax unless asked.
+2. **Minimal File Edits**: Provide only the code that needs changing. Use concise comments or file diffs rather than outputting untouched 500-line files.
+3. **No Assumptions**: If required context is missing, ask for specific `@file` references rather than guessing or scanning the broader codebase.
+4. **Assume High Competence**: Write idiomatic, modern, production-grade code without adding standard boilerplate explainers.
+
+---
+
+## Technical Stack Guidelines
+
+### Primary Rules: TypeScript
+- **Target**: Node.js 20+ / Modern Browsers | ESM Modules strictly.
+- **Typing**: Strict mode. No `any` — use `unknown`, generics, or explicit interfaces.
+- **Style**: Standard functional programming over heavy OOP. Prefer immutable patterns where practical.
+- **Errors**: Return `Result<T, E>` types or explicit standard error handlers rather than generic thrown errors.
+
+### Primary Rules: Python
+- **Target**: Python 3.11+
+- **Typing**: Enforce explicit type hints (`mypy` / `pyright` standard). Use `dataclasses` or `Pydantic v2` for structured data.
+- **Style**: PEP 8 compliance. Follow `asyncio` best practices for IO-bound code.
+- **Errors**: Catch specific exceptions. Never use bare `except:` clauses.
+
+---
+
+## Code Quality & Testing Rules
+- **Tests**: Write focused, unit-level tests using `Vitest` (TypeScript) or `pytest` (Python). Do not generate massive mock suites unless requested.
+- **Imports**: Organize imports logically (Stdlib -> External -> Internal). Avoid wildcard imports (`import *`).
+- **Formatting**: Assume Prettier / Black are configured. Do not waste tokens adding alignment formatting or excessive inline comments for self-explanatory code.
+Key Strategies Built Into This Template
+Eliminates Conversational Filler: Cuts down preambles like "Sure! Here is the updated code..." which burn input/output tokens over multi-turn sessions.
+
+Forces Partial Diffs: Directs the model to output targeted code updates rather than rewriting entire files, saving hundreds of output tokens per edit.
+
+Enforces Explicit Types Upfront: Reduces bug-fix loops (and back-and-forth debugging tokens) caused by untyped any parameters or missing Python type hints.

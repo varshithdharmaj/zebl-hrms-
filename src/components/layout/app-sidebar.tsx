@@ -23,6 +23,9 @@ import {
   UserCheck,
   ChevronLeft,
   ChevronRight,
+  ShieldCheck,
+  CalendarClock,
+  Headset,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logoutAction } from "@/actions/auth";
@@ -33,10 +36,10 @@ import { getRoleHomePath } from "@/lib/routing";
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
 type NavGroup = { group: string; items: NavItem[] };
 
-function groupedNavForRole(role: AppUserRole): NavGroup[] {
+function groupedNavForRole(role: AppUserRole, showApprovals: boolean): NavGroup[] {
   switch (role) {
-    case "admin":
-    case "hr_admin":
+    case "super_admin":
+    case "hr":
       return [
         {
           group: "Core Workforce",
@@ -47,6 +50,7 @@ function groupedNavForRole(role: AppUserRole): NavGroup[] {
             { href: "/admin/payroll-attendance", label: "Payroll Attendance", icon: Banknote },
             { href: "/admin/leaves", label: "Leaves", icon: CalendarDays },
             { href: "/admin/calendar", label: "Calendar", icon: CalendarDays },
+            { href: "/admin/tickets", label: "Helpdesk", icon: Headset },
             { href: "/admin/upload", label: "Upload Data", icon: Upload },
           ],
         },
@@ -61,23 +65,32 @@ function groupedNavForRole(role: AppUserRole): NavGroup[] {
           ],
         },
         {
+          group: "Security",
+          items: [
+            { href: "/admin/security/login-history", label: "Login History", icon: History },
+            { href: "/admin/security/active-sessions", label: "Active Sessions", icon: ShieldCheck },
+          ],
+        },
+        {
           group: "Settings",
           items: [
             { href: "/admin/settings", label: "System Settings", icon: Settings },
             { href: "/admin/payroll-settings", label: "Payroll Settings", icon: Settings },
+            { href: "/admin/attendance-settings", label: "Attendance Settings", icon: CalendarClock },
           ],
         },
-      ];
-    case "manager":
-      return [
-        {
-          group: "Management",
-          items: [
-            { href: "/manager/dashboard", label: "Dashboard", icon: LayoutDashboard },
-            { href: "/manager/approvals", label: "Approvals", icon: UserCheck },
-            { href: "/manager/settings", label: "Settings", icon: Settings },
-          ],
-        },
+        // Platform & security administration — Super Admin only.
+        ...(role === "super_admin"
+          ? [
+              {
+                group: "Platform Administration",
+                items: [
+                  { href: "/admin/user-management", label: "User Management", icon: ShieldCheck },
+                  { href: "/admin/tickets/anonymous", label: "Anonymous Tickets", icon: Headset },
+                ],
+              },
+            ]
+          : []),
       ];
     case "employee":
     default:
@@ -88,7 +101,19 @@ function groupedNavForRole(role: AppUserRole): NavGroup[] {
             { href: "/employee/dashboard", label: "Dashboard", icon: LayoutDashboard },
             { href: "/employee/attendance", label: "History", icon: History },
             { href: "/employee/leaves", label: "Leaves", icon: CalendarDays },
+            { href: "/employee/tickets", label: "My Tickets", icon: Headset },
+            // Shown only to line-managers (assigned as an approver in the org hierarchy).
+            ...(showApprovals
+              ? [{ href: "/employee/approvals", label: "Team Approvals", icon: UserCheck }]
+              : []),
             { href: "/employee/settings", label: "Settings", icon: Settings },
+          ],
+        },
+        {
+          group: "Security",
+          items: [
+            { href: "/employee/security/login-history", label: "My Login History", icon: History },
+            { href: "/employee/security/active-sessions", label: "Active Sessions", icon: ShieldCheck },
           ],
         },
       ];
@@ -109,17 +134,19 @@ export function AppSidebar({
   userName,
   collapsed = false,
   onToggleCollapse,
+  showApprovals = false,
 }: {
   role: AppUserRole;
   userName: string;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+  showApprovals?: boolean;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const onMobileOpen = () => setMobileOpen(true);
   const onMobileClose = () => setMobileOpen(false);
   const pathname = usePathname();
-  const groups = groupedNavForRole(role);
+  const groups = groupedNavForRole(role, showApprovals);
   const home = getRoleHomePath(role);
 
   return (

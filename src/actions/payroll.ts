@@ -109,8 +109,9 @@ export async function updatePayrollHrDecisionAction(
 export async function refreshPayrollSummariesAction(
   periodKey: string
 ): Promise<PayrollActionState> {
+  let session;
   try {
-    await requireAdminSession();
+    session = await requireAdminSession();
   } catch {
     return { error: "Unauthorized." };
   }
@@ -120,6 +121,17 @@ export async function refreshPayrollSummariesAction(
   const { recomputePayrollSummariesForPeriod } = await import("@/lib/payroll/payroll-summaries");
   const period = parsePayrollPeriodKey(periodKey, settings.payrollStartDay);
   const count = await recomputePayrollSummariesForPeriod(period);
+  await writeAuditLog({
+    entityType: "payroll_period",
+    entityId: periodKey,
+    action: AUDIT_ACTIONS.PAYROLL_GENERATED,
+    actorUserId: session.id,
+    actorEmail: session.email,
+    employeeId: session.employeeId,
+    module: "payroll",
+    description: "Payroll attendance summaries were regenerated.",
+    metadata: { periodKey, employeeCount: count },
+  });
 
   revalidatePath("/admin/payroll-attendance");
 

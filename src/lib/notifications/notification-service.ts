@@ -150,7 +150,7 @@ export async function handleWorkflowNotificationEvent(
     case "LEAVE_SUBMITTED": {
       const manager = await resolveManagerForEmployee(leaveRow.employeeId);
       if (manager) {
-        payload.viewUrl = `${appBaseUrl()}/manager/approvals`;
+        payload.viewUrl = `${appBaseUrl()}/employee/approvals`;
         const withLinks = await attachEmailApprovalLinks(event.leaveRequestId, payload);
         await queueEmail(
           NotificationType.approval_required,
@@ -190,7 +190,7 @@ export async function handleWorkflowNotificationEvent(
     case "STEP_APPROVED": {
       const approver = await resolveCurrentStepApprover(event.leaveRequestId);
       if (approver) {
-        payload.viewUrl = `${appBaseUrl()}/manager/approvals`;
+        payload.viewUrl = `${appBaseUrl()}/employee/approvals`;
         const withLinks = await attachEmailApprovalLinks(event.leaveRequestId, payload);
         await queueEmail(
           NotificationType.approval_required,

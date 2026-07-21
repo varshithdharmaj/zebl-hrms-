@@ -14,9 +14,40 @@ import {
   type ChannelDeliveryResult,
   type NotificationChannelHandler,
   type LeaveEmailPayload,
+  type NotificationPayload,
 } from "@/lib/notifications/notification-types";
 
-function cardForType(type: NotificationType, payload: LeaveEmailPayload) {
+function isLeavePayload(data: NotificationPayload): data is LeaveEmailPayload {
+  return "leaveRequestId" in data && typeof data.leaveRequestId === "number";
+}
+
+function buildGenericTeamsCard(payload: NotificationPayload): import("@/lib/microsoft/graph-teams").TeamsMessageCard {
+  const facts: { name: string; value: string }[] = [];
+  for (const [key, value] of Object.entries(payload)) {
+    if (typeof value === "string" || typeof value === "number") {
+      facts.push({
+        name: key.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase()),
+        value: String(value),
+      });
+    }
+  }
+
+  return {
+    "@type": "MessageCard",
+    "@context": "http://schema.org/extensions",
+    themeColor: "0078D4",
+    summary: "Notification",
+    title: "Zebl AMS — Notification",
+    sections: [{ facts }],
+  };
+}
+
+function cardForType(type: NotificationType, payload: NotificationPayload) {
+  if (!isLeavePayload(payload)) {
+    // For non-leave notifications (like tickets), return a generic card
+    return buildGenericTeamsCard(payload);
+  }
+
   switch (type) {
     case NotificationType.approval_required:
     case NotificationType.escalation_reminder:
