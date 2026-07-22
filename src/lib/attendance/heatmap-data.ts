@@ -43,7 +43,7 @@ export async function getEmployeeAttendanceHeatmapData(
 ): Promise<AttendanceHeatmapMonth> {
   const today = new Date();
   const currentYear = today.getFullYear();
-  
+
   // Year-to-date range: January 1 of current year → today
   const startDate = new Date(currentYear, 0, 1);
   const endDate = new Date(today);
@@ -60,12 +60,12 @@ export async function getEmployeeAttendanceHeatmapData(
   ]);
 
   const days: AttendanceDayResult[] = [];
-  let currentDate = new Date(startDate);
+  const currentDate = new Date(startDate);
 
   // Generate all days from year start to today (exclude future dates)
   while (currentDate <= endDate) {
     const date = new Date(currentDate);
-    
+
     const attendanceRecord = records.find((r) => isSameDay(r.attendanceDate, date)) ?? null;
     const holiday = holidays.find((h) => isSameDay(h.holidayDate, date)) ?? null;
     const leave =
@@ -78,12 +78,12 @@ export async function getEmployeeAttendanceHeatmapData(
         date,
         attendanceRecord: attendanceRecord
           ? {
-              checkIn: attendanceRecord.checkIn,
-              checkOut: attendanceRecord.checkOut,
-              workedMinutes: attendanceRecord.workedMinutes,
-              overtimeMinutes: attendanceRecord.overtimeMinutes,
-              remarks: attendanceRecord.remarks,
-            }
+            checkIn: attendanceRecord.checkIn,
+            checkOut: attendanceRecord.checkOut,
+            workedMinutes: attendanceRecord.workedMinutes,
+            overtimeMinutes: attendanceRecord.overtimeMinutes,
+            remarks: attendanceRecord.remarks,
+          }
           : null,
         holiday: holiday ? { name: holiday.name } : null,
         approvedLeave: leave ? { leaveType: leave.leaveType } : null,
@@ -98,7 +98,7 @@ export async function getEmployeeAttendanceHeatmapData(
 
   // For compatibility with existing navigation (though arrows are now removed)
   const referenceMonth = new Date(currentYear, today.getMonth(), 1);
-  
+
   return {
     monthKey: monthKey(referenceMonth),
     monthLabel: `${currentYear}`,
