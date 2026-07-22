@@ -1,8 +1,24 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { EmployeeDashboard } from "@/components/employee/employee-dashboard";
-import { PageSkeleton } from "@/components/ui/skeleton";
+import { AttendanceHeroSkeleton } from "@/components/employee/dashboard/attendance-hero";
+import { AttendanceHeatmapSkeleton } from "@/components/employee/dashboard/attendance-heatmap";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getSession } from "@/lib/auth";
+
+function EmployeeDashboardSkeleton() {
+  return (
+    <div className="space-y-8">
+      <AttendanceHeroSkeleton />
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+        {[1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-[7.25rem] rounded-xl" />
+        ))}
+      </div>
+      <AttendanceHeatmapSkeleton />
+    </div>
+  );
+}
 
 export default async function EmployeeDashboardPage({
   searchParams,
@@ -20,7 +36,7 @@ export default async function EmployeeDashboardPage({
   const { date, start, end, heatmapMonth } = await searchParams;
 
   return (
-    <Suspense fallback={<PageSkeleton />}>
+    <Suspense fallback={<EmployeeDashboardSkeleton />}>
       <EmployeeDashboard
         employeeId={session.employeeId}
         employeeName={session.employeeName}

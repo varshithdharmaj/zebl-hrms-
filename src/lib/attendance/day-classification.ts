@@ -24,6 +24,23 @@ export type AttendanceDayCategory =
 
 export type AttendanceRatioTier = "very_low" | "partial" | "near_target" | "target" | "overtime";
 
+/** A day the employee actually worked, whether or not it was a scheduled working day —
+ *  shared by the Heatmap, History, and aggregate KPIs so "was this a worked day" is
+ *  answered the same way everywhere. */
+export function isWorkedDayCategory(category: AttendanceDayCategory): boolean {
+  return category === "PRESENT" || category === "WORKED_ON_WEEKLY_OFF" || category === "WORKED_ON_HOLIDAY";
+}
+
+/** Checked in with enough data to judge, but below the expected-hours ratio. */
+export function isShortHoursTier(ratioTier: AttendanceRatioTier | null): boolean {
+  return ratioTier === "very_low" || ratioTier === "partial" || ratioTier === "near_target";
+}
+
+/** Met or exceeded the expected-hours ratio. */
+export function isTargetOrBetterTier(ratioTier: AttendanceRatioTier | null): boolean {
+  return ratioTier === "target" || ratioTier === "overtime";
+}
+
 export type AttendanceDayInput = {
   date: Date;
   attendanceRecord: {

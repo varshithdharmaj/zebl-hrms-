@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
 import { createTicketAction, type TicketActionState } from "@/actions/tickets";
 import { Button } from "@/components/ui/button";
@@ -176,7 +177,7 @@ export function TicketCreateForm() {
         <div className="flex gap-2 rounded-md bg-blue-50 p-3 text-xs text-blue-800">
           <Info className="h-4 w-4 flex-shrink-0 mt-0.5" />
           <p>
-            You'll receive updates via this portal when HR responds to your ticket. Check "My Tickets" regularly for updates.
+            You&apos;ll receive updates via this portal when HR responds to your ticket. Check &quot;My Tickets&quot; regularly for updates.
           </p>
         </div>
 
@@ -185,7 +186,7 @@ export function TicketCreateForm() {
             {pending ? "Submitting..." : "Submit Ticket"}
           </Button>
           <Button type="button" variant="outline" asChild>
-            <a href="/employee/tickets">Cancel</a>
+            <Link href="/employee/tickets">Cancel</Link>
           </Button>
         </div>
       </form>

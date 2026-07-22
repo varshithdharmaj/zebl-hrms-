@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Class-based dark mode: `dark:` utilities apply whenever a `.dark` class is present on
+   an ancestor (set on <html> by the theme bootstrap script / ThemeToggle), not based on
+   OS preference alone — Tailwind v4 defaults `dark:` to prefers-color-scheme otherwise. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme inline {
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
@@ -76,6 +81,43 @@
   --dashboard-gap: 1.25rem;
   --dashboard-gap-lg: 1.5rem;
   --radius-card: 0.75rem;
+  color-scheme: light;
+}
+
+.dark {
+  --background: #0a0e17;
+  --foreground: #e6e9ef;
+  --card: #121826;
+  --muted: #1b2333;
+  --muted-foreground: #97a2b8;
+  --border: #262f42;
+  --input: #262f42;
+  --ring: #7c8aa8;
+  --primary: #e2e8f0;
+  --primary-hover: #cbd5e1;
+  --primary-muted: #1b2333;
+  --primary-foreground: #0f172a;
+  --sidebar: #0d1420;
+  --sidebar-foreground: #b8c2d6;
+  --sidebar-border: #1f2739;
+  --sidebar-accent: #182131;
+  --accent-blue: #5b9bf7;
+  --accent-blue-muted: #17233d;
+  --accent-green: #34d399;
+  --accent-green-muted: #123527;
+  --accent-violet: #a78bfa;
+  --accent-violet-muted: #241b3d;
+  --accent-amber: #fbbf24;
+  --accent-amber-muted: #3a2a0d;
+  --accent-teal: #2dd4bf;
+  --accent-teal-muted: #0f2e2b;
+  --success: #34d399;
+  --success-muted: #123527;
+  --warning: #fbbf24;
+  --warning-muted: #3a2a0d;
+  --danger: #f87171;
+  --danger-muted: #3d1418;
+  color-scheme: dark;
 }
 
 * {
@@ -103,7 +145,7 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: var(--border);
   border-radius: 3px;
 }
 
@@ -150,18 +192,18 @@ body {
 .hr-dashboard__stats {
   display: grid;
   gap: var(--dashboard-gap);
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(1, minmax(0, 1fr));
 }
 
 @media (min-width: 640px) {
   .hr-dashboard__stats {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (min-width: 1024px) {
   .hr-dashboard__stats {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 

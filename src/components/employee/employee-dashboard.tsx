@@ -1,5 +1,4 @@
-import { Suspense } from "react";
-import { DashboardWelcome } from "@/components/employee/dashboard/dashboard-welcome";
+import { AttendanceHero } from "@/components/employee/dashboard/attendance-hero";
 import { StatsGridSection } from "@/components/employee/dashboard/stats-grid-section";
 import { HistorySection } from "@/components/employee/dashboard/history-section";
 import { DashboardWidgets } from "@/components/employee/dashboard/dashboard-widgets";
@@ -7,8 +6,10 @@ import { AttendanceTimeline } from "@/components/employee/attendance-timeline";
 import { AttendanceHeatmap } from "@/components/employee/dashboard/attendance-heatmap";
 import { getEmployeeDashboardData } from "@/lib/queries";
 import { getLeaveBalanceSummaries } from "@/lib/leave";
-import { getEmployeeAttendanceHeatmapData } from "@/lib/attendance/heatmap-data";
-import { startOfDay } from "@/lib/utils";
+import { getEmployeeAttendanceHeatmapData, type AttendanceHeatmapMonth } from "@/lib/attendance/heatmap-data";
+import { getAttendanceDayStatus } from "@/lib/attendance/day-status";
+import { getHeroStatus, type HeroStatus } from "@/lib/attendance/hero-status";
+import { startOfDay, toISODate } from "@/lib/utils";
 
 export async function EmployeeDashboard({
   employeeId,
@@ -30,8 +31,41 @@ export async function EmployeeDashboard({
   const [data, balances, heatmap] = await Promise.all([
     getEmployeeDashboardData(employeeId, selectedDate, startDate, endDate),
     getLeaveBalanceSummaries(employeeId, { processAccruals: false }),
-    getEmployeeAttendanceHeatmapData(employeeId, heatmapMonth),
+    // Isolated so a heatmap-only failure doesn't take down the rest of an already-fetched
+    // dashboard (Hero, KPIs, history below all render fine independently of this).
+    getEmployeeAttendanceHeatmapData(employeeId, heatmapMonth).catch(
+      (e): AttendanceHeatmapMonth | null => {
+        console.error("[employee-dashboard] heatmap failed:", e);
+        return null;
+      }
+    ),
   ]);
+
+  const isToday = data.selectedDate === toISODate(startOfDay());
+
+  // Scoped resilience: if the richer classification fails, the rest of the dashboard
+  // (KPIs, heatmap, history, leave balances — already resolved above) still renders.
+  // The hero and the detailed attendance card both fall back to their own inline
+  // error notices rather than taking down the whole page.
+  let heroStatus: HeroStatus | null = null;
+  let expectedWorkMinutes: number | null = null;
+  try {
+    const result = await getAttendanceDayStatus({
+      employeeId,
+      date: new Date(data.selectedDate + "T00:00:00"),
+      attendanceRecord: {
+        checkIn: data.day.checkIn,
+        checkOut: data.day.checkOut,
+        workedMinutes: data.day.workedMinutes,
+        overtimeMinutes: data.day.overtimeMinutes,
+        remarks: data.day.remarks,
+      },
+    });
+    expectedWorkMinutes = result.expectedWorkMinutes;
+    heroStatus = getHeroStatus(result.day, { isToday, expectedWorkMinutes });
+  } catch (e) {
+    console.error("[employee-dashboard] hero status failed:", e);
+  }
 
   const firstName = employeeName?.split(" ")[0] ?? "there";
   const displayDate = new Date(data.selectedDate + "T00:00:00").toLocaleDateString("en-IN", {
@@ -51,54 +85,46 @@ export async function EmployeeDashboard({
   return (
     <div className="hr-dashboard">
       <div className="hr-dashboard__main">
-        <DashboardWelcome
+        {/* A. Header / today's status + the one authoritative filter control */}
+        <AttendanceHero
           firstName={firstName}
           fullName={employeeName}
           displayDate={displayDate}
           dateIso={data.selectedDate}
-          status={data.day.status}
+          heroStatus={heroStatus}
           defaultDate={today}
           defaultStart={data.selectedStart}
           defaultEnd={data.selectedEnd}
         />
 
+        {/* C. Today's attendance */}
+        <AttendanceTimeline
+          heroStatus={heroStatus}
+          overtimeMinutes={data.day.overtimeMinutes}
+          expectedWorkMinutes={expectedWorkMinutes}
+          isToday={isToday}
+          selectedDateLabel={selectedDayLabel}
+        />
+
+        {/* D. Core KPI summary */}
         <StatsGridSection
-          workedMinutes={data.day.workedMinutes}
           presentDays={data.period.presentDays}
-          overtimeMinutes={data.period.overtimeMinutes}
+          dayWorkedMinutes={data.day.workedMinutes}
           shortHoursCount={data.period.shortHoursCount}
           rangeLabel={data.period.rangeLabel}
-          balances={balances}
+          selectedDateLabel={selectedDayLabel}
         />
 
-        <div className="hr-dashboard__analytics">
-          <AttendanceTimeline
-            checkIn={data.day.checkIn}
-            checkOut={data.day.checkOut}
-            workedMinutes={data.day.workedMinutes}
-            overtimeMinutes={data.day.overtimeMinutes}
-            status={data.day.status}
-            selectedDateLabel={selectedDayLabel}
-          />
-          <Suspense fallback={null}>
-            <AttendanceHeatmap month={heatmap} />
-          </Suspense>
-        </div>
+        {/* E. Attendance heatmap */}
+        <AttendanceHeatmap month={heatmap} />
 
-        <HistorySection
-          rangeLabel={data.period.rangeLabel}
-          records={data.recentRecords}
-          defaultDate={today}
-          defaultStart={data.selectedStart}
-          defaultEnd={data.selectedEnd}
-        />
+        {/* F. Attendance history */}
+        <HistorySection rangeLabel={data.period.rangeLabel} records={data.recentRecords} />
       </div>
 
       <aside className="hr-dashboard__rail">
-        <DashboardWidgets
-          balances={balances}
-          employeeName={employeeName}
-        />
+        {/* G. Leave / upcoming information */}
+        <DashboardWidgets balances={balances} />
       </aside>
     </div>
   );

@@ -32,18 +32,18 @@ export function buildTicketWhereClause(
   // Apply user filters
   if (filters?.status) {
     baseWhere.status = Array.isArray(filters.status)
-      ? { in: filters.status as any[] }
-      : (filters.status as any);
+      ? { in: filters.status as unknown as never[] }
+      : (filters.status as unknown as never);
   }
   if (filters?.priority) {
     baseWhere.priority = Array.isArray(filters.priority)
-      ? { in: filters.priority as any[] }
-      : (filters.priority as any);
+      ? { in: filters.priority as unknown as never[] }
+      : (filters.priority as unknown as never);
   }
   if (filters?.category) {
     baseWhere.category = Array.isArray(filters.category)
-      ? { in: filters.category as any[] }
-      : (filters.category as any);
+      ? { in: filters.category as unknown as never[] }
+      : (filters.category as unknown as never);
   }
   if (filters?.search) {
     baseWhere.OR = [
@@ -118,18 +118,18 @@ export function buildAnonymousTicketWhereClause(
 
   if (filters?.status) {
     where.status = Array.isArray(filters.status)
-      ? { in: filters.status as any[] }
-      : (filters.status as any);
+      ? { in: filters.status as unknown as never[] }
+      : (filters.status as unknown as never);
   }
   if (filters?.priority) {
     where.priority = Array.isArray(filters.priority)
-      ? { in: filters.priority as any[] }
-      : (filters.priority as any);
+      ? { in: filters.priority as unknown as never[] }
+      : (filters.priority as unknown as never);
   }
   if (filters?.category) {
     where.category = Array.isArray(filters.category)
-      ? { in: filters.category as any[] }
-      : (filters.category as any);
+      ? { in: filters.category as unknown as never[] }
+      : (filters.category as unknown as never);
   }
   if (filters?.search) {
     where.OR = [

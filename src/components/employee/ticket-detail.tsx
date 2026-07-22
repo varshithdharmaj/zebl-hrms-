@@ -171,7 +171,7 @@ export function TicketDetail({
         <div className="space-y-4">
           {ticket.messages.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              No updates yet. We'll notify you when HR responds.
+              No updates yet. We&apos;ll notify you when HR responds.
             </p>
           ) : (
             <div className="space-y-4">

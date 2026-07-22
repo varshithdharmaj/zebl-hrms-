@@ -157,7 +157,7 @@ export async function changeTicketStatusAction(
       throw new PermissionError();
     }
 
-    const updateData: any = {
+    const updateData: Record<string, unknown> = {
       status,
       updatedAt: new Date(),
     };

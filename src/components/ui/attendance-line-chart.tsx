@@ -1,12 +1,25 @@
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
+import {
+  isWorkedDayCategory,
+  isShortHoursTier,
+  type AttendanceDayCategory,
+  type AttendanceRatioTier,
+} from "@/lib/attendance/day-classification";
+
+type DotVariant = "target" | "short" | "neutral";
 
 type Point = {
   date: string;
   label: string;
   hours: number;
-  present: boolean;
+  dotVariant: DotVariant;
 };
+
+function dotVariantFor(category: AttendanceDayCategory, ratioTier: AttendanceRatioTier | null): DotVariant {
+  if (!isWorkedDayCategory(category)) return "neutral";
+  return isShortHoursTier(ratioTier) ? "short" : "target";
+}
 
 export function AttendanceLineChart({
   records,
@@ -15,7 +28,8 @@ export function AttendanceLineChart({
   records: {
     attendanceDate: Date;
     workedMinutes: number;
-    status: string;
+    category: AttendanceDayCategory;
+    ratioTier: AttendanceRatioTier | null;
   }[];
   className?: string;
 }) {
@@ -31,7 +45,7 @@ export function AttendanceLineChart({
           date: d.toISOString(),
           label: d.toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
           hours: r.workedMinutes / 60,
-          present: r.status === "Present",
+          dotVariant: dotVariantFor(r.category, r.ratioTier),
         };
       });
   }, [records]);
@@ -117,7 +131,13 @@ export function AttendanceLineChart({
               cx={c.x}
               cy={c.y}
               r="1.8"
-              fill={c.present ? "#10b981" : "#f59e0b"}
+              fill={
+                c.dotVariant === "target"
+                  ? "#10b981"
+                  : c.dotVariant === "short"
+                    ? "#f59e0b"
+                    : "#94a3b8"
+              }
               stroke="#fff"
               strokeWidth="0.6"
             />
@@ -132,11 +152,15 @@ export function AttendanceLineChart({
           </span>
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-accent-green" />
-            Present
+            Target met
           </span>
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-accent-amber" />
-            Other
+            Short hours
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-slate-400" />
+            Non-working day
           </span>
         </div>
         {points.length > 0 && (

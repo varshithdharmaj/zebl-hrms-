@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { startOfMonth, endOfMonth, startOfDay, toISODate } from "@/lib/utils";
+import { startOfMonth, endOfMonth, startOfDay, isSameDay } from "@/lib/utils";
 import { getAttendanceSettings, getDateOverridesForRange } from "@/lib/attendance/attendance-settings";
 import { getHolidaysForRange, getApprovedLeaveForEmployeeRange } from "@/lib/leave/leave-calendar";
 import { getEffectiveAttendanceDayType, type AttendanceDayResult } from "@/lib/attendance/day-classification";
@@ -10,6 +10,9 @@ export type AttendanceHeatmapMonth = {
   prevMonthKey: string;
   nextMonthKey: string;
   days: AttendanceDayResult[];
+  /** Same org-wide setting passed to the classifier for every day this month — surfaced
+   *  so the UI can show "of Xh expected" without re-fetching or re-deriving it. */
+  expectedWorkMinutes: number;
 };
 
 function parseMonthParam(monthStr?: string): Date {
@@ -29,40 +32,40 @@ function addMonths(date: Date, delta: number): Date {
   return new Date(date.getFullYear(), date.getMonth() + delta, 1);
 }
 
-function isSameDay(a: Date, b: Date): boolean {
-  return toISODate(startOfDay(a)) === toISODate(startOfDay(b));
-}
-
 /**
- * Fetches everything the heatmap needs for one calendar month in a single bounded
- * round-trip pair (Promise.all, no per-day queries), then classifies every day via
- * the canonical getEffectiveAttendanceDayType(). Scoped to one employee only —
- * callers must pass session.employeeId, never an arbitrary id from the client.
+ * Fetches everything the heatmap needs for the current calendar year (Jan 1 → today)
+ * in a single round-trip, then classifies every day via the canonical classifier.
+ * Used for year-to-date contribution graph.
  */
 export async function getEmployeeAttendanceHeatmapData(
   employeeId: number,
   monthParam?: string
 ): Promise<AttendanceHeatmapMonth> {
-  const monthStart = parseMonthParam(monthParam);
-  const monthEnd = endOfMonth(monthStart);
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  
+  // Year-to-date range: January 1 of current year → today
+  const startDate = new Date(currentYear, 0, 1);
+  const endDate = new Date(today);
 
   const [records, holidays, approvedLeave, settings, overrides] = await Promise.all([
     prisma.attendanceRecord.findMany({
-      where: { employeeId, attendanceDate: { gte: monthStart, lte: monthEnd } },
+      where: { employeeId, attendanceDate: { gte: startDate, lte: endDate } },
       orderBy: { attendanceDate: "asc" },
     }),
-    getHolidaysForRange(monthStart, monthEnd),
-    getApprovedLeaveForEmployeeRange(employeeId, monthStart, monthEnd),
+    getHolidaysForRange(startDate, endDate),
+    getApprovedLeaveForEmployeeRange(employeeId, startDate, endDate),
     getAttendanceSettings(),
-    getDateOverridesForRange(monthStart, monthEnd),
+    getDateOverridesForRange(startDate, endDate),
   ]);
 
   const days: AttendanceDayResult[] = [];
-  const totalDays = monthEnd.getDate();
+  let currentDate = new Date(startDate);
 
-  for (let dayNum = 1; dayNum <= totalDays; dayNum++) {
-    const date = new Date(monthStart.getFullYear(), monthStart.getMonth(), dayNum);
-
+  // Generate all days from year start to today (exclude future dates)
+  while (currentDate <= endDate) {
+    const date = new Date(currentDate);
+    
     const attendanceRecord = records.find((r) => isSameDay(r.attendanceDate, date)) ?? null;
     const holiday = holidays.find((h) => isSameDay(h.holidayDate, date)) ?? null;
     const leave =
@@ -89,13 +92,19 @@ export async function getEmployeeAttendanceHeatmapData(
         expectedWorkMinutes: settings.expectedWorkMinutes,
       })
     );
+
+    currentDate.setDate(currentDate.getDate() + 1);
   }
 
+  // For compatibility with existing navigation (though arrows are now removed)
+  const referenceMonth = new Date(currentYear, today.getMonth(), 1);
+  
   return {
-    monthKey: monthKey(monthStart),
-    monthLabel: monthStart.toLocaleDateString("en-IN", { month: "long", year: "numeric" }),
-    prevMonthKey: monthKey(addMonths(monthStart, -1)),
-    nextMonthKey: monthKey(addMonths(monthStart, 1)),
+    monthKey: monthKey(referenceMonth),
+    monthLabel: `${currentYear}`,
+    prevMonthKey: monthKey(addMonths(referenceMonth, -1)),
+    nextMonthKey: monthKey(addMonths(referenceMonth, 1)),
     days,
+    expectedWorkMinutes: settings.expectedWorkMinutes,
   };
 }

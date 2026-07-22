@@ -26,12 +26,12 @@ export function DashboardCard({
     <article
       className={cn(
         "group flex h-full min-h-[7.25rem] flex-col rounded-xl border border-border bg-card p-5 shadow-subtle transition-colors duration-150",
-        "hover:border-slate-300",
+        "hover:border-muted-foreground/40",
         className
       )}
     >
       <div className="flex items-start justify-between gap-3">
-        <p className="text-[0.6875rem] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+        <p className="text-[0.6875rem] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
         {Icon && (
           <div
             className={cn(
@@ -46,10 +46,10 @@ export function DashboardCard({
       <div className="mt-auto pt-3">
         {children ?? (
           <>
-            <p className="text-2xl font-bold leading-none tracking-tight text-slate-900 tabular-nums">
+            <p className="text-2xl font-bold leading-none tracking-tight text-foreground tabular-nums">
               {value}
             </p>
-            {hint && <p className="mt-1.5 line-clamp-2 text-xs font-medium text-slate-500">{hint}</p>}
+            {hint && <p className="mt-1.5 line-clamp-2 text-xs font-medium text-muted-foreground">{hint}</p>}
           </>
         )}
       </div>

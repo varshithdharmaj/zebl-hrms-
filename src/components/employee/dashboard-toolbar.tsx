@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Calendar, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -47,13 +47,18 @@ export function DashboardToolbar({
   const searchParams = useSearchParams();
 
   const date = searchParams.get("date") ?? defaultDate;
-  const start = searchParams.get("start") ?? defaultStart;
-  const end = searchParams.get("end") ?? defaultEnd;
+  const rawStart = searchParams.get("start") ?? defaultStart;
+  const rawEnd = searchParams.get("end") ?? defaultEnd;
+  // Mirror the server's own start/end swap (parseDateRange) so the displayed range,
+  // active-preset match, and "applied filters" chip never disagree with what's queried.
+  const [start, end] = rawStart <= rawEnd ? [rawStart, rawEnd] : [rawEnd, rawStart];
 
   const [viewOpen, setViewOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [rangeDraftStart, setRangeDraftStart] = useState(start);
   const [rangeDraftEnd, setRangeDraftEnd] = useState(end);
+  const viewMenuRef = useRef<HTMLDivElement>(null);
+  const filtersMenuRef = useRef<HTMLDivElement>(null);
 
   // Keep draft range in sync with applied range when panel closes
   useEffect(() => {
@@ -74,6 +79,21 @@ export function DashboardToolbar({
     if (viewOpen || filtersOpen) {
       document.addEventListener("keydown", onKey);
       return () => document.removeEventListener("keydown", onKey);
+    }
+  }, [viewOpen, filtersOpen]);
+
+  // Close on outside click. Skip entirely for clicks inside an open dialog (the mobile
+  // filters Sheet) — it already closes itself via its own backdrop click and Escape handling.
+  useEffect(() => {
+    function onPointerDown(e: PointerEvent) {
+      const target = e.target as Node;
+      if (target instanceof Element && target.closest('[role="dialog"]')) return;
+      if (viewOpen && !viewMenuRef.current?.contains(target)) setViewOpen(false);
+      if (filtersOpen && !filtersMenuRef.current?.contains(target)) setFiltersOpen(false);
+    }
+    if (viewOpen || filtersOpen) {
+      document.addEventListener("pointerdown", onPointerDown);
+      return () => document.removeEventListener("pointerdown", onPointerDown);
     }
   }, [viewOpen, filtersOpen]);
 
@@ -135,8 +155,11 @@ export function DashboardToolbar({
     if (activePreset) {
       return activePreset.label;
     }
+    if (hasCustomRange) {
+      return "Custom range";
+    }
     return "View";
-  }, [date, showDayPicker, activePreset]);
+  }, [date, showDayPicker, activePreset, hasCustomRange]);
 
   const containerClasses =
     layout === "inline"
@@ -152,13 +175,16 @@ export function DashboardToolbar({
 
   function ViewMenu() {
     return (
-      <div className="relative">
+      <div className="relative" ref={viewMenuRef}>
         <Button
           type="button"
           variant="outline"
           size="sm"
           className="inline-flex items-center gap-2 rounded-xl border-border bg-card px-3 text-xs font-medium"
-          onClick={() => setViewOpen((open) => !open)}
+          onClick={() => {
+            setFiltersOpen(false);
+            setViewOpen((open) => !open);
+          }}
           aria-haspopup="true"
           aria-expanded={viewOpen}
         >
@@ -188,6 +214,9 @@ export function DashboardToolbar({
                   <p className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
                     View day
                   </p>
+                  <p className="text-[0.65rem] text-muted-foreground">
+                    Affects today&apos;s status and attendance detail
+                  </p>
                   <input
                     type="date"
                     value={date}
@@ -205,6 +234,9 @@ export function DashboardToolbar({
                   <div className="mt-2 border-t border-border/60 pt-2 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
                     Quick ranges
                   </div>
+                  <p className="text-[0.65rem] text-muted-foreground">
+                    Affects KPI summary and attendance history
+                  </p>
                   <div className="mt-1 flex flex-col gap-1" role="group" aria-label="Quick date ranges">
                     {presets.map((p) => (
                       <button
@@ -299,13 +331,16 @@ export function DashboardToolbar({
     return (
       <>
         {/* Desktop popover */}
-        <div className="relative hidden sm:block">
+        <div className="relative hidden sm:block" ref={filtersMenuRef}>
           <Button
             type="button"
             variant="outline"
             size="sm"
             className="inline-flex items-center gap-2 rounded-xl border-border bg-card px-3 text-xs font-medium"
-            onClick={() => setFiltersOpen((open) => !open)}
+            onClick={() => {
+              setViewOpen(false);
+              setFiltersOpen((open) => !open);
+            }}
             aria-haspopup="true"
             aria-expanded={filtersOpen}
           >
@@ -329,7 +364,10 @@ export function DashboardToolbar({
             variant="outline"
             size="sm"
             className="inline-flex items-center gap-2 rounded-xl border-border bg-card px-3 text-xs font-medium"
-            onClick={() => setFiltersOpen(true)}
+            onClick={() => {
+              setViewOpen(false);
+              setFiltersOpen(true);
+            }}
           >
             <SlidersHorizontal className="h-3.5 w-3.5" />
             <span>

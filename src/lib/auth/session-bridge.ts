@@ -6,7 +6,6 @@ import { createSessionToken } from "@/lib/session";
 import { setSessionCookie } from "@/lib/auth/cookies";
 import { setCachedSessionVersion } from "@/lib/session-version-cache";
 import type { EstablishSessionInput } from "@/lib/auth/auth-types";
-import { randomUUID } from "node:crypto";
 import { getRequestSecurityContext } from "@/lib/security/request-context";
 import { recordSuccessfulLogin } from "@/lib/security/login-history-service";
 
@@ -53,7 +52,7 @@ export async function establishSession(input: EstablishSessionInput): Promise<Se
     },
   });
 
-  const sessionId = randomUUID();
+  const sessionId = crypto.randomUUID();
   const sessionUser = { ...buildSessionUser(user), sessionId };
   setCachedSessionVersion(user.id, user.sessionVersion);
   const requestContext = await getRequestSecurityContext();

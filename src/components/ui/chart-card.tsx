@@ -1,5 +1,6 @@
 import { SectionCard } from "@/components/ui/section-card";
 import { AttendanceLineChart } from "@/components/ui/attendance-line-chart";
+import type { AttendanceDayCategory, AttendanceRatioTier } from "@/lib/attendance/day-classification";
 
 export function ChartCard({
   title = "Attendance trend",
@@ -12,7 +13,8 @@ export function ChartCard({
   records: {
     attendanceDate: Date;
     workedMinutes: number;
-    status: string;
+    category: AttendanceDayCategory;
+    ratioTier: AttendanceRatioTier | null;
   }[];
   action?: React.ReactNode;
 }) {

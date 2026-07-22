@@ -13,12 +13,12 @@ import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { DashboardCard } from "@/components/ui/dashboard-card";
 import { StatsGrid } from "@/components/ui/stats-grid";
 import { SectionCard } from "@/components/ui/section-card";
-import { DataTable, DataTableRow, DataTableCell } from "@/components/ui/data-table";
-import { StatusBadge } from "@/components/ui/status-badge";
+import { DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { DateRangeFilter } from "@/components/ui/date-range-filter";
 import { ChartCard } from "@/components/ui/chart-card";
+import { AttendanceHistoryTableRows, HISTORY_TABLE_COLUMNS } from "@/components/employee/attendance-history-table";
 import {
   getEmployeeAttendanceHistory,
   getEmployeeAttendanceSummary,
@@ -103,7 +103,6 @@ export async function EmployeeAttendanceView({
           hint={`${total} record${total === 1 ? "" : "s"} total`}
           icon={Percent}
           accent="blue"
-          className="sm:col-span-2 lg:col-span-1"
         />
       </StatsGrid>
 
@@ -124,25 +123,8 @@ export async function EmployeeAttendanceView({
           </div>
         ) : (
           <>
-            <DataTable columns={["Date", "Check in", "Check out", "Worked", "Overtime", "Status"]}>
-              {records.map((record) => (
-                <DataTableRow key={record.id}>
-                  <DataTableCell className="font-medium whitespace-nowrap">
-                    {formatDate(record.attendanceDate)}
-                  </DataTableCell>
-                  <DataTableCell className="tabular-nums">{record.checkIn ?? "—"}</DataTableCell>
-                  <DataTableCell className="tabular-nums">{record.checkOut ?? "—"}</DataTableCell>
-                  <DataTableCell className="tabular-nums">
-                    {minutesToHours(record.workedMinutes)}
-                  </DataTableCell>
-                  <DataTableCell className="tabular-nums">
-                    {minutesToHours(record.overtimeMinutes)}
-                  </DataTableCell>
-                  <DataTableCell>
-                    <StatusBadge status={record.status} />
-                  </DataTableCell>
-                </DataTableRow>
-              ))}
+            <DataTable columns={HISTORY_TABLE_COLUMNS}>
+              <AttendanceHistoryTableRows records={records} />
             </DataTable>
 
             {totalPages > 1 && (

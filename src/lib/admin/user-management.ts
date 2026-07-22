@@ -1,7 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { AccountStatus, UserRole } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
 import { invalidateUserSessions } from "@/lib/auth";
@@ -241,7 +240,10 @@ export async function setUserActive(
 }
 
 function generatedTemporaryPassword(): string {
-  return `Zb-${randomBytes(9).toString("base64url")}9a`;
+  const bytes = new Uint8Array(9);
+  crypto.getRandomValues(bytes);
+  const str = Array.from(bytes, (b) => b.toString(36)).join("").slice(0, 9);
+  return `Zb-${str}9a!`;
 }
 
 async function getAccountTarget(userId: string) {

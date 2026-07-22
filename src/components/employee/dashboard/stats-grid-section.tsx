@@ -1,44 +1,25 @@
-import {
-  Clock,
-  CalendarCheck,
-  Timer,
-  AlertCircle,
-  Palmtree,
-} from "lucide-react";
+import { CalendarCheck, Clock, AlertCircle } from "lucide-react";
 import { DashboardCard } from "@/components/ui/dashboard-card";
-import { StatsGrid } from "@/components/ui/stats-grid";
-import { formatLeaveDays } from "@/lib/leave-types";
-import type { LeaveBalanceSummary } from "@/lib/leave";
 import { minutesToHours } from "@/lib/utils";
 
 export function StatsGridSection({
-  workedMinutes,
   presentDays,
-  overtimeMinutes,
+  dayWorkedMinutes,
   shortHoursCount,
   rangeLabel,
-  balances,
+  selectedDateLabel,
 }: {
-  workedMinutes: number;
   presentDays: number;
-  overtimeMinutes: number;
+  dayWorkedMinutes: number;
   shortHoursCount: number;
   rangeLabel: string;
-  balances: LeaveBalanceSummary[];
+  selectedDateLabel: string;
 }) {
-  const el = balances.find((b) => b.leaveType === "EL");
-  const cl = balances.find((b) => b.leaveType === "CL");
-  const sl = balances.find((b) => b.leaveType === "SL");
-
   return (
-    <StatsGrid>
-      <DashboardCard
-        label="Today worked"
-        value={minutesToHours(workedMinutes)}
-        hint="Selected day"
-        icon={Clock}
-        accent="blue"
-      />
+    // Deliberately not the shared `.hr-dashboard__stats` grid (via <StatsGrid>) — that
+    // class is also used by /employee/attendance's own 4-card grid, and re-tuning it
+    // here for this section's 3 cards would silently break that page's layout again.
+    <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
       <DashboardCard
         label="Present days"
         value={presentDays}
@@ -47,35 +28,19 @@ export function StatsGridSection({
         accent="green"
       />
       <DashboardCard
-        label="Overtime"
-        value={minutesToHours(overtimeMinutes)}
-        hint="In range"
-        icon={Timer}
-        accent="violet"
+        label="Hours worked"
+        value={minutesToHours(dayWorkedMinutes)}
+        hint={selectedDateLabel}
+        icon={Clock}
+        accent="blue"
       />
       <DashboardCard
         label="Short hours"
         value={shortHoursCount}
-        hint="In range"
+        hint={rangeLabel}
         icon={AlertCircle}
         accent="amber"
       />
-      <DashboardCard label="Leave balance" icon={Palmtree} accent="teal" className="sm:col-span-2 lg:col-span-1">
-        <ul className="space-y-2.5">
-          {[
-            { key: "EL", val: el?.remaining ?? 0 },
-            { key: "CL", val: cl?.remaining ?? 0 },
-            { key: "SL", val: sl?.remaining ?? 0 },
-          ].map((row) => (
-            <li key={row.key} className="flex items-center justify-between gap-2 text-sm">
-              <span className="font-medium text-muted-foreground">{row.key}</span>
-              <span className="text-lg font-semibold tabular-nums text-foreground">
-                {formatLeaveDays(row.val)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </DashboardCard>
-    </StatsGrid>
+    </div>
   );
 }

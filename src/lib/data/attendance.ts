@@ -3,6 +3,7 @@ import { getOperationalShiftFilterOption } from "@/lib/attendance-shift";
 import { parsePayrollPeriodKey } from "@/lib/payroll/payroll-period";
 import { getPayrollSettings } from "@/lib/payroll/payroll-settings";
 import { aggregateAttendanceForRange } from "@/lib/attendance/aggregate-range";
+import { classifyAttendanceRecords, dateSpanOf } from "@/lib/attendance/history-classification";
 import {
   startOfDay,
   endOfDay,
@@ -47,8 +48,17 @@ export async function getEmployeeDashboardData(
     }),
   ]);
 
-  const recentRecords = [...periodRecords].reverse().slice(0, RANGE_RECORD_LIMIT);
-  const aggregate = aggregateAttendanceForRange(periodRecords);
+  // Classified once for the whole period — the KPI aggregate and the History preview's
+  // recent-records slice both read off this same list, so there's no second round-trip
+  // for holiday/leave/override data covering the identical date range.
+  const classifiedPeriodRecords = await classifyAttendanceRecords(
+    employeeId,
+    periodRecords,
+    rangeStart,
+    rangeEnd
+  );
+  const classifiedRecentRecords = [...classifiedPeriodRecords].reverse().slice(0, RANGE_RECORD_LIMIT);
+  const aggregate = aggregateAttendanceForRange(classifiedPeriodRecords);
 
   return {
     selectedDate: toISODate(selectedDate),
@@ -60,16 +70,18 @@ export async function getEmployeeDashboardData(
       checkOut: dayRecord?.checkOut ?? null,
       overtimeMinutes: dayRecord?.overtimeMinutes ?? 0,
       status: dayRecord?.status ?? "No Record",
+      remarks: dayRecord?.remarks ?? null,
     },
     period: {
       presentDays: aggregate.presentDays,
       shortHoursCount: aggregate.shortHoursCount,
+      insufficientDataCount: aggregate.insufficientDataCount,
       overtimeMinutes: aggregate.overtimeMinutes,
       attendancePercent: aggregate.attendancePercent,
       rangeLabel,
     },
     periodRecords,
-    recentRecords,
+    recentRecords: classifiedRecentRecords,
   };
 }
 
@@ -92,7 +104,8 @@ export async function getEmployeeAttendanceSummary(
     take: RANGE_RECORD_LIMIT,
   });
 
-  const aggregate = aggregateAttendanceForRange(records);
+  const classifiedRecords = await classifyAttendanceRecords(employeeId, records, rangeStart, rangeEnd);
+  const aggregate = aggregateAttendanceForRange(classifiedRecords);
 
   const lastRecord = await prisma.attendanceRecord.findFirst({
     where: { employeeId },
@@ -105,10 +118,11 @@ export async function getEmployeeAttendanceSummary(
     selectedEnd: endIso,
     presentDays: aggregate.presentDays,
     shortHoursCount: aggregate.shortHoursCount,
+    insufficientDataCount: aggregate.insufficientDataCount,
     overtimeMinutes: aggregate.overtimeMinutes,
     attendancePercent: aggregate.attendancePercent,
     lastAttendanceDate: lastRecord?.attendanceDate ?? null,
-    records,
+    records: classifiedRecords,
   };
 }
 
@@ -192,9 +206,10 @@ export async function getEmployeeAttendanceHistory(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: Record<string, any> = { employeeId };
 
+  let explicitRange: { rangeStart: Date; rangeEnd: Date } | null = null;
   if (startStr || endStr) {
-    const { rangeStart, rangeEnd } = parseDateRange(startStr, endStr);
-    where.attendanceDate = { gte: rangeStart, lte: rangeEnd };
+    explicitRange = parseDateRange(startStr, endStr);
+    where.attendanceDate = { gte: explicitRange.rangeStart, lte: explicitRange.rangeEnd };
   }
 
   const [records, total] = await Promise.all([
@@ -207,8 +222,15 @@ export async function getEmployeeAttendanceHistory(
     prisma.attendanceRecord.count({ where }),
   ]);
 
+  // No explicit filter means "all time" — bound the classifier's holiday/leave/override
+  // lookups to this page's own actual date span rather than an unbounded range.
+  const { start, end } = explicitRange
+    ? { start: explicitRange.rangeStart, end: explicitRange.rangeEnd }
+    : dateSpanOf(records);
+  const classifiedRecords = await classifyAttendanceRecords(employeeId, records, start, end);
+
   return {
-    records,
+    records: classifiedRecords,
     total,
     page,
     pageSize: PAGE_SIZE,

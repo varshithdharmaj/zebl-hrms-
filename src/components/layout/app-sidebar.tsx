@@ -187,8 +187,8 @@ export function AppSidebar({
                 collapsed ? "lg:hidden lg:opacity-0" : "opacity-100"
               )}
             >
-              <p className="text-sm font-bold leading-tight tracking-tight text-slate-900">Zebl AMS</p>
-              <p className="text-[0.65rem] font-medium text-slate-500">{ROLE_LABELS[role]}</p>
+              <p className="text-sm font-bold leading-tight tracking-tight text-foreground">Zebl AMS</p>
+              <p className="text-[0.65rem] font-medium text-muted-foreground">{ROLE_LABELS[role]}</p>
             </div>
           </Link>
           <button
@@ -203,7 +203,7 @@ export function AppSidebar({
             <button
               type="button"
               onClick={onToggleCollapse}
-              className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 lg:flex"
+              className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:flex"
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
               title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             >
@@ -217,7 +217,7 @@ export function AppSidebar({
             <div key={group.group} className="space-y-1">
               <p
                 className={cn(
-                  "mb-2 px-3 text-[0.65rem] font-bold uppercase tracking-wider text-slate-400 transition-opacity duration-200 whitespace-nowrap",
+                  "mb-2 px-3 text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground transition-opacity duration-200 whitespace-nowrap",
                   collapsed ? "lg:hidden lg:opacity-0" : "opacity-100"
                 )}
               >
@@ -236,11 +236,11 @@ export function AppSidebar({
                       "flex items-center gap-3 rounded-lg py-2 text-sm font-medium transition-all duration-200",
                       collapsed ? "lg:justify-center lg:px-2 px-3" : "px-3",
                       active
-                        ? "bg-slate-100 text-slate-900 font-semibold"
-                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                        ? "bg-sidebar-accent text-foreground font-semibold"
+                        : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
                     )}
                   >
-                    <Icon className={cn("h-4 w-4 shrink-0", active ? "text-slate-900" : "text-slate-400")} />
+                    <Icon className={cn("h-4 w-4 shrink-0", active ? "text-foreground" : "text-muted-foreground")} />
                     <span
                       className={cn(
                         "transition-opacity duration-200 whitespace-nowrap",
@@ -259,12 +259,12 @@ export function AppSidebar({
         <div className="border-t border-sidebar-border p-3">
           <div
             className={cn(
-              "mb-2 flex items-center gap-3 rounded-lg bg-slate-50 px-2.5 py-2 border border-slate-200/60 transition-all duration-200",
+              "mb-2 flex items-center gap-3 rounded-lg bg-sidebar-accent px-2.5 py-2 border border-border/60 transition-all duration-200",
               collapsed ? "lg:justify-center lg:px-2" : ""
             )}
             title={collapsed ? `${userName} (${ROLE_LABELS[role]})` : undefined}
           >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-bold text-white">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-foreground text-xs font-bold text-background">
               {initials(userName)}
             </span>
             <div
@@ -273,8 +273,8 @@ export function AppSidebar({
                 collapsed ? "lg:hidden lg:opacity-0" : "opacity-100"
               )}
             >
-              <p className="truncate text-xs font-semibold text-slate-900">{userName}</p>
-              <p className="truncate text-[0.6875rem] text-slate-500">{ROLE_LABELS[role]}</p>
+              <p className="truncate text-xs font-semibold text-foreground">{userName}</p>
+              <p className="truncate text-[0.6875rem] text-muted-foreground">{ROLE_LABELS[role]}</p>
             </div>
           </div>
           <form action={logoutAction}>
@@ -282,7 +282,7 @@ export function AppSidebar({
               type="submit"
               title={collapsed ? "Sign out" : undefined}
               className={cn(
-                "flex w-full items-center gap-2 rounded-lg py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900",
+                "flex w-full items-center gap-2 rounded-lg py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
                 collapsed ? "lg:justify-center lg:px-2 px-3" : "px-3"
               )}
             >
