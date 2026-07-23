@@ -1,4 +1,4 @@
-import type { LeaveWorkflowStatus } from "@prisma/client";
+import type { LeaveWorkflowStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getLeaveBalanceSummaries } from "@/lib/leave";
 

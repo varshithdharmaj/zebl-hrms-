@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
-import { NotificationChannel, NotificationType } from "@prisma/client";
+import { NotificationChannel, NotificationType } from "@/generated/prisma/enums";
 import { renderNotificationEmail } from "@/emails/render-email";
 import {
   parseNotificationPayload,

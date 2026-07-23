@@ -1,4 +1,4 @@
-import { LoginSessionStatus } from "@prisma/client";
+import { LoginSessionStatus } from "@/generated/prisma/enums";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { LoginHistoryFilters } from "@/components/security/login-history-filters";
 import { LoginHistoryTable } from "@/components/security/login-history-table";

@@ -2,7 +2,7 @@
  * Phase 7: analytics tables (schema via prisma db push)
  * Run: npm run db:migrate-phase7
  */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@/generated/prisma/client";
 import { tableExists } from "./db-utils";
 
 const prisma = new PrismaClient();

@@ -1,4 +1,4 @@
-import { ApproverRole, UserRole } from "@prisma/client";
+import { ApproverRole, UserRole } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { getManager } from "@/lib/org";
 import { sanitizeEmail } from "@/lib/notifications/sanitize";

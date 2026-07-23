@@ -1,4 +1,4 @@
-import type { UserRole } from "@prisma/client";
+import type { UserRole } from "@/generated/prisma/client";
 import type { MicrosoftIdTokenClaims } from "@/lib/auth/auth-types";
 import { parseAppUserRole, type AppUserRole } from "@/lib/roles";
 

@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/ui/section-card";
 import { LEAVE_TYPE_LABELS, formatLeaveDays, type LeaveType } from "@/lib/leave-types";
 import { formatDate } from "@/lib/utils";
-import type { LeaveWorkflowStatus } from "@prisma/client";
+import type { LeaveWorkflowStatus } from "@/generated/prisma/enums";
 import type { LeaveBalanceSummary } from "@/lib/leave";
 import type { LeaveOverlapWarning } from "@/lib/leave/leave-overlap";
 import { cn } from "@/lib/utils";

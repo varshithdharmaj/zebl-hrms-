@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { formatLeaveDays } from "@/lib/leave-types";
 import { formatDate } from "@/lib/utils";
 import { canActOnWorkflow } from "@/lib/leave-status";
-import type { LeaveWorkflowStatus } from "@prisma/client";
+import type { LeaveWorkflowStatus } from "@/generated/prisma/enums";
 
 type Leave = {
   id: number;

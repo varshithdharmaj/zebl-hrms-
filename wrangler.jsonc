@@ -12,5 +12,17 @@
   },
   "vars": {
     "ZEBL_SKIP_DB_STARTUP": "true"
-  }
+  },
+  "find_additional_modules": true,
+  "base_dir": ".open-next",
+  "rules": [
+    {
+      "type": "CompiledWasm",
+      "globs": [
+        "static/wasm/*.wasm"
+      ],
+      "fallthrough": true
+    }
+  ],
+  "minify": true
 }

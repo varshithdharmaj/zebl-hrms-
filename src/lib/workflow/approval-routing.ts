@@ -1,4 +1,4 @@
-import { ApproverRole } from "@prisma/client";
+import { ApproverRole } from "@/generated/prisma/enums";
 import { getManager } from "@/lib/org";
 import { getApproverRoleLabel } from "@/lib/workflow/approver-role-labels";
 

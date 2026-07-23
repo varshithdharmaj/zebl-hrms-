@@ -1,4 +1,4 @@
-import type { AttendanceOverrideType } from "@prisma/client";
+import type { AttendanceOverrideType } from "@/generated/prisma/client";
 
 /** Effective schedule type for a single date — the input dimension to classification, not a final category. */
 export type AttendanceScheduleType = "working_day" | "weekly_off";

@@ -3,7 +3,7 @@ import {
   ApproverRole,
   LeaveWorkflowStatus,
   Prisma,
-} from "@prisma/client";
+} from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
 import { canAccessAdmin, isSuperAdmin } from "@/lib/permissions";

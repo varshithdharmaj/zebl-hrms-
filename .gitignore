@@ -1,8 +1,13 @@
 ﻿node_modules
 .next
+.open-next
+.wrangler
 .env
 .env.local
 prisma/*.db
 prisma/*.db-journal
 vercel-env.import
+.vercel
 src/generated/prisma
+
+tsconfig.tsbuildinfo

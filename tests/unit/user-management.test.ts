@@ -57,7 +57,7 @@ import {
   updateUserAccountStatus,
   UserManagementError,
 } from "@/lib/admin/user-management";
-import { AccountStatus } from "@prisma/client";
+import { AccountStatus } from "@/generated/prisma/client";
 
 const superAdminActor: SessionUser = {
   id: "actor-1",

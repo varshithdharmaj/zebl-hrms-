@@ -1,4 +1,4 @@
-import type { UserRole as PrismaUserRole } from "@prisma/client";
+import type { UserRole as PrismaUserRole } from "@/generated/prisma/client";
 
 export const USER_ROLES = ["super_admin", "hr", "employee"] as const;
 

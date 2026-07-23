@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import type { AttendanceOverrideType } from "@prisma/client";
+import type { AttendanceOverrideType } from "@/generated/prisma/enums";
 import { Trash2, CalendarClock } from "lucide-react";
 import {
   updateWeeklyScheduleAction,

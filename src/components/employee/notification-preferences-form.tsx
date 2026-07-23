@@ -8,7 +8,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/ui/section-card";
 import { ErrorAlert } from "@/components/ui/error-alert";
-import type { NotificationPreference } from "@prisma/client";
+import type { NotificationPreference } from "@/generated/prisma/client";
 
 const initial: NotificationActionState = {};
 

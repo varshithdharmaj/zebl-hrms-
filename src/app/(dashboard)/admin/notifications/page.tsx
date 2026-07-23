@@ -4,7 +4,7 @@ import {
   getNotificationsForAdmin,
   getNotificationStats,
 } from "@/lib/notifications/admin-queries";
-import { NotificationDeliveryStatus } from "@prisma/client";
+import { NotificationDeliveryStatus } from "@/generated/prisma/enums";
 
 export default async function AdminNotificationsPage({
   searchParams,

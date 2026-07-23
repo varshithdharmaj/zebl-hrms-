@@ -1,4 +1,4 @@
-import { ApprovalStepStatus, ApproverRole, LeaveWorkflowStatus } from "@prisma/client";
+import { ApprovalStepStatus, ApproverRole, LeaveWorkflowStatus } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { getLeaveBalanceSummaries } from "@/lib/leave";
 import { canAccessAdmin } from "@/lib/permissions";

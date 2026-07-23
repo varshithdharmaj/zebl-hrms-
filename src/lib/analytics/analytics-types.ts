@@ -1,4 +1,4 @@
-import type { AnalyticsScope, AnomalySeverity, MetricPeriod } from "@prisma/client";
+import type { AnalyticsScope, AnomalySeverity, MetricPeriod } from "@/generated/prisma/client";
 
 export type { AnalyticsScope, AnomalySeverity, MetricPeriod };
 

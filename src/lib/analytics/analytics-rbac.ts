@@ -1,5 +1,5 @@
 import type { SessionUser } from "@/lib/session";
-import type { AnalyticsScope } from "@prisma/client";
+import type { AnalyticsScope } from "@/generated/prisma/client";
 import { canAccessAdmin } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 

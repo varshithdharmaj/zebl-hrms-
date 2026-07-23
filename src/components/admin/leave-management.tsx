@@ -5,7 +5,7 @@ import { AppTabs, type TabDef } from "@/components/ui/app-tabs";
 import { AdminLeaveTable } from "@/components/admin/leave-table";
 import { LeaveBalanceManager } from "@/components/admin/leave-balance-manager";
 import type { LeaveBalanceSummary } from "@/lib/leave";
-import { LeaveWorkflowStatus } from "@prisma/client";
+import { LeaveWorkflowStatus } from "@/generated/prisma/enums";
 import { TableToolbar } from "@/components/ui/table-toolbar";
 
 type Leave = {

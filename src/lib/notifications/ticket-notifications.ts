@@ -1,4 +1,4 @@
-import { NotificationChannel, NotificationType, UserRole } from "@prisma/client";
+import { NotificationChannel, NotificationType, UserRole } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { enqueueNotification } from "@/lib/notifications/notification-queue";
 import { sanitizeEmail } from "@/lib/notifications/sanitize";

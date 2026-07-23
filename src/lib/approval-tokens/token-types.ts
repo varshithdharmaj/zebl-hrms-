@@ -1,4 +1,4 @@
-import type { ApprovalTokenAction, ApprovalTokenStatus } from "@prisma/client";
+import type { ApprovalTokenAction, ApprovalTokenStatus } from "@/generated/prisma/client";
 
 export type { ApprovalTokenAction, ApprovalTokenStatus };
 

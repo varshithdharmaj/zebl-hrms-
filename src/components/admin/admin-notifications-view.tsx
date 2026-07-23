@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { SectionCard } from "@/components/ui/section-card";
 import { DataTable, DataTableRow, DataTableCell } from "@/components/ui/data-table";
 import { formatDate } from "@/lib/utils";
-import type { Notification, NotificationDeliveryStatus } from "@prisma/client";
+import type { Notification, NotificationDeliveryStatus } from "@/generated/prisma/client";
 
 const initial: NotificationActionState = {};
 

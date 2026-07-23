@@ -1,7 +1,7 @@
-import { ApprovalStepStatus } from "@prisma/client";
+import { ApprovalStepStatus } from "@/generated/prisma/enums";
 import { getApproverRoleLabel } from "@/lib/workflow/approver-role-labels";
 import { WORKFLOW_STATUS_LABELS } from "@/lib/workflow/workflow-status";
-import type { LeaveWorkflowStatus } from "@prisma/client";
+import type { LeaveWorkflowStatus } from "@/generated/prisma/enums";
 import { formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 

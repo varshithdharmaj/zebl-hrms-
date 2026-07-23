@@ -4,7 +4,7 @@
 import { createConnection } from "net";
 import { readFileSync, existsSync } from "fs";
 import { resolve } from "path";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@/generated/prisma/client";
 
 function loadEnvFile(filename: string): void {
   const path = resolve(process.cwd(), filename);

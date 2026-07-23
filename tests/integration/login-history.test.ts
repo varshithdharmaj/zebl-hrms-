@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { LoginSessionStatus } from "@prisma/client";
+import { LoginSessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   closeSession,

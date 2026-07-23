@@ -1,4 +1,4 @@
-import { LeaveWorkflowStatus, NotificationDeliveryStatus } from "@prisma/client";
+import { LeaveWorkflowStatus, NotificationDeliveryStatus } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { getNotificationStats } from "@/lib/notifications/admin-queries";
 import { getIntegrationSettings } from "@/lib/integrations/integration-settings";

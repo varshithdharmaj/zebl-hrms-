@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { UserRole } from "@prisma/client";
+import { UserRole } from "@/generated/prisma/client";
 import type { SessionUser } from "@/lib/auth";
 import { buildTicketWhereClause, buildAnonymousTicketWhereClause } from "@/lib/tickets/ticket-access";
 import { canViewTicket, canManageTicket } from "@/lib/tickets/ticket-permissions";

@@ -1,4 +1,4 @@
-import { AccountStatus } from "@prisma/client";
+import { AccountStatus } from "@/generated/prisma/enums";
 import { z } from "zod";
 
 const optionalText = (max: number) =>

@@ -1,4 +1,4 @@
-import type { PayrollHrDecision } from "@prisma/client";
+import type { PayrollHrDecision } from "@/generated/prisma/client";
 
 export type PayrollShiftRule = {
   requiredOfficeMinutes?: number;

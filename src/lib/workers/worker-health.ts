@@ -1,4 +1,4 @@
-import { WorkerRunStatus } from "@prisma/client";
+import { WorkerRunStatus } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 
 const STALE_HEARTBEAT_MS = 5 * 60 * 1000;

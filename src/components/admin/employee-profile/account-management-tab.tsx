@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import Link from "next/link";
-import { AccountStatus } from "@prisma/client";
+import { AccountStatus } from "@/generated/prisma/enums";
 import {
   changeUserRoleAction,
   resetUserPasswordAction,

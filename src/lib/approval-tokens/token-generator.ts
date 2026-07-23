@@ -1,5 +1,5 @@
 import { createHmac, createHash, randomUUID } from "crypto";
-import { ApprovalTokenAction, ApprovalTokenStatus, type Prisma } from "@prisma/client";
+import { ApprovalTokenAction, ApprovalTokenStatus, type Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
 import { getAppBaseUrl } from "@/lib/config/app-url";

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { LoginSessionStatus } from "@prisma/client";
+import { LoginSessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   closeSession,

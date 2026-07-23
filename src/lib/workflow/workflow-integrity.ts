@@ -1,7 +1,7 @@
 import {
   ApprovalStepStatus,
   LeaveWorkflowStatus,
-} from "@prisma/client";
+} from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { isActiveWorkflow } from "@/lib/workflow/workflow-status";
 

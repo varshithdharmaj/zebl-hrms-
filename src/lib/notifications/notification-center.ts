@@ -1,4 +1,4 @@
-import { NotificationDeliveryStatus } from "@prisma/client";
+import { NotificationDeliveryStatus } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { canAccessAdmin } from "@/lib/permissions";
 import type { SessionUser } from "@/lib/session";

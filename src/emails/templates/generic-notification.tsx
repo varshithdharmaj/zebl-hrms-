@@ -8,7 +8,7 @@ import {
   Hr,
   Heading,
 } from "@react-email/components";
-import type { NotificationType } from "@prisma/client";
+import type { NotificationType } from "@/generated/prisma/enums";
 import type { NotificationPayload } from "@/lib/notifications/notification-types";
 
 interface GenericNotificationEmailProps {

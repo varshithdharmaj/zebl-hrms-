@@ -6,7 +6,7 @@ import type { OAuthPendingPayload } from "@/lib/auth/oauth-state";
 import type { MicrosoftCallbackResult } from "@/lib/auth/providers/auth-types";
 import { provisionMicrosoftUser } from "@/lib/auth/user-provisioning";
 import { establishSession } from "@/lib/auth/session-bridge";
-import { AuthProvider } from "@prisma/client";
+import { AuthProvider } from "@/generated/prisma/enums";
 
 let cachedConfig: client.Configuration | null = null;
 

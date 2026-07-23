@@ -1,4 +1,4 @@
-import { NotificationDeliveryStatus, IntegrationJobStatus } from "@prisma/client";
+import { NotificationDeliveryStatus, IntegrationJobStatus } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { validateApplicationConfig } from "@/lib/config/validate";
 import { getEnv } from "@/lib/config/env";

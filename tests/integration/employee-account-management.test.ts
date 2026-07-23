@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import bcrypt from "bcryptjs";
-import { AccountStatus } from "@prisma/client";
+import { AccountStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   resetUserPassword,

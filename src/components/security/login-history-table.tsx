@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { LoginSessionStatus, UserRole } from "@prisma/client";
+import type { LoginSessionStatus, UserRole } from "@/generated/prisma/client";
 import { DataTable, DataTableCell, DataTableRow } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDate } from "@/lib/utils";

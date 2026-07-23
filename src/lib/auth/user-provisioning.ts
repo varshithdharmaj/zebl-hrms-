@@ -1,4 +1,4 @@
-import { AuthProvider } from "@prisma/client";
+import { AuthProvider } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
 import {

@@ -1,4 +1,4 @@
-import { NotificationChannel } from "@prisma/client";
+import { NotificationChannel } from "@/generated/prisma/enums";
 import { emailChannel } from "@/lib/notifications/channels/email-channel";
 import { teamsChannel } from "@/lib/notifications/channels/teams-channel";
 import type {
@@ -13,7 +13,7 @@ const channels: Partial<Record<NotificationChannel, NotificationChannelHandler>>
 
 export async function dispatchNotification(notification: {
   id: string;
-  type: import("@prisma/client").NotificationType;
+  type: import("@/generated/prisma/client").NotificationType;
   channel: NotificationChannel;
   recipient: string;
   subject: string;

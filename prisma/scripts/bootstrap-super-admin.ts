@@ -8,7 +8,7 @@
  */
 import { readFileSync, existsSync } from "fs";
 import { resolve } from "path";
-import { PrismaClient, UserRole } from "@prisma/client";
+import { PrismaClient, UserRole } from "@/generated/prisma/client";
 import bcrypt from "bcryptjs";
 
 function loadEnvFile(filename: string): void {

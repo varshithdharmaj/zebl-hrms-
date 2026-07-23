@@ -1,4 +1,4 @@
-import { LeaveWorkflowStatus } from "@prisma/client";
+import { LeaveWorkflowStatus } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import type { ApprovalInsightPayload } from "@/lib/analytics/analytics-types";
 import { formatDate } from "@/lib/utils";

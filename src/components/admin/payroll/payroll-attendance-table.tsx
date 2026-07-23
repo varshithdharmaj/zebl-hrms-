@@ -11,7 +11,7 @@ import { DataTable, DataTableCell, DataTableRow } from "@/components/ui/data-tab
 import { Input } from "@/components/ui/input";
 import { formatMinutesAsHours } from "@/lib/payroll/payroll-display";
 import { PAYROLL_HR_DECISION_OPTIONS } from "@/lib/payroll/payroll-types";
-import type { PayrollHrDecision } from "@prisma/client";
+import type { PayrollHrDecision } from "@/generated/prisma/enums";
 import { cn } from "@/lib/utils";
 
 export type PayrollTableRow = {

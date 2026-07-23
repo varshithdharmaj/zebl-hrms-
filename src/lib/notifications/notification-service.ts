@@ -1,4 +1,4 @@
-import { NotificationChannel, NotificationType } from "@prisma/client";
+import { NotificationChannel, NotificationType } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/lib/utils";
 import { sanitizeText } from "@/lib/notifications/sanitize";

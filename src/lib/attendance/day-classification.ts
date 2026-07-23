@@ -1,4 +1,4 @@
-import type { AttendanceOverrideType } from "@prisma/client";
+import type { AttendanceOverrideType } from "@/generated/prisma/client";
 import { hasCheckIn } from "@/lib/attendance";
 import {
   resolveEffectiveScheduleType,

@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { getLeaveBalanceSummaries, initializeEmployeeLeaveBalances } from "@/lib/leave";
-import { UserRole } from "@prisma/client";
+import { UserRole } from "@/generated/prisma/client";
 
 async function isDatabaseReady(): Promise<boolean> {
   const url = process.env.DATABASE_URL ?? "";

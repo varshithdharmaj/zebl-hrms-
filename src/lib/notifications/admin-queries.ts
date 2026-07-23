@@ -1,4 +1,4 @@
-import { NotificationDeliveryStatus } from "@prisma/client";
+import { NotificationDeliveryStatus } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 
 export async function getNotificationsForAdmin(params: {

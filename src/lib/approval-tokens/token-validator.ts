@@ -3,7 +3,7 @@ import {
   ApprovalStepStatus,
   ApprovalTokenAction,
   ApprovalTokenStatus,
-} from "@prisma/client";
+} from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
 import { getLeaveBalanceSummaries } from "@/lib/leave";

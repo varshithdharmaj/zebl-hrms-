@@ -1,4 +1,4 @@
-import { NotificationDeliveryStatus, IntegrationJobStatus } from "@prisma/client";
+import { NotificationDeliveryStatus, IntegrationJobStatus } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { getNotificationStats } from "@/lib/notifications/admin-queries";
 import { getWorkerHealthSummary } from "@/lib/workers/worker-health";

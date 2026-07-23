@@ -1,11 +1,11 @@
-import type { LeaveRequestStatus } from "@prisma/client";
+import type { LeaveRequestStatus } from "@/generated/prisma/client";
 import {
   WORKFLOW_STATUS_LABELS,
   isActiveWorkflow,
   isTerminalWorkflow,
   workflowToLeaveStatus,
 } from "@/lib/workflow/workflow-status";
-import type { LeaveWorkflowStatus } from "@prisma/client";
+import type { LeaveWorkflowStatus } from "@/generated/prisma/enums";
 
 export { WORKFLOW_STATUS_LABELS as LEAVE_STATUS_LABELS };
 export { isActiveWorkflow, isTerminalWorkflow, workflowToLeaveStatus };

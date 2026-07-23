@@ -11,7 +11,7 @@
  *
  * This script validates Postgres connectivity and schema readiness.
  */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@/generated/prisma/client";
 
 async function main() {
   const url = process.env.DATABASE_URL ?? "";

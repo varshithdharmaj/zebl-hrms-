@@ -1,4 +1,4 @@
-import { ApprovalTokenStatus } from "@prisma/client";
+import { ApprovalTokenStatus } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
 import { checkRateLimit } from "@/lib/rate-limit";

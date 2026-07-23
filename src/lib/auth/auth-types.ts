@@ -1,4 +1,4 @@
-import type { AuthProvider } from "@prisma/client";
+import type { AuthProvider } from "@/generated/prisma/client";
 import type { SessionUser } from "@/lib/session";
 
 export type { SessionUser };

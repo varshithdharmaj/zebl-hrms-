@@ -13,7 +13,7 @@ import type { EmployeeStatus } from "@/lib/employee-types";
 import type { LeaveBalanceSummary } from "@/lib/leave";
 import type { ManagerSummary } from "@/lib/org-types";
 import type { AppUserRole } from "@/lib/roles";
-import type { AccountStatus, AuthProvider } from "@prisma/client";
+import type { AccountStatus, AuthProvider } from "@/generated/prisma/enums";
 import { AccountManagementTab } from "@/components/admin/employee-profile/account-management-tab";
 
 export type ProfileEmployee = {

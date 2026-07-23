@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, AuthProvider } from "@prisma/client";
+import { PrismaClient, UserRole, AuthProvider } from "@/generated/prisma/client";
 import bcrypt from "bcryptjs";
 import { seedJohnDoeMonth } from "./seed-john-doe";
 

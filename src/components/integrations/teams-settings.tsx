@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SectionCard } from "@/components/ui/section-card";
 import { ErrorAlert } from "@/components/ui/error-alert";
-import type { IntegrationSettings } from "@prisma/client";
+import type { IntegrationSettings } from "@/generated/prisma/client";
 
 const initial: IntegrationActionState = {};
 

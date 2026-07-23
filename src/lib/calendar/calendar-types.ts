@@ -1,4 +1,4 @@
-import type { CalendarSyncStatus } from "@prisma/client";
+import type { CalendarSyncStatus } from "@/generated/prisma/client";
 
 export type { CalendarSyncStatus };
 

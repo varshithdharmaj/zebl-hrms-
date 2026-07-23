@@ -8,7 +8,7 @@ import {
   LeaveRequestStatus,
   LeaveWorkflowStatus,
   PrismaClient,
-} from "@prisma/client";
+} from "@/generated/prisma/client";
 import { buildApprovalChain } from "../../src/lib/workflow/approval-routing";
 import { workflowToLeaveStatus } from "../../src/lib/workflow/workflow-status";
 

@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { LEAVE_TYPE_LABELS, formatLeaveDays, type LeaveType } from "@/lib/leave-types";
 import { formatDate } from "@/lib/utils";
 import { canActOnWorkflow } from "@/lib/leave-status";
-import { LeaveWorkflowStatus } from "@prisma/client";
+import { LeaveWorkflowStatus } from "@/generated/prisma/enums";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 

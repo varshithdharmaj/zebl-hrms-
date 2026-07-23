@@ -5,7 +5,7 @@ import type {
   LeaveRequest,
   LeaveWorkflowStatus,
   Employee,
-} from "@prisma/client";
+} from "@/generated/prisma/client";
 import type { SessionUser } from "@/lib/session";
 
 export type { ApprovalStepStatus, ApproverRole, LeaveWorkflowStatus };

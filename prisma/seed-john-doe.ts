@@ -13,7 +13,7 @@ import {
   NotificationDeliveryStatus,
   NotificationType,
   PayrollHrDecision,
-} from "@prisma/client";
+} from "@/generated/prisma/client";
 import { createHash } from "node:crypto";
 
 const QA_MARKER = "qa-john-doe-2026-06";

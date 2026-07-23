@@ -1,4 +1,4 @@
-import { ApprovalStepStatus, LeaveWorkflowStatus } from "@prisma/client";
+import { ApprovalStepStatus, LeaveWorkflowStatus } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import type { DateRange } from "@/lib/analytics/analytics-types";
 

@@ -1,5 +1,5 @@
 import { SignJWT, jwtVerify } from "jose";
-import type { AuthProvider } from "@prisma/client";
+import type { AuthProvider } from "@/generated/prisma/enums";
 import type { AppUserRole } from "@/lib/roles";
 
 export type SessionUser = {

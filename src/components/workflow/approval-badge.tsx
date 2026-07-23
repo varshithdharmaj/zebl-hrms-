@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { WORKFLOW_STATUS_LABELS } from "@/lib/workflow/workflow-status";
-import type { LeaveWorkflowStatus } from "@prisma/client";
+import type { LeaveWorkflowStatus } from "@/generated/prisma/enums";
 
 const styles: Record<string, string> = {
   pending_approval: "bg-warning-muted text-warning ring-1 ring-warning/15",

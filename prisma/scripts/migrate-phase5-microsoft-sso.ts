@@ -2,7 +2,7 @@
  * Phase 5: Microsoft SSO (schema via prisma db push)
  * Run: npm run db:migrate-phase5
  */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@/generated/prisma/client";
 
 const prisma = new PrismaClient();
 

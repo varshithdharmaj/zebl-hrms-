@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ApprovalTokenAction } from "@prisma/client";
+import { ApprovalTokenAction } from "@/generated/prisma/client";
 import {
   parseSignedToken,
   verifyTokenSignature,

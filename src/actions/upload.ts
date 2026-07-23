@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import * as XLSX from "xlsx";
-import { UserRole, AuthProvider } from "@prisma/client";
+import { UserRole, AuthProvider } from "@/generated/prisma/enums";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/auth-guards";

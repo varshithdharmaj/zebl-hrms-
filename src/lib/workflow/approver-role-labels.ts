@@ -1,4 +1,4 @@
-import { ApproverRole } from "@prisma/client";
+import { ApproverRole } from "@/generated/prisma/enums";
 
 /** Client-safe labels — do not import approval-routing.ts from client components. */
 export function getApproverRoleLabel(role: ApproverRole | string): string {

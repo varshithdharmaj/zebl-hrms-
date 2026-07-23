@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isUniqueConstraintError } from "@/lib/db/prisma-errors";
 import {
@@ -11,7 +11,7 @@ import {
   type LeaveTransactionType,
 } from "@/lib/leave-types";
 import { startOfDay } from "@/lib/utils";
-import { LeaveRequestStatus } from "@prisma/client";
+import { LeaveRequestStatus } from "@/generated/prisma/enums";
 
 export type LeaveBalanceSummary = {
   leaveType: LeaveType;

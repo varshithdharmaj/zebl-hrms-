@@ -1,4 +1,4 @@
-import { LeaveWorkflowStatus } from "@prisma/client";
+import { LeaveWorkflowStatus } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 
 export type CalendarLeaveEvent = {

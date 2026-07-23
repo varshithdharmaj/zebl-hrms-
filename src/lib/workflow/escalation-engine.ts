@@ -1,9 +1,9 @@
-import { ApprovalStepStatus, LeaveWorkflowStatus } from "@prisma/client";
+import { ApprovalStepStatus, LeaveWorkflowStatus } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
 import { getIntegrationSettings } from "@/lib/integrations/integration-settings";
 import { enqueueNotification } from "@/lib/notifications/notification-queue";
-import { NotificationChannel, NotificationType } from "@prisma/client";
+import { NotificationChannel, NotificationType } from "@/generated/prisma/enums";
 import { isGraphConfigured } from "@/lib/microsoft/graph-auth";
 import { getBulkPresence, isPresenceLikelyUnavailable } from "@/lib/microsoft/graph-presence";
 import type { LeaveEmailPayload } from "@/lib/notifications/notification-types";

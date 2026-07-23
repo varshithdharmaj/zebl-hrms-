@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
-import { AccountStatus, UserRole } from "@prisma/client";
+import { AccountStatus, UserRole } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { initializeEmployeeLeaveBalances } from "@/lib/leave";
 import { isValidEmployeeStatus, statusToIsActive } from "@/lib/employee-types";

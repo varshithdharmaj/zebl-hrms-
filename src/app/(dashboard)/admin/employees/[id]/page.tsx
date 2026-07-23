@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { LeaveWorkflowStatus } from "@prisma/client";
+import { LeaveWorkflowStatus } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { EmployeeProfileShell } from "@/components/admin/employee-profile/profile-shell";
 import { getEmployeeProfileLeaveData } from "@/actions/leave-balances";

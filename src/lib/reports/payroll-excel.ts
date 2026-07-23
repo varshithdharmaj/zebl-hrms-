@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import type { PayrollHrDecision } from "@prisma/client";
+import type { PayrollHrDecision } from "@/generated/prisma/client";
 import { formatMinutesAsHours } from "@/lib/payroll/payroll-display";
 import { PAYROLL_HR_DECISION_OPTIONS } from "@/lib/payroll/payroll-types";
 

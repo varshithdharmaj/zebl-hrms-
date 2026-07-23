@@ -1,6 +1,6 @@
 import { existsSync } from "fs";
 import { join } from "path";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@/generated/prisma/client";
 import { isPostgresDatabase } from "../../src/lib/config/env";
 
 const root = join(__dirname, "..", "..");

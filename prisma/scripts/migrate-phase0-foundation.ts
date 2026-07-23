@@ -2,7 +2,7 @@
  * In-place SQLite migration for Phase 0 foundation.
  * Run: npm run db:migrate-phase0
  */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@/generated/prisma/client";
 
 const prisma = new PrismaClient();
 

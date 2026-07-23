@@ -1,4 +1,4 @@
-import type { LeaveRequestStatus, LeaveWorkflowStatus } from "@prisma/client";
+import type { LeaveRequestStatus, LeaveWorkflowStatus } from "@/generated/prisma/client";
 
 export const WORKFLOW_STATUSES = [
   "submitted",

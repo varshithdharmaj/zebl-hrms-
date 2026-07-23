@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@/generated/prisma/client";
 
 /** Returns true if a public table exists (PostgreSQL). */
 export async function tableExists(prisma: PrismaClient, tableName: string): Promise<boolean> {

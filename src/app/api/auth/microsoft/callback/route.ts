@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { AuthProvider } from "@prisma/client";
+import { AuthProvider } from "@/generated/prisma/enums";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
 import { getDefaultRedirect } from "@/lib/auth";
 import { isMicrosoftAuthEnabled } from "@/lib/auth/auth-config";

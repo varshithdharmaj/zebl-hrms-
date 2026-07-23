@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { NotificationDeliveryStatus, NotificationType } from "@prisma/client";
+import { NotificationDeliveryStatus, NotificationType } from "@/generated/prisma/client";
 import {
   markNotificationFailed,
   markNotificationProcessing,

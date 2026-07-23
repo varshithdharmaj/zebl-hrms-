@@ -1,4 +1,4 @@
-import { WorkerRunStatus } from "@prisma/client";
+import { WorkerRunStatus } from "@/generated/prisma/enums";
 import { createCorrelationId } from "@/lib/observability/correlation";
 import { logger } from "@/lib/observability/logger";
 import {

@@ -1,5 +1,5 @@
-import type { Prisma } from "@prisma/client";
-import { AccountStatus, UserRole } from "@prisma/client";
+import type { Prisma } from "@/generated/prisma/client";
+import { AccountStatus, UserRole } from "@/generated/prisma/enums";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";

@@ -1,4 +1,4 @@
-import type { LeaveWorkflowStatus } from "@prisma/client";
+import type { LeaveWorkflowStatus } from "@/generated/prisma/client";
 
 export const NOTIFICATION_EVENTS = {
   LEAVE_SUBMITTED: "LEAVE_SUBMITTED",

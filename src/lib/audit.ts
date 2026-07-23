@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { formatDbConnectionHelp, isDbUnreachableError } from "@/lib/db/connection-error";
 import type { RequestSecurityContext } from "@/lib/security/request-context";

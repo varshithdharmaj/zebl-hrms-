@@ -2,7 +2,7 @@ import type {
   NotificationChannel,
   NotificationDeliveryStatus,
   NotificationType,
-} from "@prisma/client";
+} from "@/generated/prisma/client";
 
 export type { NotificationChannel, NotificationDeliveryStatus, NotificationType };
 

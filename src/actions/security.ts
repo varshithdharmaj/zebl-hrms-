@@ -1,6 +1,6 @@
 "use server";
 
-import { LoginSessionStatus } from "@prisma/client";
+import { LoginSessionStatus } from "@/generated/prisma/enums";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { clearSessionCookie, invalidateUserSessionsWithAudit } from "@/lib/auth";

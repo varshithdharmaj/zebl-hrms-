@@ -1,4 +1,4 @@
-import type { LeaveWorkflowStatus } from "@prisma/client";
+import type { LeaveWorkflowStatus } from "@/generated/prisma/client";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { displayStatusLabel } from "@/lib/workflow/workflow-status";
 

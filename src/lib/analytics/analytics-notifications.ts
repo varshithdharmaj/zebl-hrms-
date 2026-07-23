@@ -1,4 +1,4 @@
-import { NotificationChannel, NotificationType } from "@prisma/client";
+import { NotificationChannel, NotificationType } from "@/generated/prisma/enums";
 import { enqueueNotification } from "@/lib/notifications/notification-queue";
 import { getHrRecipients } from "@/lib/notifications/recipient-resolver";
 import type { ExecutiveDashboardPayload } from "@/lib/analytics/analytics-types";
