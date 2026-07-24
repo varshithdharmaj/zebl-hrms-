@@ -43,8 +43,6 @@ export {
   canAddInternalNote,
   canViewInternalNotes,
   canAssignTicket,
-  canAccessAnonymousTickets,
-  canCreateTicketForOthers,
   type TicketLike,
 } from "./ticket-permissions";
 
@@ -52,6 +50,23 @@ export {
   buildTicketWhereClause,
   buildAnonymousTicketWhereClause,
   buildTicketCountWhere,
-  getTicketSelectForSession,
+  getAdminTicketListSelect,
   type TicketFilters,
 } from "./ticket-access";
+
+// Do NOT re-export admin-ticket-list-data from this barrel.
+// It imports prisma ("server-only") and would break client components that import
+// permissions/labels from "@/lib/tickets". Import from:
+//   "@/lib/tickets/admin-ticket-list-data"
+// in Server Components / tests only.
+
+export { CATEGORY_LABELS, PRIORITY_COLORS } from "./labels";
+
+export {
+  ticketListSearchParamsFromFilters,
+  ticketListSearchParamsAfterSelectChange,
+  ticketListSearchParamsAfterSearch,
+  ticketListHref,
+  type TicketListFilterState,
+  type TicketListSelectFilterKey,
+} from "./filter-params";

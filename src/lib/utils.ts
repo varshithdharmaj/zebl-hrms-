@@ -92,22 +92,27 @@ export function parseDateRange(startStr?: string, endStr?: string) {
   }
 
   const rangeStart = startOfDay(start);
+  const endDay = startOfDay(end);
+  // Inclusive end-of-day kept for callers that still use `lte: rangeEnd`.
+  // Prefer `lt: toExclusive` for new queries (avoids 23:59:59.999 precision issues).
   const rangeEnd = endOfDay(end);
+  const toExclusive = startOfDay(addDays(endDay, 1));
 
   const rangeLabel =
-    toISODate(rangeStart) === toISODate(rangeEnd)
+    toISODate(rangeStart) === toISODate(endDay)
       ? rangeStart.toLocaleDateString("en-IN", {
           day: "numeric",
           month: "short",
           year: "numeric",
         })
-      : `${rangeStart.toLocaleDateString("en-IN", { day: "numeric", month: "short" })} – ${rangeEnd.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`;
+      : `${rangeStart.toLocaleDateString("en-IN", { day: "numeric", month: "short" })} – ${endDay.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`;
 
   return {
     rangeStart,
     rangeEnd,
+    toExclusive,
     startIso: toISODate(rangeStart),
-    endIso: toISODate(startOfDay(end)),
+    endIso: toISODate(endDay),
     rangeLabel,
   };
 }

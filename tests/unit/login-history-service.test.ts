@@ -3,9 +3,12 @@ import { LoginSessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   closeSession,
+  findActiveCurrentLoginSession,
   getLoginHistory,
+  getLoginHistoryExportRows,
   recordFailedLogin,
   recordSuccessfulLogin,
+  touchLoginSessionActivityIfStale,
   validateAndTouchSession,
 } from "@/lib/security/login-history-service";
 
@@ -86,6 +89,42 @@ describe("LoginHistoryService", () => {
     await expect(validateAndTouchSession("revoked", "user-1")).resolves.toBe(false);
   });
 
+  it("findActiveCurrentLoginSession requires active + current ownership", async () => {
+    vi.mocked(prisma.loginSession.findFirst).mockResolvedValue({
+      lastActivityAt: new Date(),
+    } as never);
+    await findActiveCurrentLoginSession("session-1", "user-1");
+    expect(prisma.loginSession.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: "session-1",
+        userId: "user-1",
+        status: LoginSessionStatus.active,
+        isCurrent: true,
+      },
+      select: { lastActivityAt: true },
+    });
+  });
+
+  it("touchLoginSessionActivityIfStale skips fresh activity", async () => {
+    await touchLoginSessionActivityIfStale("session-1", "user-1", new Date());
+    expect(prisma.loginSession.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("touchLoginSessionActivityIfStale updates when stale with ownership guards", async () => {
+    const staleAt = new Date(Date.now() - 6 * 60 * 1000);
+    vi.mocked(prisma.loginSession.updateMany).mockResolvedValue({ count: 1 } as never);
+    await touchLoginSessionActivityIfStale("session-1", "user-1", staleAt);
+    expect(prisma.loginSession.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "session-1",
+        userId: "user-1",
+        status: LoginSessionStatus.active,
+        lastActivityAt: staleAt,
+      },
+      data: { lastActivityAt: expect.any(Date) },
+    });
+  });
+
   it("scopes employee history to the requested employee id", async () => {
     vi.mocked(prisma.loginSession.count).mockResolvedValue(0);
     vi.mocked(prisma.loginSession.findMany).mockResolvedValue([]);
@@ -95,6 +134,75 @@ describe("LoginHistoryService", () => {
         where: expect.objectContaining({
           employeeId: 42,
           status: { not: LoginSessionStatus.failed },
+        }),
+      })
+    );
+  });
+
+  it("does not return failed logins when includeFailed is false even if status=failed", async () => {
+    vi.mocked(prisma.loginSession.count).mockResolvedValue(0);
+    vi.mocked(prisma.loginSession.findMany).mockResolvedValue([]);
+    await getLoginHistory(
+      { status: LoginSessionStatus.failed },
+      { includeFailed: false }
+    );
+    expect(prisma.loginSession.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: "__failed_login_access_denied__",
+        }),
+      })
+    );
+  });
+
+  it("ignores status=failed when includeFailed is omitted", async () => {
+    vi.mocked(prisma.loginSession.count).mockResolvedValue(0);
+    vi.mocked(prisma.loginSession.findMany).mockResolvedValue([]);
+    await getLoginHistory({ status: LoginSessionStatus.failed });
+    expect(prisma.loginSession.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: "__failed_login_access_denied__",
+        }),
+      })
+    );
+  });
+
+  it("allows Super Admin (includeFailed) to filter status=failed", async () => {
+    vi.mocked(prisma.loginSession.count).mockResolvedValue(0);
+    vi.mocked(prisma.loginSession.findMany).mockResolvedValue([]);
+    await getLoginHistory(
+      { status: LoginSessionStatus.failed },
+      { includeFailed: true }
+    );
+    expect(prisma.loginSession.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: LoginSessionStatus.failed,
+        }),
+      })
+    );
+  });
+
+  it("export rows deny failed status when includeFailed is false", async () => {
+    vi.mocked(prisma.loginSession.findMany).mockResolvedValue([]);
+    await getLoginHistoryExportRows({ status: LoginSessionStatus.failed }, false);
+    expect(prisma.loginSession.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: "__failed_login_access_denied__",
+        }),
+      })
+    );
+  });
+
+  it("export rows allow failed status when includeFailed is true", async () => {
+    vi.mocked(prisma.loginSession.findMany).mockResolvedValue([]);
+    await getLoginHistoryExportRows({ status: LoginSessionStatus.failed }, true);
+    expect(prisma.loginSession.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: LoginSessionStatus.failed,
         }),
       })
     );

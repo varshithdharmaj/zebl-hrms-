@@ -1,8 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import bcrypt from "bcryptjs";
-import { AccountStatus, UserRole } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { initializeEmployeeLeaveBalances } from "@/lib/leave";
 import { isValidEmployeeStatus, statusToIsActive } from "@/lib/employee-types";
@@ -15,6 +13,15 @@ import { canAdministerEmployeeAccount } from "@/lib/permissions";
 import { toAppUserRole } from "@/lib/roles";
 import { getRequestSecurityContext } from "@/lib/security/request-context";
 import { invalidateUserSessions } from "@/lib/auth";
+import {
+  AccountLifecycleError,
+  applyUserFieldsFromEmployeeStatus,
+  assertLastSuperAdminDeactivationAllowed,
+} from "@/lib/admin/account-lifecycle";
+import {
+  provisionEmployeeLogin,
+  UserManagementError,
+} from "@/lib/admin/user-management";
 
 export type ActionState = {
   error?: string;
@@ -69,8 +76,8 @@ export async function createEmployeeAction(
 
     if (createLogin) {
       if (!email) return { error: "Email is required to create login." };
-      if (!password || password.length < 6) {
-        return { error: "Password must be at least 6 characters." };
+      if (!password || password.length < 8) {
+        return { error: "Password must be at least 8 characters." };
       }
       const existingUser = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
       if (existingUser) return { error: "User with this email already exists." };
@@ -91,16 +98,28 @@ export async function createEmployeeAction(
       },
     });
 
+    let createdUserId: string | null = null;
+    let loginWarning: string | undefined;
     if (createLogin && email && password) {
-      const passwordHash = await bcrypt.hash(password, 10);
-      await prisma.user.create({
-        data: {
-          email: email.toLowerCase(),
-          password: passwordHash,
-          role: UserRole.employee,
+      try {
+        // Canonical provisioning — employee role, status sync, hashing, audit.
+        const provisioned = await provisionEmployeeLogin(session, {
           employeeId: employee.id,
-        },
-      });
+          mode: "create",
+          email,
+          password,
+          generate: false,
+          mustChangePassword: true,
+          auditOperation: "create_with_employee",
+        });
+        createdUserId = provisioned.userId;
+      } catch (error) {
+        if (error instanceof UserManagementError) {
+          loginWarning = error.message;
+        } else {
+          throw error;
+        }
+      }
     }
 
     await initializeEmployeeLeaveBalances(
@@ -116,13 +135,21 @@ export async function createEmployeeAction(
     await writeAuditLog({
       entityType: "employee",
       entityId: String(employee.id),
-      action: AUDIT_ACTIONS.EMPLOYEE_UPDATED,
+      action: AUDIT_ACTIONS.EMPLOYEE_CREATED,
       actorUserId: session.id,
       actorEmail: session.email,
-      metadata: { operation: "create", employeeCode },
+      employeeId: employee.id,
+      module: "employees",
+      metadata: { operation: "create", employeeCode, loginCreated: Boolean(createdUserId) },
     });
 
     revalidatePath("/admin/employees");
+    if (loginWarning) {
+      return {
+        success: "Employee created, but login was not created.",
+        error: loginWarning,
+      };
+    }
     return { success: "Employee created successfully." };
   } catch {
     return { error: "Failed to create employee." };
@@ -195,6 +222,31 @@ export async function updateEmployeeProfileAction(
     }
 
     const previousManagerId = existing.managerId;
+    const statusChanging =
+      Boolean(existing.user) && existing.employeeStatus !== data.employeeStatus;
+    const makingUnavailable =
+      statusChanging && !statusToIsActive(data.employeeStatus);
+
+    if (existing.user && makingUnavailable) {
+      if (existing.user.id === session.id) {
+        return {
+          error: "You cannot deactivate your own account. Ask another Super Admin to do this.",
+        };
+      }
+      try {
+        await assertLastSuperAdminDeactivationAllowed(prisma, {
+          targetUserId: existing.user.id,
+          targetRole: toAppUserRole(existing.user.role),
+          makingUnavailable: true,
+        });
+      } catch (error) {
+        if (error instanceof AccountLifecycleError) {
+          return { error: error.message };
+        }
+        throw error;
+      }
+    }
+
     const requestContext = await getRequestSecurityContext();
     await prisma.$transaction(async (tx) => {
       await tx.employee.update({
@@ -222,20 +274,12 @@ export async function updateEmployeeProfileAction(
           managerId: data.managerId,
         },
       });
-      if (existing.user && existing.employeeStatus !== data.employeeStatus) {
-        const accountStatus =
-          data.employeeStatus === "Active"
-            ? AccountStatus.active
-            : data.employeeStatus === "Terminated"
-              ? AccountStatus.terminated
-              : AccountStatus.inactive;
-        await tx.user.update({
-          where: { id: existing.user.id },
-          data: {
-            accountStatus,
-            isActive: accountStatus === AccountStatus.active,
-          },
-        });
+      if (existing.user && statusChanging) {
+        await applyUserFieldsFromEmployeeStatus(
+          tx,
+          existing.user.id,
+          data.employeeStatus
+        );
       }
 
       await writeAuditLog({
@@ -348,20 +392,88 @@ export async function toggleEmployeeStatusFormAction(formData: FormData): Promis
 
 export async function toggleEmployeeStatusAction(employeeId: number): Promise<ActionState> {
   try {
-    await requireManageEmployeeSession();
+    const session = await requireManageEmployeeSession();
 
-    const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
+    const employee = await prisma.employee.findUnique({
+      where: { id: employeeId },
+      include: { user: true },
+    });
     if (!employee) return { error: "Employee not found." };
 
-    const newStatus = employee.employeeStatus === "Active" ? "Inactive" : "Active";
+    if (
+      employee.user &&
+      !canAdministerEmployeeAccount(session.role, toAppUserRole(employee.user.role))
+    ) {
+      return { error: "You are not permitted to change status for this protected account." };
+    }
 
-    await prisma.employee.update({
-      where: { id: employeeId },
-      data: {
-        employeeStatus: newStatus,
-        isActive: newStatus === "Active",
-      },
+    // Active ↔ Inactive only (does not promote Terminated/Resigned via toggle).
+    if (employee.employeeStatus !== "Active" && employee.employeeStatus !== "Inactive") {
+      return {
+        error: `Cannot toggle status from ${employee.employeeStatus}. Use the profile status field.`,
+      };
+    }
+
+    const newStatus = employee.employeeStatus === "Active" ? "Inactive" : "Active";
+    const isActive = newStatus === "Active";
+
+    if (employee.user && !isActive) {
+      if (employee.user.id === session.id) {
+        return {
+          error: "You cannot deactivate your own account. Ask another Super Admin to do this.",
+        };
+      }
+      try {
+        await assertLastSuperAdminDeactivationAllowed(prisma, {
+          targetUserId: employee.user.id,
+          targetRole: toAppUserRole(employee.user.role),
+          makingUnavailable: true,
+        });
+      } catch (error) {
+        if (error instanceof AccountLifecycleError) {
+          return { error: error.message };
+        }
+        throw error;
+      }
+    }
+
+    const requestContext = await getRequestSecurityContext();
+
+    await prisma.$transaction(async (tx) => {
+      await tx.employee.update({
+        where: { id: employeeId },
+        data: {
+          employeeStatus: newStatus,
+          isActive,
+        },
+      });
+
+      if (employee.user) {
+        await applyUserFieldsFromEmployeeStatus(tx, employee.user.id, newStatus);
+      }
+
+      await writeAuditLog(
+        {
+          entityType: "employee",
+          entityId: String(employeeId),
+          action: AUDIT_ACTIONS.EMPLOYEE_UPDATED,
+          actorUserId: session.id,
+          actorEmail: session.email,
+          employeeId,
+          module: "employees",
+          description: `Employee status changed to ${newStatus}.`,
+          oldValue: { employeeStatus: employee.employeeStatus, isActive: employee.isActive },
+          newValue: { employeeStatus: newStatus, isActive },
+          requestContext,
+          metadata: { operation: "status_toggle", employeeCode: employee.employeeCode },
+        },
+        tx
+      );
     });
+
+    if (employee.user && !isActive) {
+      await invalidateUserSessions(employee.user.id);
+    }
 
     revalidatePath("/admin/employees");
     revalidatePath(`/admin/employees/${employeeId}`);

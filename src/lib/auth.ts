@@ -1,4 +1,5 @@
 import { cookies, headers } from "next/headers";
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import {
   COOKIE_NAME,
@@ -14,7 +15,8 @@ import { setCachedSessionVersion } from "@/lib/session-version-cache";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
 import {
   closeAllUserSessions,
-  validateAndTouchSession,
+  findActiveCurrentLoginSession,
+  touchLoginSessionActivityIfStale,
 } from "@/lib/security/login-history-service";
 
 export type { SessionUser };
@@ -22,17 +24,63 @@ export type { SessionUser };
 export { createSessionToken, getDefaultRedirectForRole as getDefaultRedirect };
 export { setSessionCookie, clearSessionCookie };
 
-async function resolveSessionFromToken(token: string): Promise<SessionUser | null> {
+/** Resolves a verified JWT into a SessionUser. Exported for unit tests / measurement. */
+export async function resolveSessionFromToken(token: string): Promise<SessionUser | null> {
   const payload = await verifySessionToken(token);
   if (!payload) return null;
 
-  let user;
+  // User + login-session SELECTs are independent (JWT already has id + jti).
+  // Run them concurrently; keep all validation and activity touch afterward.
+  let user: Awaited<
+    ReturnType<
+      typeof prisma.user.findUnique<{
+        where: { id: string };
+        include: { employee: true };
+      }>
+    >
+  > = null;
+  let loginSession: { lastActivityAt: Date } | null = null;
+
   try {
-    user = await prisma.user.findUnique({
+    const userPromise = prisma.user.findUnique({
       where: { id: payload.id },
       include: { employee: true },
     });
+
+    if (payload.sessionId) {
+      const [userResult, sessionResult] = await Promise.all([
+        userPromise.then(
+          (value) => ({ ok: true as const, value }),
+          (error: unknown) => ({ ok: false as const, error })
+        ),
+        findActiveCurrentLoginSession(payload.sessionId, payload.id).then(
+          (value) => ({ ok: true as const, value }),
+          (error: unknown) => ({ ok: false as const, error })
+        ),
+      ]);
+
+      if (!userResult.ok) {
+        console.error(
+          "[zebl] Session lookup failed — check DATABASE_URL (Neon pooled URL on Vercel).",
+          userResult.error instanceof Error ? userResult.error.message : userResult.error
+        );
+        return null;
+      }
+      // Preserve prior behavior: login-session DB failures propagate (were outside the user try/catch).
+      if (!sessionResult.ok) {
+        throw sessionResult.error;
+      }
+
+      user = userResult.value;
+      loginSession = sessionResult.value;
+    } else {
+      user = await userPromise;
+    }
   } catch (e) {
+    // Session-path DB failures rethrow; user-only path returns null (prior behavior).
+    if (payload.sessionId) {
+      throw e;
+    }
     console.error(
       "[zebl] Session lookup failed — check DATABASE_URL (Neon pooled URL on Vercel).",
       e instanceof Error ? e.message : e
@@ -43,18 +91,20 @@ async function resolveSessionFromToken(token: string): Promise<SessionUser | nul
   if (!user) return null;
   if (!user.isActive) return null;
   if (user.sessionVersion !== payload.sessionVersion) return null;
-  if (
-    payload.sessionId &&
-    !(await validateAndTouchSession(payload.sessionId, user.id))
-  ) {
-    return null;
+
+  if (payload.sessionId) {
+    if (!loginSession) return null;
+    // Activity touch only after user + session validation (never concurrent with checks).
+    await touchLoginSessionActivityIfStale(
+      payload.sessionId,
+      user.id,
+      loginSession.lastActivityAt
+    );
   }
 
   setCachedSessionVersion(user.id, user.sessionVersion);
   return { ...buildSessionUser(user), sessionId: payload.sessionId };
 }
-
-import { cache } from "react";
 
 export const getSession = cache(async (): Promise<SessionUser | null> => {
   const cookieStore = await cookies();

@@ -10,34 +10,99 @@ interface NotificationCenterResponse {
   items: NotificationCenterItem[];
 }
 
+/** In-flight dedupe across dual mobile/desktop mounts. */
 let activeCenterFetch: Promise<NotificationCenterResponse> | null = null;
+
+/** Short-lived completed snapshot — avoids an immediate duplicate after SSR/hydration. */
+let centerCache: { at: number; data: NotificationCenterResponse } | null = null;
+
+const CENTER_CACHE_TTL_MS = 30_000;
+
+function readCenterCache(): NotificationCenterResponse | null {
+  if (!centerCache) return null;
+  if (Date.now() - centerCache.at > CENTER_CACHE_TTL_MS) {
+    centerCache = null;
+    return null;
+  }
+  return centerCache.data;
+}
+
+function writeCenterCache(data: NotificationCenterResponse) {
+  centerCache = { at: Date.now(), data };
+}
+
+function mapItems(items: NotificationCenterItem[] | undefined): NotificationCenterItem[] {
+  return (items ?? []).map((i) => ({
+    ...i,
+    createdAt: new Date(i.createdAt),
+  }));
+}
+
+/** Shared loader: in-flight dedupe + 30s TTL cache (module scope, per browser tab). */
+export async function loadNotificationCenter(): Promise<NotificationCenterResponse> {
+  const cached = readCenterCache();
+  if (cached) return cached;
+
+  if (!activeCenterFetch) {
+    activeCenterFetch = fetch("/api/notifications/center")
+      .then((r) => {
+        if (!r.ok) throw new Error("API failed");
+        return r.json() as Promise<NotificationCenterResponse>;
+      })
+      .then((data) => {
+        writeCenterCache(data);
+        return data;
+      })
+      .finally(() => {
+        activeCenterFetch = null;
+      });
+  }
+
+  return activeCenterFetch;
+}
+
+/** Test seam — reset module cache between unit tests. */
+export function __resetNotificationCenterCacheForTests() {
+  activeCenterFetch = null;
+  centerCache = null;
+}
 
 export function NotificationCenterButton() {
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<NotificationCenterItem[]>([]);
+  const [items, setItems] = useState<NotificationCenterItem[]>(() =>
+    mapItems(readCenterCache()?.items)
+  );
 
+  // Initial load once per mount tree; dual mobile/desktop instances share in-flight + TTL cache.
   useEffect(() => {
-    if (!activeCenterFetch) {
-      activeCenterFetch = fetch("/api/notifications/center")
-        .then((r) => {
-          if (!r.ok) throw new Error("API failed");
-          return r.json() as Promise<NotificationCenterResponse>;
-        })
-        .finally(() => {
-          activeCenterFetch = null;
-        });
-    }
-
-    activeCenterFetch
+    let cancelled = false;
+    void loadNotificationCenter()
       .then((d) => {
-        setItems(
-          (d.items ?? []).map((i) => ({
-            ...i,
-            createdAt: new Date(i.createdAt),
-          }))
-        );
+        if (!cancelled) setItems(mapItems(d.items));
       })
-      .catch(() => setItems([]));
+      .catch(() => {
+        if (!cancelled) setItems([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Refresh when opening if the TTL snapshot expired (preserves freshness model).
+  useEffect(() => {
+    if (!open) return;
+    if (readCenterCache()) return;
+    let cancelled = false;
+    void loadNotificationCenter()
+      .then((d) => {
+        if (!cancelled) setItems(mapItems(d.items));
+      })
+      .catch(() => {
+        /* keep prior items on refresh failure */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [open]);
 
   const count = items.filter((i) => i.severity !== "info").length;

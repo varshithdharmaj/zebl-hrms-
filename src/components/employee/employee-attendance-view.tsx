@@ -22,7 +22,7 @@ import { AttendanceHistoryTableRows, HISTORY_TABLE_COLUMNS } from "@/components/
 import {
   getEmployeeAttendanceHistory,
   getEmployeeAttendanceSummary,
-} from "@/lib/queries";
+} from "@/lib/data";
 import { formatDate, minutesToHours } from "@/lib/utils";
 
 export async function EmployeeAttendanceView({

@@ -205,8 +205,33 @@ describe("Ticket Authorization — HR Actions", () => {
 });
 
 describe("Ticket Authorization — Assignment", () => {
-  it("HR can assign tickets", () => {
+  it("HR can assign tickets assigned to them", () => {
     expect(canAssignTicket(hrSession, normalTicket)).toBe(true);
+  });
+
+  it("HR can assign unassigned non-anonymous tickets", () => {
+    expect(canAssignTicket(hrSession, unassignedTicket)).toBe(true);
+  });
+
+  it("HR cannot assign tickets assigned to another HR", () => {
+    const ticketAssignedToOtherHR: TicketLike = {
+      id: "ticket-other-hr",
+      isAnonymous: false,
+      raisedByEmployeeId: 200,
+      assignedToUserId: "hr-other",
+      department: "Engineering",
+    };
+    expect(canManageTicket(hrSession, ticketAssignedToOtherHR)).toBe(false);
+    expect(canAssignTicket(hrSession, ticketAssignedToOtherHR)).toBe(false);
+  });
+
+  it("canAssignTicket matches canManageTicket for HR", () => {
+    expect(canAssignTicket(hrSession, normalTicket)).toBe(
+      canManageTicket(hrSession, normalTicket)
+    );
+    expect(canAssignTicket(hrSession, unassignedTicket)).toBe(
+      canManageTicket(hrSession, unassignedTicket)
+    );
   });
 
   it("HR cannot assign anonymous tickets", () => {
@@ -215,6 +240,17 @@ describe("Ticket Authorization — Assignment", () => {
 
   it("Super Admin can assign anonymous tickets", () => {
     expect(canAssignTicket(superAdminSession, anonymousTicket)).toBe(true);
+  });
+
+  it("Super Admin can assign any non-anonymous ticket", () => {
+    const ticketAssignedToOtherHR: TicketLike = {
+      id: "ticket-other-hr",
+      isAnonymous: false,
+      raisedByEmployeeId: 200,
+      assignedToUserId: "hr-other",
+      department: "Engineering",
+    };
+    expect(canAssignTicket(superAdminSession, ticketAssignedToOtherHR)).toBe(true);
   });
 
   it("Employee cannot assign tickets", () => {
@@ -319,6 +355,69 @@ describe("Ticket Query Filtering — Search and Filters", () => {
   it("Non-SA search still excludes anonymous tickets", () => {
     const where = buildTicketWhereClause(hrSession, { search: "test" });
     expect(where.isAnonymous).toBe(false);
+  });
+
+  it("HR without search keeps assigned/unassigned access OR", () => {
+    const where = buildTicketWhereClause(hrSession);
+    expect(where.isAnonymous).toBe(false);
+    expect(where.OR).toEqual([
+      { assignedToUserId: "hr-1" },
+      { assignedToUserId: null },
+    ]);
+    expect(where.AND).toBeUndefined();
+  });
+
+  it("HR search ANDs access scope with search OR (does not overwrite)", () => {
+    const where = buildTicketWhereClause(hrSession, { search: "payroll" });
+    expect(where.isAnonymous).toBe(false);
+    // Top-level OR must not be only search (would drop access scope)
+    expect(where.OR).toBeUndefined();
+    expect(where.AND).toEqual([
+      {
+        OR: [{ assignedToUserId: "hr-1" }, { assignedToUserId: null }],
+      },
+      {
+        OR: [
+          { ticketNumber: { contains: "payroll", mode: "insensitive" } },
+          { subject: { contains: "payroll", mode: "insensitive" } },
+          { description: { contains: "payroll", mode: "insensitive" } },
+        ],
+      },
+    ]);
+  });
+
+  it("HR search + status/category/priority preserves all filters with access scope", () => {
+    const where = buildTicketWhereClause(hrSession, {
+      search: "leave",
+      status: "open",
+      category: "hr",
+      priority: "high",
+    });
+    expect(where.isAnonymous).toBe(false);
+    expect(where.status).toBe("open");
+    expect(where.category).toBe("hr");
+    expect(where.priority).toBe("high");
+    expect(where.AND).toBeDefined();
+    expect(Array.isArray(where.AND)).toBe(true);
+    if (Array.isArray(where.AND)) {
+      expect(where.AND).toHaveLength(2);
+      expect(where.AND[0]).toEqual({
+        OR: [{ assignedToUserId: "hr-1" }, { assignedToUserId: null }],
+      });
+    }
+  });
+
+  it("HR search for inaccessible ticket still requires assigned/unassigned scope", () => {
+    // Even if search text matches a ticket assigned to another HR, WHERE still
+    // requires assignedToUserId = self OR null — inaccessible tickets cannot match.
+    const where = buildTicketWhereClause(hrSession, {
+      search: "TKT-ASSIGNED-TO-OTHER",
+    });
+    expect(where.isAnonymous).toBe(false);
+    const accessBranch = Array.isArray(where.AND) ? where.AND[0] : undefined;
+    expect(accessBranch).toEqual({
+      OR: [{ assignedToUserId: "hr-1" }, { assignedToUserId: null }],
+    });
   });
 });
 

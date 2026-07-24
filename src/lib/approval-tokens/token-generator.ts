@@ -3,7 +3,7 @@ import { ApprovalTokenAction, ApprovalTokenStatus, type Prisma } from "@/generat
 import { prisma } from "@/lib/prisma";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
 import { getAppBaseUrl } from "@/lib/config/app-url";
-import { DEFAULT_TOKEN_TTL_HOURS, type SignedApprovalToken } from "@/lib/approval-tokens/token-types";
+import { DEFAULT_TOKEN_TTL_HOURS, type SignedApprovalToken, buildApprovalTokenMetadata } from "@/lib/approval-tokens/token-types";
 
 function getSecret(): string {
   const secret = process.env.APPROVAL_TOKEN_SECRET ?? process.env.AUTH_SECRET;
@@ -52,7 +52,14 @@ export async function createApprovalTokenPair(params: {
   approverUserId: string | null;
   createdBy?: string;
 }): Promise<{ approveUrl: string; rejectUrl: string; expiresAt: Date } | null> {
+  const leave = await prisma.leaveRequest.findUnique({
+    where: { id: params.leaveRequestId },
+    select: { version: true },
+  });
+  if (!leave) return null;
+
   const expiresAt = new Date(Date.now() + ttlHours() * 60 * 60 * 1000);
+  const metadata = buildApprovalTokenMetadata(leave.version);
 
   await revokeTokensForStep(params.leaveRequestId, params.approvalStepId);
 
@@ -74,6 +81,7 @@ export async function createApprovalTokenPair(params: {
         tokenHash: hashStoredToken(approveSigned),
         expiresAt,
         createdBy: params.createdBy ?? "system",
+        metadata,
       },
       {
         id: rejectId,
@@ -85,6 +93,7 @@ export async function createApprovalTokenPair(params: {
         tokenHash: hashStoredToken(rejectSigned),
         expiresAt,
         createdBy: params.createdBy ?? "system",
+        metadata,
       },
     ],
   });

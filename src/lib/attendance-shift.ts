@@ -128,12 +128,6 @@ export function buildEmployeeShiftWhere(shiftFilter: string | undefined) {
 
 
 
-/** @deprecated Use buildEmployeeShiftWhere */
-
-export const buildAttendanceShiftWhere = buildEmployeeShiftWhere;
-
-
-
 /** Display assigned employee shift as stored on profile */
 
 export function formatEmployeeShiftDisplay(shift: string | null | undefined): string {

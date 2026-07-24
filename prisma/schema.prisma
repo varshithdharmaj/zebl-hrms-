@@ -1,8 +1,16 @@
+// Cloudflare Workers config (uncomment for Cloudflare deploy):
+// generator client {
+//   provider   = "prisma-client"
+//   output     = "../src/generated/prisma"
+//   runtime    = "cloudflare"
+//   engineType = "client"
+// }
+
+// Local Node.js / next dev config:
 generator client {
-  provider   = "prisma-client"
+  provider   = "prisma-client-js"
   output     = "../src/generated/prisma"
-  runtime    = "cloudflare"
-  engineType = "client"
+  engineType = "library"
 }
 
 datasource db {
@@ -290,25 +298,43 @@ model AttendanceUpload {
 }
 
 model AttendanceRecord {
-  id              Int               @id @default(autoincrement())
-  employeeId      Int               @map("employee_id")
-  employee        Employee          @relation(fields: [employeeId], references: [id])
-  uploadId        Int?              @map("upload_id")
-  upload          AttendanceUpload? @relation(fields: [uploadId], references: [id])
-  attendanceDate  DateTime          @map("attendance_date")
+  id              Int                 @id @default(autoincrement())
+  employeeId      Int                 @map("employee_id")
+  employee        Employee            @relation(fields: [employeeId], references: [id])
+  uploadId        Int?                @map("upload_id")
+  upload          AttendanceUpload?   @relation(fields: [uploadId], references: [id])
+  attendanceDate  DateTime            @map("attendance_date")
   shift           String?
-  checkIn         String?           @map("check_in")
-  checkOut        String?           @map("check_out")
-  workDuration    String?           @map("work_duration")
-  workedMinutes   Int               @default(0) @map("worked_minutes")
-  overtimeMinutes Int               @default(0) @map("overtime_minutes")
+  checkIn         String?             @map("check_in")
+  checkOut        String?             @map("check_out")
+  workDuration    String?             @map("work_duration")
+  workedMinutes   Int                 @default(0) @map("worked_minutes")
+  overtimeMinutes Int                 @default(0) @map("overtime_minutes")
   status          String
   remarks         String?
-  createdAt       DateTime          @default(now()) @map("created_at")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  sessions        AttendanceSession[]
 
   @@unique([employeeId, attendanceDate])
   @@index([attendanceDate])
   @@map("attendance_records")
+}
+
+/// Individual check-in / check-out period within a daily AttendanceRecord.
+/// Daily totals (workedMinutes, status, legacy checkIn/checkOut) remain on AttendanceRecord.
+model AttendanceSession {
+  id             Int              @id @default(autoincrement())
+  attendanceId   Int              @map("attendance_id")
+  attendance     AttendanceRecord @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  checkIn        String           @map("check_in")
+  checkOut       String?          @map("check_out")
+  workedMinutes  Int              @default(0) @map("worked_minutes")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  @@index([attendanceId])
+  @@index([attendanceId, checkOut])
+  @@map("attendance_sessions")
 }
 
 model LeaveRequest {

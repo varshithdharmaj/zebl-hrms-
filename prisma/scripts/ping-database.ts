@@ -4,7 +4,10 @@
 import { createConnection } from "net";
 import { readFileSync, existsSync } from "fs";
 import { resolve } from "path";
-import { PrismaClient } from "@/generated/prisma/client";
+// import { PrismaClient } from "@/generated/prisma/client"; // Cloudflare Workers
+import { PrismaClient } from "@/generated/prisma"; // Local Node.js / next dev
+import { PrismaPg } from "@prisma/adapter-pg";
+import pg from "pg";
 
 function loadEnvFile(filename: string): void {
   const path = resolve(process.cwd(), filename);
@@ -93,7 +96,9 @@ async function main(): Promise<void> {
 
   console.log(`[AMS] TCP ${host}:${port} OK`);
 
-  const prisma = new PrismaClient();
+  const pool = new pg.Pool({ connectionString: url });
+  const adapter = new PrismaPg(pool);
+  const prisma = new PrismaClient({ adapter });
   try {
     await prisma.$queryRaw`SELECT 1`;
     console.log("[AMS] Prisma query OK — database is ready");

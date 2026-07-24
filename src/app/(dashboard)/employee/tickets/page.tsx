@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { EmployeeTicketList } from "@/components/employee/employee-ticket-list";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { buildTicketWhereClause } from "@/lib/tickets";
+import { buildTicketCountWhere, buildTicketWhereClause } from "@/lib/tickets";
 
 export default async function EmployeeTicketsPage({
   searchParams,
@@ -23,9 +23,11 @@ export default async function EmployeeTicketsPage({
   const pageSize = 50;
   const skip = (page - 1) * pageSize;
 
+  const visibleWhere = buildTicketCountWhere(session);
+
   const [tickets, totalCount] = await Promise.all([
     prisma.ticket.findMany({
-      where: buildTicketWhereClause(session),
+      where: visibleWhere,
       orderBy: { createdAt: "desc" },
       skip,
       take: pageSize,
@@ -50,7 +52,7 @@ export default async function EmployeeTicketsPage({
         },
       },
     }),
-    prisma.ticket.count({ where: buildTicketWhereClause(session) }),
+    prisma.ticket.count({ where: visibleWhere }),
   ]);
 
   const totalPages = Math.ceil(totalCount / pageSize);

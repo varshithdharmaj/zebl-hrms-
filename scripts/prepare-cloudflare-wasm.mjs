@@ -1,23 +1,57 @@
 import { copyFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const generatedInternalDir = join(
-  process.cwd(),
-  ".open-next",
-  "server-functions",
-  "default",
-  "src",
-  "generated",
-  "prisma",
-  "internal"
-);
-const sourceFile = (await readdir(generatedInternalDir)).find((file) =>
-  /^query_(?:compiler|engine)_bg\.wasm$/.test(file)
-);
-if (!sourceFile) {
-  throw new Error("No generated Prisma WASM module was found");
+/**
+ * Locate Prisma query-engine WASM after OpenNext bundling.
+ * Layout varies by Prisma engineType / OpenNext version:
+ * - .../prisma/internal/query_*_bg.wasm (client engine)
+ * - .../prisma/query_engine_bg.wasm (library engine copy)
+ * - src/generated/prisma/query_engine_bg.wasm (local generate fallback)
+ */
+async function findPrismaWasm() {
+  const candidateDirs = [
+    join(
+      process.cwd(),
+      ".open-next",
+      "server-functions",
+      "default",
+      "src",
+      "generated",
+      "prisma",
+      "internal"
+    ),
+    join(
+      process.cwd(),
+      ".open-next",
+      "server-functions",
+      "default",
+      "src",
+      "generated",
+      "prisma"
+    ),
+    join(process.cwd(), "src", "generated", "prisma"),
+  ];
+
+  for (const dir of candidateDirs) {
+    try {
+      const files = await readdir(dir);
+      const sourceFile = files.find((file) =>
+        /^query_(?:compiler|engine)_bg\.wasm$/.test(file)
+      );
+      if (sourceFile) {
+        return { sourcePath: join(dir, sourceFile), sourceFile };
+      }
+    } catch {
+      // try next candidate
+    }
+  }
+
+  throw new Error(
+    "No generated Prisma WASM module was found under .open-next or src/generated/prisma"
+  );
 }
-const sourcePath = join(generatedInternalDir, sourceFile);
+
+const { sourcePath } = await findPrismaWasm();
 const handlerPath = join(
   process.cwd(),
   ".open-next",
@@ -29,6 +63,7 @@ const workerPath = join(process.cwd(), ".open-next", "worker.js");
 const targetDir = join(process.cwd(), ".open-next", "static", "wasm");
 const handler = await readFile(handlerPath, "utf8");
 const worker = await readFile(workerPath, "utf8");
+
 const hashes = [
   ...new Set(
     [...handler.matchAll(/\.v\([^,]+,[^,]+,"([a-f0-9]{16})"/g)].map(
@@ -37,11 +72,9 @@ const hashes = [
   ),
 ];
 
-if (hashes.length === 0) {
-  throw new Error("No server WASM references were emitted");
-}
+// Prefer emitted webpack hash; otherwise use a stable asset name.
+const canonicalHash = hashes[0] ?? "prisma_query_engine";
 
-const canonicalHash = hashes[0];
 let normalizedHandler = hashes
   .slice(1)
   .reduce((content, hash) => content.replaceAll(hash, canonicalHash), handler);
@@ -67,15 +100,25 @@ for (const candidate of wasmLoaderCandidates) {
   }
 }
 
-if (!replaced && !normalizedHandler.includes(compiledWasmLoader)) {
-  throw new Error("Expected webpack WASM loader was not found in handler.mjs");
+// Current OpenNext/Prisma library-engine path: await d10.getQueryEngineWasmModule()
+if (normalizedHandler.includes("d10.getQueryEngineWasmModule()")) {
+  normalizedHandler = normalizedHandler.replaceAll(
+    "d10.getQueryEngineWasmModule()",
+    "Promise.resolve(globalThis.__PRISMA_QUERY_COMPILER_WASM__)"
+  );
+  replaced = true;
+}
+
+if (!replaced && !normalizedHandler.includes("__PRISMA_QUERY_COMPILER_WASM__")) {
+  throw new Error(
+    "Expected Prisma WASM loader pattern was not found in handler.mjs"
+  );
 }
 
 await writeFile(handlerPath, normalizedHandler);
 await rm(targetDir, { recursive: true, force: true });
 await mkdir(targetDir, { recursive: true });
 await copyFile(sourcePath, join(targetDir, `${canonicalHash}.wasm`));
-await rm(sourcePath, { force: true });
 
 const wasmImportLine = `import __PRISMA_QUERY_COMPILER_WASM__ from "./static/wasm/${canonicalHash}.wasm";\nglobalThis.__PRISMA_QUERY_COMPILER_WASM__ = __PRISMA_QUERY_COMPILER_WASM__;\n`;
 let nextWorker = worker;
@@ -107,4 +150,8 @@ await rm(
     "404.html"
   ),
   { force: true }
+);
+
+console.log(
+  `[prepare-cloudflare-wasm] wired ${canonicalHash}.wasm from ${sourcePath}`
 );

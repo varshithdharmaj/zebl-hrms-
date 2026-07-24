@@ -22,7 +22,7 @@ export async function getLeaveOverlapWarnings(params: {
 }): Promise<LeaveOverlapWarning[]> {
   const warnings: LeaveOverlapWarning[] = [];
 
-  const overlapping = await prisma.leaveRequest.findMany({
+  const employeeOverlapQuery = prisma.leaveRequest.findMany({
     where: {
       id: { not: params.leaveRequestId },
       workflowStatus: { in: ACTIVE_STATUSES },
@@ -34,6 +34,29 @@ export async function getLeaveOverlapWarnings(params: {
     take: 3,
   });
 
+  const teamOverlapQuery = params.department
+    ? prisma.leaveRequest.findMany({
+        where: {
+          id: { not: params.leaveRequestId },
+          workflowStatus: { in: ACTIVE_STATUSES },
+          startDate: { lte: params.endDate },
+          endDate: { gte: params.startDate },
+          employee: {
+            department: params.department,
+            id: { not: params.employeeId },
+          },
+        },
+        include: { employee: { select: { name: true } } },
+        take: 5,
+      })
+    : Promise.resolve([]);
+
+  // Independent filters — safe to run in parallel (was sequential).
+  const [overlapping, teamOverlaps] = await Promise.all([
+    employeeOverlapQuery,
+    teamOverlapQuery,
+  ]);
+
   for (const o of overlapping) {
     warnings.push({
       type: "employee_overlap",
@@ -43,30 +66,13 @@ export async function getLeaveOverlapWarnings(params: {
     });
   }
 
-  if (params.department) {
-    const teamOverlaps = await prisma.leaveRequest.findMany({
-      where: {
-        id: { not: params.leaveRequestId },
-        workflowStatus: { in: ACTIVE_STATUSES },
-        startDate: { lte: params.endDate },
-        endDate: { gte: params.startDate },
-        employee: {
-          department: params.department,
-          id: { not: params.employeeId },
-        },
-      },
-      include: { employee: { select: { name: true } } },
-      take: 5,
+  for (const t of teamOverlaps) {
+    warnings.push({
+      type: "team_overlap",
+      message: `${t.employee.name} also on leave in this period`,
+      relatedLeaveId: t.id,
+      employeeName: t.employee.name,
     });
-
-    for (const t of teamOverlaps) {
-      warnings.push({
-        type: "team_overlap",
-        message: `${t.employee.name} also on leave in this period`,
-        relatedLeaveId: t.id,
-        employeeName: t.employee.name,
-      });
-    }
   }
 
   return warnings;

@@ -3,7 +3,10 @@ import { SuperAdminAnonymousTickets } from "@/components/admin/superadmin-anonym
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { buildAnonymousTicketWhereClause } from "@/lib/tickets";
+import {
+  buildAnonymousTicketWhereClause,
+  getAdminTicketListSelect,
+} from "@/lib/tickets";
 import { canAccessAnonymousTickets } from "@/lib/permissions";
 
 export default async function AnonymousTicketsPage({
@@ -32,29 +35,7 @@ export default async function AnonymousTicketsPage({
     prisma.ticket.findMany({
       where: whereClause,
       orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        ticketNumber: true,
-        subject: true,
-        category: true,
-        priority: true,
-        status: true,
-        isAnonymous: true,
-        department: true,
-        assignedToUserId: true,
-        assignedToUser: {
-          select: {
-            id: true,
-            email: true,
-            employee: { select: { name: true } },
-          },
-        },
-        raisedByEmployee: {
-          select: { id: true, name: true, employeeCode: true },
-        },
-        updatedAt: true,
-        createdAt: true,
-      },
+      select: getAdminTicketListSelect(),
     }),
     // Get stats for anonymous tickets only
     prisma.ticket.groupBy({

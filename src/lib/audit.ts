@@ -25,6 +25,8 @@ export const AUDIT_ACTIONS = {
   USER_ACCOUNT_UNLOCKED: "user.account.unlocked",
   USER_IDENTITY_UPDATED: "user.identity.updated",
   USER_PROFILE_PHOTO_CHANGED: "user.profile_photo.changed",
+  USER_LOGIN_CREATED: "user.login.created",
+  USER_LOGIN_LINKED: "user.login.linked",
   SUPER_ADMIN_CREATED: "user.super_admin.created",
   LEAVE_STATUS_CHANGED: "leave.status.changed",
   LEAVE_SUBMITTED: "leave.submitted",

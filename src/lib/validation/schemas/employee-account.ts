@@ -75,3 +75,58 @@ export const accountIdentityUpdateSchema = z.object({
   email: z.string().trim().email(),
   profilePhotoUrl: z.union([z.string().trim().url(), z.literal("")]),
 });
+
+/** Create a new local employee login or link an existing unlinked employee-role user. */
+export const provisionEmployeeLoginSchema = z
+  .object({
+    employeeId: z.coerce.number().int().positive(),
+    mode: z.enum(["create", "link"]),
+    email: z
+      .union([z.string().trim().email("Enter a valid email address."), z.literal("")])
+      .optional()
+      .transform((value) => value || ""),
+    existingUserId: z
+      .union([z.string().trim().min(1), z.literal("")])
+      .optional()
+      .transform((value) => value || ""),
+    passwordMode: z.enum(["manual", "generated"]).default("generated"),
+    password: z.string().optional().default(""),
+    confirmPassword: z.string().optional().default(""),
+    mustChangePassword: z.coerce.boolean().default(true),
+  })
+  .superRefine((value, context) => {
+    if (value.mode === "create") {
+      if (!value.email) {
+        context.addIssue({
+          code: "custom",
+          path: ["email"],
+          message: "Email is required to create a login.",
+        });
+      }
+      if (value.passwordMode === "manual") {
+        if (value.password.length < 8) {
+          context.addIssue({
+            code: "custom",
+            path: ["password"],
+            message: "Password must be at least 8 characters.",
+          });
+        }
+        if (value.password !== value.confirmPassword) {
+          context.addIssue({
+            code: "custom",
+            path: ["confirmPassword"],
+            message: "Passwords do not match.",
+          });
+        }
+      }
+      return;
+    }
+
+    if (!value.existingUserId && !value.email) {
+      context.addIssue({
+        code: "custom",
+        path: ["email"],
+        message: "Provide an existing login email or user id to link.",
+      });
+    }
+  });

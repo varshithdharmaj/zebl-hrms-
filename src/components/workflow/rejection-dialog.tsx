@@ -22,10 +22,12 @@ export function RejectionDialog({
   leaveId,
   version,
   triggerLabel = "Reject",
+  isOverride = false,
 }: {
   leaveId: number;
   version: number;
   triggerLabel?: string;
+  isOverride?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [state, formAction, pending] = useActionState(rejectLeaveStepAction, initialState);
@@ -39,9 +41,13 @@ export function RejectionDialog({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Reject leave request</DialogTitle>
+          <DialogTitle>
+            {isOverride ? "Override reject leave request" : "Reject leave request"}
+          </DialogTitle>
           <DialogDescription>
-            A comment is required (minimum {MIN_REJECTION_COMMENT_LENGTH} characters).
+            {isOverride
+              ? "Superadmin override: rejecting outside the normal approver step. A comment is required."
+              : `A comment is required (minimum ${MIN_REJECTION_COMMENT_LENGTH} characters).`}
           </DialogDescription>
         </DialogHeader>
         <form

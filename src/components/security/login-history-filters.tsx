@@ -6,11 +6,14 @@ export function LoginHistoryFilters({
   filters,
   basePath,
   admin = false,
+  allowFailedStatus = false,
   departments = [],
 }: {
   filters: Record<string, string | undefined>;
   basePath: string;
   admin?: boolean;
+  /** Failed attempts are Super Admin–only; do not show the option to HR. */
+  allowFailedStatus?: boolean;
   departments?: string[];
 }) {
   return (
@@ -30,7 +33,7 @@ export function LoginHistoryFilters({
         <option value="logged_out">Logged out</option>
         <option value="expired">Expired</option>
         <option value="revoked">Revoked</option>
-        {admin && <option value="failed">Failed</option>}
+        {allowFailedStatus && <option value="failed">Failed</option>}
       </select>
       <Input name="from" type="date" aria-label="From date" defaultValue={filters.from ?? ""} />
       <Input name="to" type="date" aria-label="To date" defaultValue={filters.to ?? ""} />

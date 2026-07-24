@@ -8,7 +8,7 @@ export default function UploadPage() {
     <div className="space-y-6 lg:space-y-8">
       <WorkspacePageHeader
         title="Upload attendance"
-        description="Import daily attendance from an Excel file. Records are matched by employee code."
+        description="Import attendance records from supported Excel or PDF reports."
       />
       <UploadForm defaultDate={today} />
     </div>

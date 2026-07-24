@@ -4,7 +4,6 @@ import {
   canAccessHRAdministration,
   canAccessPlatformAdministration,
   canManageEmployee,
-  isHR,
   PermissionError,
   requirePermission,
 } from "@/lib/permissions";
@@ -20,13 +19,6 @@ export async function getSessionOrThrow(): Promise<SessionUser> {
 export async function requireSuperAdminSession(): Promise<SessionUser> {
   const session = await getSessionOrThrow();
   requirePermission(session, canAccessPlatformAdministration);
-  return session;
-}
-
-/** HR only (excludes Super Admin) — use when an operation is HR-specific. */
-export async function requireHRSession(): Promise<SessionUser> {
-  const session = await getSessionOrThrow();
-  requirePermission(session, isHR);
   return session;
 }
 
@@ -81,21 +73,4 @@ export async function requireEmployeeSession(): Promise<SessionWithEmployee> {
   const session = await requireRoleSession("employee");
   if (session.employeeId == null) throw new PermissionError("Employee profile not linked");
   return { ...session, employeeId: session.employeeId };
-}
-
-/**
- * Guard for any ticketing access (employee/HR/SA).
- * Per-ticket authorization is enforced via ticket-permissions helpers.
- */
-export async function requireTicketingSession(): Promise<SessionUser> {
-  return await getSessionOrThrow();
-}
-
-/**
- * Guard for anonymous ticket access (Super Admin only).
- */
-export async function requireAnonymousTicketAccess(): Promise<SessionUser> {
-  const session = await getSessionOrThrow();
-  requirePermission(session, canAccessPlatformAdministration);
-  return session;
 }

@@ -6,10 +6,8 @@ import {
   canAccessHRAdministration,
   canAccessPlatformAdministration,
   canManageUserRoles,
-  canManageLoginSessions,
   canAdministerEmployeeAccount,
   canModifyTargetUser,
-  canViewAllLoginHistory,
   isEmployee,
   isHR,
   isSuperAdmin,
@@ -66,15 +64,6 @@ describe("three-role permissions", () => {
     expect(assignableRolesFor("super_admin")).toEqual(["super_admin", "hr", "employee"]);
     expect(assignableRolesFor("hr")).toEqual([]);
     expect(assignableRolesFor("employee")).toEqual([]);
-  });
-
-  it("allows HR to view organization login history but reserves session management for Super Admin", () => {
-    expect(canViewAllLoginHistory("super_admin")).toBe(true);
-    expect(canViewAllLoginHistory("hr")).toBe(true);
-    expect(canViewAllLoginHistory("employee")).toBe(false);
-    expect(canManageLoginSessions("super_admin")).toBe(true);
-    expect(canManageLoginSessions("hr")).toBe(false);
-    expect(canManageLoginSessions("employee")).toBe(false);
   });
 
   it("allows HR to administer employees but protects HR and Super Admin accounts", () => {

@@ -174,85 +174,148 @@ export async function recordLeaveTransaction(params: {
   });
 }
 
-async function hasAccrualReason(
-  employeeId: number,
-  reason: string,
-  tx?: TxClient
-): Promise<boolean> {
-  const client = tx ?? prisma;
-  const existing = await client.leaveTransaction.findFirst({
-    where: { employeeId, reason },
-  });
-  return !!existing;
+/** Candidate accrual reason strings for the current calendar year / EL months. */
+export function buildPendingAccrualReasons(
+  joiningDate: Date,
+  year: number = getCalendarYear(),
+  asOf: Date = new Date()
+): { reason: string; leaveType: LeaveType; amount: number }[] {
+  const pending: { reason: string; leaveType: LeaveType; amount: number }[] = [
+    {
+      reason: `CL yearly allocation ${year}`,
+      leaveType: "CL",
+      amount: DEFAULT_CL_ANNUAL,
+    },
+    {
+      reason: `SL yearly allocation ${year}`,
+      leaveType: "SL",
+      amount: DEFAULT_SL_ANNUAL,
+    },
+  ];
+
+  if (isEligibleForEL(joiningDate, asOf)) {
+    for (const monthKey of getElAccrualMonthKeys(joiningDate, asOf)) {
+      pending.push({
+        reason: `EL monthly accrual ${monthKey}`,
+        leaveType: "EL",
+        amount: EL_MONTHLY_ACCRUAL,
+      });
+    }
+  }
+
+  return pending;
 }
 
-/** Process pending CL/SL yearly and EL monthly accruals — call from actions, not page renders */
-export async function processPendingLeaveAccruals(employeeId: number): Promise<void> {
+/**
+ * Process pending CL/SL yearly and EL monthly accruals.
+ * Prefer calling from actions; leave page may still process for balance freshness.
+ * Returns joiningDate so callers can avoid a second employee round-trip.
+ */
+export async function processPendingLeaveAccruals(
+  employeeId: number
+): Promise<{ joiningDate: Date }> {
   const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
   if (!employee) throw new Error("Employee not found");
 
-  const year = getCalendarYear();
   const joiningDate = employee.joiningDate;
+  const pending = buildPendingAccrualReasons(joiningDate);
+  const candidateReasons = pending.map((p) => p.reason);
 
   await prisma.$transaction(async (tx) => {
-    await getOrCreateLeaveBalanceRow(employeeId, tx);
+    // Balance ensure + existence check are independent — one round-trip instead of N.
+    const [, existing] = await Promise.all([
+      getOrCreateLeaveBalanceRow(employeeId, tx),
+      tx.leaveTransaction.findMany({
+        where: {
+          employeeId,
+          reason: { in: candidateReasons },
+        },
+        select: { reason: true },
+      }),
+    ]);
 
-    const clReason = `CL yearly allocation ${year}`;
-    if (!(await hasAccrualReason(employeeId, clReason, tx))) {
+    const existingSet = new Set(
+      existing.map((row) => row.reason).filter((r): r is string => Boolean(r))
+    );
+
+    for (const item of pending) {
+      if (existingSet.has(item.reason)) continue;
       await recordLeaveTransactionInTx(tx, {
         employeeId,
-        leaveType: "CL",
+        leaveType: item.leaveType,
         transactionType: "accrual",
-        amount: DEFAULT_CL_ANNUAL,
-        reason: clReason,
+        amount: item.amount,
+        reason: item.reason,
         createdBy: "system",
       });
-    }
-
-    const slReason = `SL yearly allocation ${year}`;
-    if (!(await hasAccrualReason(employeeId, slReason, tx))) {
-      await recordLeaveTransactionInTx(tx, {
-        employeeId,
-        leaveType: "SL",
-        transactionType: "accrual",
-        amount: DEFAULT_SL_ANNUAL,
-        reason: slReason,
-        createdBy: "system",
-      });
-    }
-
-    if (!isEligibleForEL(joiningDate)) return;
-
-    const monthKeys = getElAccrualMonthKeys(joiningDate);
-    for (const monthKey of monthKeys) {
-      const reason = `EL monthly accrual ${monthKey}`;
-      if (await hasAccrualReason(employeeId, reason, tx)) continue;
-
-      await recordLeaveTransactionInTx(tx, {
-        employeeId,
-        leaveType: "EL",
-        transactionType: "accrual",
-        amount: EL_MONTHLY_ACCRUAL,
-        reason,
-        createdBy: "system",
-      });
+      existingSet.add(item.reason);
     }
   });
+
+  return { joiningDate };
 }
 
 export async function getLeaveBalanceSummaries(
   employeeId: number,
   options?: { processAccruals?: boolean }
 ): Promise<LeaveBalanceSummary[]> {
+  let joiningDate: Date;
+
   if (options?.processAccruals) {
-    await processPendingLeaveAccruals(employeeId);
+    // Accrual path already loaded the employee — reuse joiningDate (no second findUnique).
+    ({ joiningDate } = await processPendingLeaveAccruals(employeeId));
+  } else {
+    const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
+    if (!employee) throw new Error("Employee not found");
+    joiningDate = employee.joiningDate;
   }
 
-  const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
-  if (!employee) throw new Error("Employee not found");
+  // Balance row + transaction aggregates are independent once the employee exists.
+  // Accruals (when enabled) already ensured the balance row and employee validity.
+  const [balance, aggregations, manualAdjustments] = await Promise.all([
+    getOrCreateLeaveBalanceRow(employeeId),
+    prisma.leaveTransaction.groupBy({
+      by: ["leaveType", "transactionType"],
+      where: { employeeId },
+      _sum: {
+        amount: true,
+      },
+    }),
+    prisma.leaveTransaction.findMany({
+      where: {
+        employeeId,
+        transactionType: "manual_adjustment",
+      },
+      select: {
+        leaveType: true,
+        amount: true,
+      },
+    }),
+  ]);
 
-  const balance = await getOrCreateLeaveBalanceRow(employeeId);
-  const elEligible = isEligibleForEL(employee.joiningDate);
+  return buildLeaveBalanceSummariesFromParts(
+    joiningDate,
+    balance,
+    aggregations,
+    manualAdjustments
+  );
+}
+
+/**
+ * Pure leave-balance summary math shared by single-employee and batch overview paths.
+ * Must stay bit-equivalent for the same inputs.
+ */
+export function buildLeaveBalanceSummariesFromParts(
+  joiningDate: Date,
+  balance: { elBalance: number; clBalance: number; slBalance: number },
+  aggregations: Array<{
+    leaveType: string;
+    transactionType: string;
+    _sum: { amount: number | null };
+  }>,
+  manualAdjustments: Array<{ leaveType: string; amount: number }>
+): LeaveBalanceSummary[] {
+  const elEligible = isEligibleForEL(joiningDate);
 
   const remainingMap: Record<LeaveType, number> = {
     EL: balance.elBalance,
@@ -260,26 +323,7 @@ export async function getLeaveBalanceSummaries(
     SL: balance.slBalance,
   };
 
-  const aggregations = await prisma.leaveTransaction.groupBy({
-    by: ["leaveType", "transactionType"],
-    where: { employeeId },
-    _sum: {
-      amount: true,
-    },
-  });
-
-  const manualAdjustments = await prisma.leaveTransaction.findMany({
-    where: {
-      employeeId,
-      transactionType: "manual_adjustment",
-    },
-    select: {
-      leaveType: true,
-      amount: true,
-    },
-  });
-
-  const summaries = LEAVE_TYPES.map((leaveType) => {
+  return LEAVE_TYPES.map((leaveType) => {
     let used = 0;
     let accrued = 0;
 
@@ -307,7 +351,7 @@ export async function getLeaveBalanceSummaries(
 
     let note: string | undefined;
     if (leaveType === "EL" && !elEligible) {
-      const eligibility = getEligibilityDate(employee.joiningDate);
+      const eligibility = getEligibilityDate(joiningDate);
       note = `Eligible from ${eligibility.toLocaleDateString("en-IN", {
         day: "2-digit",
         month: "short",
@@ -324,8 +368,98 @@ export async function getLeaveBalanceSummaries(
       note,
     };
   });
+}
 
-  return summaries;
+export type EmployeeForLeaveBalanceBatch = {
+  id: number;
+  joiningDate: Date;
+};
+
+/**
+ * Batch leave-balance summaries for many employees (admin overview).
+ * Preserves getOrCreateLeaveBalanceRow side effects via createMany(skipDuplicates).
+ * Uses processAccruals:false semantics (no accrual processing).
+ */
+export async function getLeaveBalanceSummariesForEmployees(
+  employees: EmployeeForLeaveBalanceBatch[]
+): Promise<Map<number, LeaveBalanceSummary[]>> {
+  const result = new Map<number, LeaveBalanceSummary[]>();
+  if (employees.length === 0) return result;
+
+  const employeeIds = employees.map((e) => e.id);
+
+  // Same side effect as N× getOrCreateLeaveBalanceRow: ensure a balance row exists.
+  await prisma.employeeLeaveBalance.createMany({
+    data: employeeIds.map((employeeId) => ({ employeeId })),
+    skipDuplicates: true,
+  });
+
+  const [balances, aggregations, manualAdjustments] = await Promise.all([
+    prisma.employeeLeaveBalance.findMany({
+      where: { employeeId: { in: employeeIds } },
+    }),
+    prisma.leaveTransaction.groupBy({
+      by: ["employeeId", "leaveType", "transactionType"],
+      where: { employeeId: { in: employeeIds } },
+      _sum: { amount: true },
+    }),
+    prisma.leaveTransaction.findMany({
+      where: {
+        employeeId: { in: employeeIds },
+        transactionType: "manual_adjustment",
+      },
+      select: {
+        employeeId: true,
+        leaveType: true,
+        amount: true,
+      },
+    }),
+  ]);
+
+  const balanceByEmployee = new Map(balances.map((b) => [b.employeeId, b]));
+
+  const aggsByEmployee = new Map<
+    number,
+    Array<{ leaveType: string; transactionType: string; _sum: { amount: number | null } }>
+  >();
+  for (const row of aggregations) {
+    const list = aggsByEmployee.get(row.employeeId) ?? [];
+    list.push({
+      leaveType: row.leaveType,
+      transactionType: row.transactionType,
+      _sum: row._sum,
+    });
+    aggsByEmployee.set(row.employeeId, list);
+  }
+
+  const manualsByEmployee = new Map<
+    number,
+    Array<{ leaveType: string; amount: number }>
+  >();
+  for (const row of manualAdjustments) {
+    const list = manualsByEmployee.get(row.employeeId) ?? [];
+    list.push({ leaveType: row.leaveType, amount: row.amount });
+    manualsByEmployee.set(row.employeeId, list);
+  }
+
+  for (const emp of employees) {
+    const balance = balanceByEmployee.get(emp.id) ?? {
+      elBalance: 0,
+      clBalance: 0,
+      slBalance: 0,
+    };
+    result.set(
+      emp.id,
+      buildLeaveBalanceSummariesFromParts(
+        emp.joiningDate,
+        balance,
+        aggsByEmployee.get(emp.id) ?? [],
+        manualsByEmployee.get(emp.id) ?? []
+      )
+    );
+  }
+
+  return result;
 }
 
 export async function getRemainingBalance(

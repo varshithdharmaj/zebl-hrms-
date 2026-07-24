@@ -1,6 +1,7 @@
 import type { LeaveWorkflowStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getLeaveBalanceSummaries } from "@/lib/leave";
+import { leaveRequestWithStepsInclude } from "@/lib/leave/leave-request-include";
 
 export async function getEmployeeLeavePageData(employeeId: number) {
   const [balances, leaves] = await Promise.all([
@@ -34,14 +35,7 @@ export async function getLeaveRequests(
 
   return prisma.leaveRequest.findMany({
     where,
-    include: {
-      employee: true,
-      approvalSteps: {
-        orderBy: { stepOrder: "asc" },
-        include: { approver: true },
-      },
-      currentStep: { include: { approver: true } },
-    },
+    include: leaveRequestWithStepsInclude,
     orderBy: { createdAt: "desc" },
   });
 }

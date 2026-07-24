@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import {
   adminAdjustLeaveBalance,
   getLeaveBalanceSummaries,
+  getLeaveBalanceSummariesForEmployees,
   getLeaveTransactionHistory,
   processPendingLeaveAccruals,
 } from "@/lib/leave";
@@ -104,17 +105,14 @@ export async function getAdminLeaveBalancesOverview() {
     orderBy: { name: "asc" },
   });
 
-  return Promise.all(
-    employees.map(async (emp) => {
-      const balances = await getLeaveBalanceSummaries(emp.id, { processAccruals: false });
-      return {
-        employeeId: emp.id,
-        employeeCode: emp.employeeCode,
-        name: emp.name,
-        department: emp.department,
-        joiningDate: emp.joiningDate,
-        balances,
-      };
-    })
-  );
+  const summariesByEmployee = await getLeaveBalanceSummariesForEmployees(employees);
+
+  return employees.map((emp) => ({
+    employeeId: emp.id,
+    employeeCode: emp.employeeCode,
+    name: emp.name,
+    department: emp.department,
+    joiningDate: emp.joiningDate,
+    balances: summariesByEmployee.get(emp.id) ?? [],
+  }));
 }

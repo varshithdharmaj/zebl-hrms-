@@ -1,9 +1,18 @@
 import type { Prisma } from "@/generated/prisma/client";
-import { AccountStatus, UserRole } from "@/generated/prisma/enums";
+import { AccountStatus, AuthProvider, UserRole } from "@/generated/prisma/enums";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
 import { invalidateUserSessions } from "@/lib/auth";
+import {
+  AccountLifecycleError,
+  applyEmployeeFieldsFromAccountStatus,
+  applyEmployeeFieldsFromUserActive,
+  assertLastSuperAdminDeactivationAllowed,
+  countActiveSuperAdmins,
+  employeeStatusToUserAccountFields,
+  generateSecureTemporaryPassword,
+} from "@/lib/admin/account-lifecycle";
 import {
   canAdministerEmployeeAccount,
   canManageUserRoles,
@@ -14,6 +23,8 @@ import type { SessionUser } from "@/lib/session";
 import { getRequestSecurityContext } from "@/lib/security/request-context";
 
 export class UserManagementError extends Error {}
+
+export { countActiveSuperAdmins };
 
 export type AdminUserListItem = {
   id: string;
@@ -81,20 +92,6 @@ export async function listUsers(
     page,
     pageSize,
   };
-}
-
-/** Active Super Admin count, optionally excluding one user (for pre-mutation checks). */
-export async function countActiveSuperAdmins(
-  tx: Prisma.TransactionClient | typeof prisma,
-  excludeUserId?: string
-): Promise<number> {
-  return tx.user.count({
-    where: {
-      role: UserRole.super_admin,
-      isActive: true,
-      ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
-    },
-  });
 }
 
 function requireValidRole(role: string): AppUserRole {
@@ -191,25 +188,33 @@ export async function setUserActive(
     }
     if (target.isActive === isActive) return;
 
-    // Never allow the last active Super Admin to be deactivated.
-    if (!isActive && targetRole === "super_admin") {
-      const remaining = await countActiveSuperAdmins(tx, target.id);
-      if (remaining === 0) {
-        throw new UserManagementError(
-          "Cannot deactivate the last active Super Admin. Promote another user first."
-        );
+    try {
+      await assertLastSuperAdminDeactivationAllowed(tx, {
+        targetUserId: target.id,
+        targetRole,
+        makingUnavailable: !isActive,
+      });
+    } catch (error) {
+      if (error instanceof AccountLifecycleError) {
+        throw new UserManagementError(error.message);
       }
+      throw error;
     }
 
+    const accountStatus = isActive ? AccountStatus.active : AccountStatus.inactive;
     await tx.user.update({
       where: { id: targetUserId },
       data: {
         isActive,
-        accountStatus: isActive ? AccountStatus.active : AccountStatus.inactive,
+        accountStatus,
         lockedAt: null,
         lockedReason: null,
       },
     });
+
+    if (target.employeeId) {
+      await applyEmployeeFieldsFromUserActive(tx, target.employeeId, isActive);
+    }
 
     await writeAuditLog(
       {
@@ -224,10 +229,10 @@ export async function setUserActive(
         oldValue: { isActive: target.isActive, accountStatus: target.accountStatus },
         newValue: {
           isActive,
-          accountStatus: isActive ? AccountStatus.active : AccountStatus.inactive,
+          accountStatus,
         },
         requestContext,
-        metadata: { role: targetRole },
+        metadata: { role: targetRole, employeeSynced: Boolean(target.employeeId) },
       },
       tx
     );
@@ -237,13 +242,6 @@ export async function setUserActive(
   if (!isActive) {
     await invalidateUserSessions(targetUserId);
   }
-}
-
-function generatedTemporaryPassword(): string {
-  const bytes = new Uint8Array(9);
-  crypto.getRandomValues(bytes);
-  const str = Array.from(bytes, (b) => b.toString(36)).join("").slice(0, 9);
-  return `Zb-${str}9a!`;
 }
 
 async function getAccountTarget(userId: string) {
@@ -286,7 +284,7 @@ export async function resetUserPassword(
     );
   }
 
-  const password = input.generate ? generatedTemporaryPassword() : input.password ?? "";
+  const password = input.generate ? generateSecureTemporaryPassword() : input.password ?? "";
   if (password.length < 8) {
     throw new UserManagementError("Password must be at least 8 characters.");
   }
@@ -331,14 +329,20 @@ export async function updateUserAccountStatus(
   assertAccountAccess(actor, target, destructive);
 
   const targetRole = toAppUserRole(target.role);
-  if (targetRole === "super_admin" && status !== AccountStatus.active) {
-    const remaining = await countActiveSuperAdmins(prisma, target.id);
-    if (remaining === 0) {
-      throw new UserManagementError("Cannot disable the last active Super Admin.");
+  const isActive = status === AccountStatus.active;
+  try {
+    await assertLastSuperAdminDeactivationAllowed(prisma, {
+      targetUserId: target.id,
+      targetRole,
+      makingUnavailable: !isActive,
+    });
+  } catch (error) {
+    if (error instanceof AccountLifecycleError) {
+      throw new UserManagementError(error.message);
     }
+    throw error;
   }
 
-  const isActive = status === AccountStatus.active;
   const requestContext = await getRequestSecurityContext();
   await prisma.$transaction(async (tx) => {
     await tx.user.update({
@@ -350,24 +354,8 @@ export async function updateUserAccountStatus(
         lockedReason: status === AccountStatus.locked ? reason || null : null,
       },
     });
-    if (
-      target.employeeId &&
-      (status === AccountStatus.active ||
-        status === AccountStatus.inactive ||
-        status === AccountStatus.terminated)
-    ) {
-      await tx.employee.update({
-        where: { id: target.employeeId },
-        data: {
-          employeeStatus:
-            status === AccountStatus.active
-              ? "Active"
-              : status === AccountStatus.terminated
-                ? "Terminated"
-                : "Inactive",
-          isActive,
-        },
-      });
+    if (target.employeeId) {
+      await applyEmployeeFieldsFromAccountStatus(tx, target.employeeId, status);
     }
     const action =
       status === AccountStatus.locked
@@ -467,6 +455,196 @@ export async function updateUserIdentity(
       }, tx);
     }
   });
+}
+
+/**
+ * Create a new local login for an employee who has none, or link an existing
+ * unlinked employee-role user. Role is always forced to `employee` on create.
+ * HR cannot create/link HR or Superadmin accounts.
+ */
+/**
+ * Canonical local employee-login provisioning contract.
+ * All admin paths that create/link employee-role logins should call this
+ * (create-employee, account tab, attendance upload). SSO / password-reset stay separate.
+ */
+export async function provisionEmployeeLogin(
+  actor: SessionUser,
+  input: {
+    employeeId: number;
+    mode: "create" | "link";
+    email?: string;
+    existingUserId?: string;
+    password?: string;
+    generate: boolean;
+    mustChangePassword: boolean;
+    /** Audit metadata.operation — defaults to mode name */
+    auditOperation?: string;
+  }
+): Promise<{ userId: string; temporaryPassword?: string }> {
+  if (!canAdministerEmployeeAccount(actor.role, "employee")) {
+    // HR and Superadmin both pass for target role "employee"; employees do not.
+    throw new UserManagementError("You are not permitted to provision employee logins.");
+  }
+
+  const employee = await prisma.employee.findUnique({
+    where: { id: input.employeeId },
+    include: { user: true },
+  });
+  if (!employee) throw new UserManagementError("Employee not found.");
+  if (employee.user) {
+    throw new UserManagementError("This employee already has a linked login account.");
+  }
+
+  const requestContext = await getRequestSecurityContext();
+
+  if (input.mode === "link") {
+    const email = input.email?.trim().toLowerCase() || null;
+    const existing = input.existingUserId
+      ? await prisma.user.findUnique({ where: { id: input.existingUserId } })
+      : email
+        ? await prisma.user.findUnique({ where: { email } })
+        : null;
+
+    if (!existing) throw new UserManagementError("No matching login account found to link.");
+    if (existing.employeeId) {
+      throw new UserManagementError("That login is already linked to another employee.");
+    }
+
+    const existingRole = toAppUserRole(existing.role);
+    // HR may only link employee-role accounts; Superadmin may link employee-role only
+    // through this employee-provisioning path (role changes stay on the SA control plane).
+    if (existingRole !== "employee") {
+      throw new UserManagementError(
+        "Only employee-role logins can be linked through employee account provisioning."
+      );
+    }
+    if (!canAdministerEmployeeAccount(actor.role, existingRole)) {
+      throw new UserManagementError("You are not permitted to link this account.");
+    }
+
+    const linkedAccount = employeeStatusToUserAccountFields(employee.employeeStatus);
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: existing.id },
+        data: {
+          employeeId: employee.id,
+          accountStatus: linkedAccount.accountStatus,
+          isActive: linkedAccount.isActive,
+          ...(employee.email ? {} : { email: existing.email }),
+        },
+      });
+      if (!employee.email) {
+        await tx.employee.update({
+          where: { id: employee.id },
+          data: { email: existing.email },
+        });
+      }
+      await writeAuditLog(
+        {
+          entityType: "user",
+          entityId: existing.id,
+          action: AUDIT_ACTIONS.USER_LOGIN_LINKED,
+          actorUserId: actor.id,
+          actorEmail: actor.email,
+          employeeId: employee.id,
+          module: "employees",
+          description: "An existing login was linked to an employee record.",
+          newValue: {
+            employeeId: employee.id,
+            email: existing.email,
+            role: existingRole,
+            accountStatus: linkedAccount.accountStatus,
+            isActive: linkedAccount.isActive,
+          },
+          requestContext,
+          metadata: {
+            operation: input.auditOperation ?? "link",
+            employeeCode: employee.employeeCode,
+          },
+        },
+        tx
+      );
+    });
+
+    if (!linkedAccount.isActive) {
+      await invalidateUserSessions(existing.id);
+    }
+
+    return { userId: existing.id };
+  }
+
+  // create mode — role forced to employee; never trust client role
+  const email = (input.email ?? employee.email ?? "").trim().toLowerCase();
+  if (!email) throw new UserManagementError("Email is required to create a login.");
+
+  const duplicate = await prisma.user.findUnique({ where: { email } });
+  if (duplicate) {
+    throw new UserManagementError(
+      "A login with this email already exists. Use link mode to attach an unlinked employee login."
+    );
+  }
+
+  const password = input.generate ? generateSecureTemporaryPassword() : input.password ?? "";
+  if (password.length < 8) {
+    throw new UserManagementError("Password must be at least 8 characters.");
+  }
+  const passwordHash = await bcrypt.hash(password, 10);
+  const accountFields = employeeStatusToUserAccountFields(employee.employeeStatus);
+
+  const created = await prisma.$transaction(async (tx) => {
+    const user = await tx.user.create({
+      data: {
+        email,
+        password: passwordHash,
+        role: UserRole.employee,
+        employeeId: employee.id,
+        accountStatus: accountFields.accountStatus,
+        isActive: accountFields.isActive,
+        mustChangePassword: input.mustChangePassword,
+        authProvider: AuthProvider.local,
+      },
+    });
+    if (!employee.email) {
+      await tx.employee.update({
+        where: { id: employee.id },
+        data: { email },
+      });
+    }
+    await writeAuditLog(
+      {
+        entityType: "user",
+        entityId: user.id,
+        action: AUDIT_ACTIONS.USER_LOGIN_CREATED,
+        actorUserId: actor.id,
+        actorEmail: actor.email,
+        employeeId: employee.id,
+        module: "employees",
+        description: "A local employee login was provisioned.",
+        newValue: {
+          email,
+          role: "employee",
+          employeeId: employee.id,
+          mustChangePassword: input.mustChangePassword,
+          accountStatus: accountFields.accountStatus,
+          isActive: accountFields.isActive,
+        },
+        requestContext,
+        metadata: {
+          operation: input.auditOperation ?? "create",
+          employeeCode: employee.employeeCode,
+          generated: input.generate,
+          employeeStatus: employee.employeeStatus,
+        },
+      },
+      tx
+    );
+    return user;
+  });
+
+  return {
+    userId: created.id,
+    temporaryPassword: input.generate ? password : undefined,
+  };
 }
 
 /**

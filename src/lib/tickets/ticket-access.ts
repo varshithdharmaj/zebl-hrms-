@@ -45,16 +45,21 @@ export function buildTicketWhereClause(
       ? { in: filters.category as unknown as never[] }
       : (filters.category as unknown as never);
   }
-  if (filters?.search) {
-    baseWhere.OR = [
-      { ticketNumber: { contains: filters.search, mode: "insensitive" } },
-      { subject: { contains: filters.search, mode: "insensitive" } },
-      { description: { contains: filters.search, mode: "insensitive" } },
-    ];
-  }
+
+  // Search must be combined with access scope via AND — never overwrite access OR.
+  const searchOr: Prisma.TicketWhereInput[] | null = filters?.search
+    ? [
+        { ticketNumber: { contains: filters.search, mode: "insensitive" } },
+        { subject: { contains: filters.search, mode: "insensitive" } },
+        { description: { contains: filters.search, mode: "insensitive" } },
+      ]
+    : null;
 
   // Super Admin: all tickets (including anonymous)
   if (isSuperAdmin(session.role)) {
+    if (searchOr) {
+      baseWhere.OR = searchOr;
+    }
     return baseWhere;
   }
 
@@ -68,10 +73,13 @@ export function buildTicketWhereClause(
       return { id: "impossible" };
     }
     baseWhere.raisedByEmployeeId = session.employeeId;
+    if (searchOr) {
+      baseWhere.OR = searchOr;
+    }
     return baseWhere;
   }
 
-  // HR: assigned or department-matched (non-anonymous already enforced above)
+  // HR: assigned or unassigned (non-anonymous already enforced above)
   if (session.role === "hr") {
     const hrConditions: Prisma.TicketWhereInput[] = [];
 
@@ -80,19 +88,22 @@ export function buildTicketWhereClause(
       hrConditions.push({ assignedToUserId: session.id });
     }
 
-    // Department-matched (if HR user has employee profile)
-    // Note: This is a simplified version. Full implementation would require
-    // fetching the HR user's department from their employee record.
-    // For now, we allow HR to see unassigned tickets in their scope.
+    // Unassigned tickets in HR scope (new tickets HR may pick up)
     hrConditions.push({ assignedToUserId: null });
 
-    if (hrConditions.length > 0) {
-      baseWhere.OR = hrConditions;
-    } else {
-      // No conditions met = no tickets
+    if (hrConditions.length === 0) {
       return { id: "impossible" };
     }
 
+    // Preserve access scope AND search: never replace access OR with search OR
+    if (searchOr) {
+      return {
+        ...baseWhere,
+        AND: [{ OR: hrConditions }, { OR: searchOr }],
+      };
+    }
+
+    baseWhere.OR = hrConditions;
     return baseWhere;
   }
 
@@ -143,46 +154,43 @@ export function buildAnonymousTicketWhereClause(
 }
 
 /**
- * Get count of visible tickets for dashboard/stats.
- * Anonymous tickets excluded for non-SA.
+ * Get count of visible tickets for dashboard/stats (no list filters).
+ * Anonymous tickets excluded for non-SA — same semantics as
+ * `buildTicketWhereClause(session)` with no filters.
  */
 export function buildTicketCountWhere(session: SessionUser): Prisma.TicketWhereInput {
   return buildTicketWhereClause(session);
 }
 
 /**
- * Standard ticket select that hides employee identity for anonymous tickets
- * when viewed by non-Super Admin users.
- * 
- * NOTE: This is a defense-in-depth measure. The primary protection is the
- * WHERE clause that prevents non-SA from querying anonymous tickets at all.
+ * Shared Prisma select for admin ticket list pages
+ * (`/admin/tickets` and `/admin/tickets/anonymous`).
+ *
+ * Authorization remains in the route WHERE clause — this is projection only.
+ * Includes `raisedByEmployee.id` for both surfaces (HR UI ignores it).
  */
-export function getTicketSelectForSession(session: SessionUser) {
-  const isAdmin = isSuperAdmin(session.role);
-
+export function getAdminTicketListSelect() {
   return {
     id: true,
     ticketNumber: true,
     subject: true,
-    description: true,
     category: true,
-    type: true,
     priority: true,
     status: true,
     isAnonymous: true,
-    raisedByEmployeeId: isAdmin, // Hide employee ID from non-SA
-    raisedByEmployee: isAdmin
-      ? { select: { id: true, name: true, employeeCode: true, department: true } }
-      : false,
     department: true,
     assignedToUserId: true,
     assignedToUser: {
-      select: { id: true, email: true, employee: { select: { name: true } } },
+      select: {
+        id: true,
+        email: true,
+        employee: { select: { name: true } },
+      },
     },
-    resolutionNotes: true,
-    resolvedAt: true,
-    closedAt: true,
-    createdAt: true,
+    raisedByEmployee: {
+      select: { id: true, name: true, employeeCode: true },
+    },
     updatedAt: true,
-  };
+    createdAt: true,
+  } as const satisfies Prisma.TicketSelect;
 }

@@ -1,13 +1,16 @@
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { LeaveManagement } from "@/components/admin/leave-management";
 import { getAdminLeaveBalancesOverview } from "@/actions/leave-balances";
-import { getLeaveRequests } from "@/lib/queries";
+import { getLeaveRequests } from "@/lib/data";
+import { requireAdminSession } from "@/lib/auth-guards";
+import { toWorkflowActor } from "@/lib/workflow/leave-workflow";
 
 export default async function AdminLeavesPage({
   searchParams,
 }: {
   searchParams: Promise<{ status?: string; q?: string }>;
 }) {
+  const session = await requireAdminSession();
   const { status, q } = await searchParams;
   const [leaves, balanceRows] = await Promise.all([
     getLeaveRequests("admin", undefined, {
@@ -26,6 +29,7 @@ export default async function AdminLeavesPage({
       <LeaveManagement
         leaves={leaves}
         balanceRows={balanceRows}
+        actor={toWorkflowActor(session)}
         initialStatus={status ?? ""}
         initialSearch={q ?? ""}
       />

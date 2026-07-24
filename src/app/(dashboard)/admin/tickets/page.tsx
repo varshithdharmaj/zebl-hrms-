@@ -1,20 +1,16 @@
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { HRTicketManagement } from "@/components/admin/hr-ticket-management";
-import { getSession } from "@/lib/auth";
-import { redirect } from "next/navigation";
-import { prisma } from "@/lib/prisma";
-import { buildTicketWhereClause } from "@/lib/tickets";
-import { canAccessHRAdministration } from "@/lib/permissions";
+import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { buildTicketCountWhere, buildTicketWhereClause } from "@/lib/tickets";
+import { fetchAdminTicketListPageData } from "@/lib/tickets/admin-ticket-list-data";
 
 export default async function AdminTicketsPage({
   searchParams,
 }: {
   searchParams: Promise<{ status?: string; category?: string; priority?: string; q?: string; page?: string }>;
 }) {
-  const session = await getSession();
-  if (!session || !canAccessHRAdministration(session.role)) {
-    redirect("/login");
-  }
+  // Shell access already gated by admin layout + middleware; shared guard for consistent session typing.
+  const session = await requireHROrSuperAdminSession();
 
   const { status, category, priority, q, page: pageParam } = await searchParams;
 
@@ -31,64 +27,14 @@ export default async function AdminTicketsPage({
     search: q,
   });
 
-  const [tickets, totalCount, stats, hrUsers] = await Promise.all([
-    prisma.ticket.findMany({
-      where: whereClause,
-      orderBy: { createdAt: "desc" },
-      skip,
-      take: pageSize,
-      select: {
-        id: true,
-        ticketNumber: true,
-        subject: true,
-        category: true,
-        priority: true,
-        status: true,
-        isAnonymous: true,
-        department: true,
-        assignedToUserId: true,
-        assignedToUser: {
-          select: {
-            id: true,
-            email: true,
-            employee: { select: { name: true } },
-          },
-        },
-        raisedByEmployee: {
-          select: { name: true, employeeCode: true },
-        },
-        updatedAt: true,
-        createdAt: true,
-      },
-    }),
-    // Get total count for pagination
-    prisma.ticket.count({ where: whereClause }),
-    // Get stats (automatically excludes anonymous for non-SA)
-    prisma.ticket.groupBy({
-      by: ["status"],
-      where: buildTicketWhereClause(session),
-      _count: true,
-    }),
-    // Get HR users for assignment dropdown
-    prisma.user.findMany({
-      where: {
-        role: { in: ["hr", "super_admin"] },
-        isActive: true,
-      },
-      select: {
-        id: true,
-        email: true,
-        employee: { select: { name: true } },
-      },
-      orderBy: { email: "asc" },
-    }),
-  ]);
+  // Unfiltered visibility scope for KPIs (excludes anonymous for non-SA)
+  const statsWhere = buildTicketCountWhere(session);
 
-  // Calculate priority stats
-  const priorityStats = await prisma.ticket.groupBy({
-    by: ["priority"],
-    where: buildTicketWhereClause(session),
-    _count: true,
+  const { tickets, totalCount, stats, priorityStats } = await fetchAdminTicketListPageData({
+    whereClause,
+    statsWhere,
+    skip,
+    take: pageSize,
   });
 
   const totalPages = Math.ceil(totalCount / pageSize);
@@ -104,7 +50,6 @@ export default async function AdminTicketsPage({
         tickets={tickets}
         stats={stats}
         priorityStats={priorityStats}
-        hrUsers={hrUsers}
         initialFilters={{
           status: status ?? "",
           category: category ?? "",

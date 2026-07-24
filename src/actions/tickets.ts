@@ -67,7 +67,9 @@ export async function createTicketAction(
     category: formData.get("category"),
     type: formData.get("type"),
     priority: formData.get("priority"),
-    isAnonymous: formData.get("isAnonymous") === "on" || formData.get("isAnonymous") === "true",
+    // Anonymous feature temporarily disabled — always create as non-anonymous
+    isAnonymous: false,
+    // isAnonymous: formData.get("isAnonymous") === "on" || formData.get("isAnonymous") === "true",
   });
 
   if (!validated.ok) {

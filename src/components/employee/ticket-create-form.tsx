@@ -10,7 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SectionCard } from "@/components/ui/section-card";
 import { ErrorAlert } from "@/components/ui/error-alert";
-import { AlertTriangle, Info } from "lucide-react";
+import { Info } from "lucide-react";
+// import { AlertTriangle, Info } from "lucide-react"; // AlertTriangle used by anonymous UI
 
 const initialState: TicketActionState = {};
 
@@ -32,7 +33,8 @@ const TYPES = [
   { value: "service_request", label: "Service Request" },
   { value: "suggestion", label: "Suggestion" },
   { value: "meeting_request", label: "Meeting Request" },
-  { value: "anonymous_complaint", label: "Anonymous Complaint" },
+  // Anonymous feature temporarily disabled
+  // { value: "anonymous_complaint", label: "Anonymous Complaint" },
   { value: "other", label: "Other" },
 ];
 
@@ -47,7 +49,8 @@ export function TicketCreateForm() {
   const [category, setCategory] = useState("other");
   const [type, setType] = useState("service_request");
   const [priority, setPriority] = useState("medium");
-  const [isAnonymous, setIsAnonymous] = useState(false);
+  // Anonymous feature temporarily disabled
+  // const [isAnonymous, setIsAnonymous] = useState(false);
 
   return (
     <SectionCard
@@ -58,7 +61,7 @@ export function TicketCreateForm() {
         <input type="hidden" name="category" value={category} />
         <input type="hidden" name="type" value={type} />
         <input type="hidden" name="priority" value={priority} />
-        <input type="hidden" name="isAnonymous" value={isAnonymous ? "true" : "false"} />
+        <input type="hidden" name="isAnonymous" value="false" />
 
         {state.error && <ErrorAlert message={state.error} />}
 
@@ -143,6 +146,7 @@ export function TicketCreateForm() {
           </Select>
         </div>
 
+        {/* Anonymous feature temporarily disabled
         <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-4">
           <div className="flex items-start gap-3">
             <input
@@ -173,6 +177,7 @@ export function TicketCreateForm() {
             </div>
           )}
         </div>
+        */}
 
         <div className="flex gap-2 rounded-md bg-blue-50 p-3 text-xs text-blue-800">
           <Info className="h-4 w-4 flex-shrink-0 mt-0.5" />

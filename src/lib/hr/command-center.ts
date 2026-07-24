@@ -1,4 +1,4 @@
-import { LeaveWorkflowStatus, NotificationDeliveryStatus } from "@/generated/prisma/enums";
+import { LeaveWorkflowStatus } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { getNotificationStats } from "@/lib/notifications/admin-queries";
 import { getIntegrationSettings } from "@/lib/integrations/integration-settings";
@@ -28,10 +28,8 @@ export async function getHrCommandCenterData() {
     notificationStats,
     integrationSettings,
     workflowScan,
-    absentToday,
+    absenceSnapshot,
     onLeaveToday,
-    failedNotifications,
-    departmentsShortStaffed,
   ] = await Promise.all([
     safeLoad("pendingHr", [], getPendingHrApprovals),
     safeLoad("notificationStats", { pending: 0, failed: 0, sent: 0 }, getNotificationStats),
@@ -43,13 +41,9 @@ export async function getHrCommandCenterData() {
       };
     }),
     safeLoad("workflowScan", EMPTY_WORKFLOW, scanWorkflowIntegrity),
-    safeLoad("absentToday", 0, () =>
-      prisma.attendanceRecord.count({
-        where: {
-          attendanceDate: { gte: today, lt: tomorrow },
-          status: "Absent",
-        },
-      })
+    // Single Absent-today load: count + department aggregation (was count + findMany).
+    safeLoad("absenceSnapshot", { absentToday: 0, departmentsShortStaffed: [] }, () =>
+      getAbsenceSnapshot(today, tomorrow)
     ),
     safeLoad("onLeaveToday", [], () =>
       prisma.leaveRequest.findMany({
@@ -62,13 +56,11 @@ export async function getHrCommandCenterData() {
         take: 15,
       })
     ),
-    safeLoad("failedNotifications", 0, () =>
-      prisma.notification.count({
-        where: { status: NotificationDeliveryStatus.failed },
-      })
-    ),
-    safeLoad("departmentsShortStaffed", [], () => getDepartmentsWithHighAbsence(today, tomorrow)),
   ]);
+
+  const { absentToday, departmentsShortStaffed } = absenceSnapshot;
+  // Same KPI as the former dedicated failed count — sourced from getNotificationStats().
+  const failedNotifications = notificationStats.failed;
 
   const escalationRisk = pendingHr.filter((l) => {
     if (!l.submittedAt) return false;
@@ -123,24 +115,42 @@ export async function getHrCommandCenterData() {
   };
 }
 
-async function getDepartmentsWithHighAbsence(today: Date, tomorrow: Date) {
+/**
+ * One Absent-today query for both the KPI count and short-staffed departments list.
+ * Semantics match the previous count + findMany pair (same filter).
+ */
+async function getAbsenceSnapshot(today: Date, tomorrow: Date) {
   const records = await prisma.attendanceRecord.findMany({
     where: {
       attendanceDate: { gte: today, lt: tomorrow },
       status: "Absent",
     },
-    include: { employee: { select: { department: true } } },
+    select: {
+      employee: { select: { department: true } },
+    },
   });
 
+  return buildAbsenceSnapshotFromRecords(records);
+}
+
+/** Pure aggregation — exported for unit tests / reuse. */
+export function buildAbsenceSnapshotFromRecords(
+  records: { employee: { department: string | null } }[]
+) {
   const byDept = new Map<string, number>();
   for (const r of records) {
     const dept = r.employee.department ?? "Unassigned";
     byDept.set(dept, (byDept.get(dept) ?? 0) + 1);
   }
 
-  return [...byDept.entries()]
+  const departmentsShortStaffed = [...byDept.entries()]
     .filter(([, count]) => count >= 2)
     .map(([department, absentCount]) => ({ department, absentCount }))
     .sort((a, b) => b.absentCount - a.absentCount)
     .slice(0, 5);
+
+  return {
+    absentToday: records.length,
+    departmentsShortStaffed,
+  };
 }

@@ -240,6 +240,9 @@ describe("workflow and approval tokens (integration)", () => {
       where: { id: rollbackLeaveId },
       include: { currentStep: true },
     });
+    expect(lr.version).toBe(0);
+
+    // Issue token against the leave version at email-send time (snapshot in metadata).
     const tokenId = crypto.randomUUID();
     await prisma.approvalToken.create({
       data: {
@@ -250,42 +253,38 @@ describe("workflow and approval tokens (integration)", () => {
         action: ApprovalTokenAction.approve,
         tokenHash: `test-${crypto.randomUUID()}`,
         expiresAt: new Date(Date.now() + 3600_000),
+        metadata: JSON.stringify({ leaveVersion: lr.version }),
       },
     });
 
+    // Concurrent change after the email link was issued.
     await prisma.leaveRequest.update({
       where: { id: rollbackLeaveId },
       data: { version: { increment: 1 } },
     });
 
-    const originalFindUniqueToken = prisma.approvalToken.findUnique.bind(prisma.approvalToken);
-    vi.spyOn(prisma.approvalToken, "findUnique").mockImplementation((async (args: any) => {
-      const res = (await originalFindUniqueToken(args)) as any;
-      if (res && res.id === tokenId && res.leaveRequest) {
-        return {
-          ...res,
-          leaveRequest: {
-            ...res.leaveRequest,
-            version: 0,
-          },
-        };
-      }
-      return res;
-    }) as any);
-
     const signed = signToken(tokenId, ApprovalTokenAction.approve);
     const result = await consumeApprovalToken({ signedToken: signed });
     expect(result.success).toBe(false);
+    expect(result.message).toMatch(/updated by another user/i);
 
+    // Transaction must roll back token consumption so the link stays usable
+    // only after the requester refreshes / a new link is issued for the new version.
     const token = await prisma.approvalToken.findUnique({ where: { id: tokenId } });
     expect(token?.status).toBe(ApprovalTokenStatus.active);
+    expect(token?.usedAt).toBeNull();
+
+    const leaveAfter = await prisma.leaveRequest.findUniqueOrThrow({
+      where: { id: rollbackLeaveId },
+    });
+    expect(leaveAfter.version).toBe(1);
+    expect(leaveAfter.workflowStatus).toBe(LeaveWorkflowStatus.pending_approval);
 
     await prisma.approvalToken.deleteMany({ where: { leaveRequestId: rollbackLeaveId } });
     await prisma.leaveApprovalStep.deleteMany({ where: { leaveRequestId: rollbackLeaveId } });
     await prisma.leaveRequest.delete({ where: { id: rollbackLeaveId } });
     await prisma.user.delete({ where: { id: empUser.id } });
     await prisma.employee.delete({ where: { id: emp.id } });
-    vi.restoreAllMocks();
   });
 
   run("rejects with sufficient comment", async () => {

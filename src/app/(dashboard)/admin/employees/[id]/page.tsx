@@ -3,9 +3,10 @@ import { LeaveWorkflowStatus } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { EmployeeProfileShell } from "@/components/admin/employee-profile/profile-shell";
 import { getEmployeeProfileLeaveData } from "@/actions/leave-balances";
-import { getEmployeeAttendanceSummary, getEmployeeById } from "@/lib/queries";
+import { getEmployeeAttendanceSummary, getEmployeeById } from "@/lib/data";
 import { getManagerCandidates } from "@/lib/org";
 import { defaultDateRange } from "@/lib/utils";
+import { parseDateRangeQuery } from "@/lib/date-range";
 import type { EmployeeStatus } from "@/lib/employee-types";
 import { getSession } from "@/lib/auth";
 import { toAppUserRole } from "@/lib/roles";
@@ -15,10 +16,10 @@ export default async function EmployeeProfilePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ start?: string; end?: string }>;
+  searchParams: Promise<{ start?: string; end?: string; from?: string; to?: string; preset?: string }>;
 }) {
   const { id: idStr } = await params;
-  const { start, end } = await searchParams;
+  const raw = await searchParams;
   const id = parseInt(idStr, 10);
 
   if (Number.isNaN(id)) notFound();
@@ -28,10 +29,22 @@ export default async function EmployeeProfilePage({
   const session = await getSession();
   if (!session) notFound();
 
+  const range = parseDateRangeQuery({
+    from: raw.from,
+    to: raw.to,
+    start: raw.start,
+    end: raw.end,
+    preset: raw.preset,
+  });
+  const hasRange = Boolean(raw.from || raw.to || raw.start || raw.end || raw.preset);
   const { start: defaultStart, end: defaultEnd } = defaultDateRange();
 
   const [attendance, leaveData, managerCandidates] = await Promise.all([
-    getEmployeeAttendanceSummary(id, start, end),
+    getEmployeeAttendanceSummary(
+      id,
+      hasRange ? range.from : undefined,
+      hasRange ? range.to : undefined
+    ),
     getEmployeeProfileLeaveData(id),
     getManagerCandidates(id),
   ]);

@@ -82,6 +82,7 @@ export default async function AdminLoginHistoryPage({
           filters={params}
           basePath="/admin/security/login-history"
           admin
+          allowFailedStatus={allowSensitiveActions}
           departments={departments.flatMap((row) => row.department ? [row.department] : [])}
         />
       </SectionCard>

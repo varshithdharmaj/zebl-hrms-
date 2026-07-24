@@ -1,21 +1,19 @@
-import { redirect, notFound } from "next/navigation";
+import { notFound } from "next/navigation";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { HRTicketDetail } from "@/components/admin/hr-ticket-detail";
 import { TicketAuditHistory } from "@/components/tickets/ticket-audit-history";
-import { getSession } from "@/lib/auth";
+import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { canViewTicket } from "@/lib/tickets";
-import { canAccessHRAdministration, isSuperAdmin } from "@/lib/permissions";
+import { isSuperAdmin } from "@/lib/permissions";
 import { getTicketAuditHistory } from "@/lib/audit/ticket-audit";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
 import { getRequestSecurityContext } from "@/lib/security/request-context";
 
 export default async function AdminTicketDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await getSession();
-  if (!session || !canAccessHRAdministration(session.role)) {
-    redirect("/login");
-  }
+  // Shell access already gated by admin layout + middleware; shared guard for consistent session typing.
+  const session = await requireHROrSuperAdminSession();
 
   const ticket = await prisma.ticket.findUnique({
     where: { id },

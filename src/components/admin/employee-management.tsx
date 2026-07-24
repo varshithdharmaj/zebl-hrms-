@@ -199,7 +199,7 @@ function CreateEmployeeDialog({
           </label>
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
-            <Input id="password" name="password" type="password" minLength={6} />
+            <Input id="password" name="password" type="password" minLength={8} />
           </div>
           <Button type="submit" disabled={pending} className="w-full">
             {pending ? "Creating…" : "Create employee"}

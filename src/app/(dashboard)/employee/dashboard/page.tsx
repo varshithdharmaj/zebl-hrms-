@@ -5,6 +5,7 @@ import { AttendanceHeroSkeleton } from "@/components/employee/dashboard/attendan
 import { AttendanceHeatmapSkeleton } from "@/components/employee/dashboard/attendance-heatmap";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getSession } from "@/lib/auth";
+import { parseDateRangeQuery } from "@/lib/date-range";
 
 function EmployeeDashboardSkeleton() {
   return (
@@ -25,25 +26,35 @@ export default async function EmployeeDashboardPage({
 }: {
   searchParams: Promise<{
     date?: string;
+    from?: string;
+    to?: string;
     start?: string;
     end?: string;
+    preset?: string;
     heatmapMonth?: string;
   }>;
 }) {
   const session = await getSession();
   if (!session?.employeeId) redirect("/login");
 
-  const { date, start, end, heatmapMonth } = await searchParams;
+  const params = await searchParams;
+  const range = parseDateRangeQuery({
+    from: params.from,
+    to: params.to,
+    start: params.start,
+    end: params.end,
+    preset: params.preset,
+  });
 
   return (
     <Suspense fallback={<EmployeeDashboardSkeleton />}>
       <EmployeeDashboard
         employeeId={session.employeeId}
         employeeName={session.employeeName}
-        selectedDate={date}
-        startDate={start}
-        endDate={end}
-        heatmapMonth={heatmapMonth}
+        selectedDate={params.date}
+        startDate={range.from}
+        endDate={range.to}
+        heatmapMonth={params.heatmapMonth}
       />
     </Suspense>
   );

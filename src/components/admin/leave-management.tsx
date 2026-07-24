@@ -7,9 +7,11 @@ import { LeaveBalanceManager } from "@/components/admin/leave-balance-manager";
 import type { LeaveBalanceSummary } from "@/lib/leave";
 import { LeaveWorkflowStatus } from "@/generated/prisma/enums";
 import { TableToolbar } from "@/components/ui/table-toolbar";
+import type { WorkflowActor } from "@/lib/workflow/workflow-types";
 
 type Leave = {
   id: number;
+  employeeId: number;
   leaveType: string;
   startDate: Date;
   endDate: Date;
@@ -27,6 +29,7 @@ type Leave = {
     id: number;
     stepOrder: number;
     approverRole: string;
+    approverId: number | null;
     status: string;
     actedAt: Date | null;
     comment: string | null;
@@ -46,11 +49,13 @@ type BalanceRow = {
 export function LeaveManagement({
   leaves,
   balanceRows,
+  actor,
   initialStatus = "",
   initialSearch = "",
 }: {
   leaves: Leave[];
   balanceRows: BalanceRow[];
+  actor: WorkflowActor;
   initialStatus?: string;
   initialSearch?: string;
 }) {
@@ -78,7 +83,7 @@ export function LeaveManagement({
         ]}
       />
       <AppTabs tabs={tabs} active={active} onChange={setActive} />
-      {active === "requests" && <AdminLeaveTable leaves={leaves} />}
+      {active === "requests" && <AdminLeaveTable leaves={leaves} actor={actor} />}
       {active === "balances" && (
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">

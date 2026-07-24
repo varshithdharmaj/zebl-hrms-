@@ -1,6 +1,7 @@
 import "server-only";
 
-import { PrismaClient } from "@/generated/prisma/client";
+// import { PrismaClient } from "@/generated/prisma/client"; // Cloudflare Workers
+import { PrismaClient } from "@/generated/prisma"; // Local Node.js / next dev
 import { PrismaPg } from "@prisma/adapter-pg";
 import { cache } from "react";
 

@@ -1,6 +1,6 @@
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { EmployeeManagement } from "@/components/admin/employee-management";
-import { getEmployees } from "@/lib/queries";
+import { getEmployees } from "@/lib/data";
 
 export default async function EmployeesPage({
   searchParams,

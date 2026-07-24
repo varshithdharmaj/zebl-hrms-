@@ -1,5 +1,4 @@
 import type { SessionUser } from "@/lib/session";
-import type { AppUserRole } from "@/lib/roles";
 import { isSuperAdmin, canAccessHRAdministration } from "@/lib/permissions";
 
 export type TicketLike = {
@@ -130,30 +129,8 @@ export function canViewInternalNotes(session: SessionUser | null, ticket: Ticket
 
 /**
  * Whether a user can assign/reassign a ticket.
+ * Same boundary as canManageTicket — HR must not assign tickets they cannot manage.
  */
 export function canAssignTicket(session: SessionUser | null, ticket: TicketLike): boolean {
-  if (!session) return false;
-
-  // Anonymous: SA only
-  if (ticket.isAnonymous) {
-    return isSuperAdmin(session.role);
-  }
-
-  // SA + HR can assign
-  return canAccessHRAdministration(session.role);
-}
-
-/**
- * Whether a user can access the anonymous ticket queue.
- */
-export function canAccessAnonymousTickets(role: AppUserRole): boolean {
-  return isSuperAdmin(role);
-}
-
-/**
- * Whether a user can create tickets on behalf of an employee.
- * Super Admin only (if implemented).
- */
-export function canCreateTicketForOthers(role: AppUserRole): boolean {
-  return isSuperAdmin(role);
+  return canManageTicket(session, ticket);
 }

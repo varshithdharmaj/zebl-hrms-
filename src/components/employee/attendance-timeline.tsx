@@ -13,8 +13,13 @@ import {
 import { StatusBadge } from "@/components/ui/status-badge";
 import { SectionCard } from "@/components/ui/section-card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { cn, minutesToHours } from "@/lib/utils";
+import {
+  mapAttendancePeriods,
+  shouldShowAttendancePeriods,
+  type AttendancePeriodSession,
+} from "@/lib/attendance/attendance-periods-display";
 import type { HeroStatus } from "@/lib/attendance/hero-status";
+import { cn, minutesToHours } from "@/lib/utils";
 
 function StepTag({ label }: { label: string }) {
   return (
@@ -114,17 +119,150 @@ function EmptyDayNotice({ heroStatus, isToday }: { heroStatus: HeroStatus; isTod
   }
 }
 
+function AttendancePeriodsList({ sessions }: { sessions: AttendancePeriodSession[] }) {
+  const periods = mapAttendancePeriods(sessions);
+
+  return (
+    <div className="mt-6 border-t border-border pt-5">
+      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Attendance periods
+      </p>
+      <ul className="space-y-3" aria-label="Attendance periods">
+        {periods.map((period, index) => (
+          <li
+            key={period.id || `period-${index}`}
+            className="flex items-center gap-4 rounded-xl border border-border bg-muted/30 p-4"
+          >
+            <div
+              className={cn(
+                "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
+                period.isOpen
+                  ? "bg-accent-blue-muted text-accent-blue"
+                  : "bg-accent-green-muted text-accent-green"
+              )}
+            >
+              {period.isOpen ? <LogIn className="h-5 w-5" /> : <Clock className="h-5 w-5" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-muted-foreground">Period {index + 1}</p>
+              <p className="text-lg font-semibold tabular-nums tracking-tight text-foreground">
+                {period.rangeLabel}
+              </p>
+              <p
+                className={cn(
+                  "text-[0.6875rem] tabular-nums",
+                  period.isOpen ? "font-medium text-accent-blue" : "text-muted-foreground"
+                )}
+              >
+                {period.isOpen
+                  ? "In progress"
+                  : period.durationLabel
+                    ? `Duration: ${period.durationLabel}`
+                    : null}
+              </p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function SummarySteps({
+  steps,
+}: {
+  steps: ReturnType<typeof buildSteps>;
+}) {
+  return (
+    <>
+      <div className="hidden md:block">
+        <div className="relative grid grid-cols-4 gap-4">
+          <div
+            className="pointer-events-none absolute left-[12%] right-[12%] top-7 h-px bg-gradient-to-r from-border via-primary/30 to-border"
+            aria-hidden
+          />
+          {steps.map((step) => {
+            const Icon = step.icon;
+            return (
+              <div key={step.key} className="relative flex flex-col items-center text-center">
+                <div
+                  className={cn(
+                    "relative z-10 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-card shadow-subtle",
+                    !step.active && "opacity-60"
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "flex h-10 w-10 items-center justify-center rounded-xl",
+                      step.active ? step.accent : "bg-muted text-muted-foreground"
+                    )}
+                  >
+                    <Icon className="h-5 w-5" />
+                  </div>
+                </div>
+                <p className="mt-4 text-xs font-medium text-muted-foreground">{step.label}</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums tracking-tight text-foreground">
+                  {step.value}
+                </p>
+                {step.caption && (
+                  <p className="mt-0.5 text-[0.6875rem] text-muted-foreground">{step.caption}</p>
+                )}
+                {step.tag && <StepTag label={step.tag} />}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <ul className="space-y-4 md:hidden">
+        {steps.map((step) => {
+          const Icon = step.icon;
+          return (
+            <li
+              key={step.key}
+              className="flex items-center gap-4 rounded-xl border border-border bg-muted/30 p-4"
+            >
+              <div
+                className={cn(
+                  "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
+                  step.active ? step.accent : "bg-muted text-muted-foreground"
+                )}
+              >
+                <Icon className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">{step.label}</p>
+                <p className="text-lg font-semibold tabular-nums text-foreground">{step.value}</p>
+                {step.caption && (
+                  <p className="text-[0.6875rem] text-muted-foreground">{step.caption}</p>
+                )}
+                {step.tag && <StepTag label={step.tag} />}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+}
+
 export function AttendanceTimeline({
   heroStatus,
+  sessions = [],
   overtimeMinutes,
   expectedWorkMinutes,
+  totalWorkedMinutes: _totalWorkedMinutes = 0,
   isToday,
   selectedDateLabel,
 }: {
   /** null = the shared classification failed to load — see AttendanceHero's identical signal. */
   heroStatus: HeroStatus | null;
+  /** Sessions for the selected date only (from getEmployeeDashboardData). */
+  sessions?: AttendancePeriodSession[];
   overtimeMinutes: number;
   expectedWorkMinutes: number | null;
+  /** Daily total from AttendanceRecord — shown via hero worked label in the summary steps. */
+  totalWorkedMinutes?: number;
   isToday: boolean;
   selectedDateLabel?: string;
 }) {
@@ -149,6 +287,7 @@ export function AttendanceTimeline({
   }
 
   const hasCheckIn = Boolean(heroStatus.checkInTime);
+  const showPeriods = shouldShowAttendancePeriods(sessions);
   const steps = buildSteps(heroStatus, overtimeMinutes, expectedWorkMinutes);
 
   const contextNote =
@@ -178,77 +317,9 @@ export function AttendanceTimeline({
         <p className="mb-4 text-sm text-muted-foreground">{contextNote}</p>
       )}
 
-      {hasCheckIn && (
-        <>
-          <div className="hidden md:block">
-            <div className="relative grid grid-cols-4 gap-4">
-              <div
-                className="pointer-events-none absolute left-[12%] right-[12%] top-7 h-px bg-gradient-to-r from-border via-primary/30 to-border"
-                aria-hidden
-              />
-              {steps.map((step) => {
-                const Icon = step.icon;
-                return (
-                  <div key={step.key} className="relative flex flex-col items-center text-center">
-                    <div
-                      className={cn(
-                        "relative z-10 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-card shadow-subtle",
-                        !step.active && "opacity-60"
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          "flex h-10 w-10 items-center justify-center rounded-xl",
-                          step.active ? step.accent : "bg-muted text-muted-foreground"
-                        )}
-                      >
-                        <Icon className="h-5 w-5" />
-                      </div>
-                    </div>
-                    <p className="mt-4 text-xs font-medium text-muted-foreground">{step.label}</p>
-                    <p className="mt-1 text-xl font-semibold tabular-nums tracking-tight text-foreground">
-                      {step.value}
-                    </p>
-                    {step.caption && (
-                      <p className="mt-0.5 text-[0.6875rem] text-muted-foreground">{step.caption}</p>
-                    )}
-                    {step.tag && <StepTag label={step.tag} />}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+      {hasCheckIn && <SummarySteps steps={steps} />}
 
-          <ul className="space-y-4 md:hidden">
-            {steps.map((step) => {
-              const Icon = step.icon;
-              return (
-                <li
-                  key={step.key}
-                  className="flex items-center gap-4 rounded-xl border border-border bg-muted/30 p-4"
-                >
-                  <div
-                    className={cn(
-                      "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl",
-                      step.active ? step.accent : "bg-muted text-muted-foreground"
-                    )}
-                  >
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground">{step.label}</p>
-                    <p className="text-lg font-semibold tabular-nums text-foreground">{step.value}</p>
-                    {step.caption && (
-                      <p className="text-[0.6875rem] text-muted-foreground">{step.caption}</p>
-                    )}
-                    {step.tag && <StepTag label={step.tag} />}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </>
-      )}
+      {hasCheckIn && showPeriods && <AttendancePeriodsList sessions={sessions} />}
     </SectionCard>
   );
 }

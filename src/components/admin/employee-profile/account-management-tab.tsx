@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AccountStatus } from "@/generated/prisma/enums";
 import {
   changeUserRoleAction,
+  provisionEmployeeLoginAction,
   resetUserPasswordAction,
   updateAccountStatusAction,
   updateUserIdentityAction,
@@ -26,6 +27,7 @@ import { Label } from "@/components/ui/label";
 import { SectionCard } from "@/components/ui/section-card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ROLE_LABELS, USER_ROLES, type AppUserRole } from "@/lib/roles";
+import { canAdministerEmployeeAccount } from "@/lib/permissions";
 
 const initialState: ActionState = {};
 
@@ -39,6 +41,136 @@ function Feedback({ state }: { state: ActionState }) {
         </p>
       )}
     </>
+  );
+}
+
+function ProvisionEmployeeLoginCard({
+  employee,
+  canProvision,
+}: {
+  employee: ProfileEmployee;
+  canProvision: boolean;
+}) {
+  const [mode, setMode] = useState<"create" | "link">("create");
+  const [passwordMode, setPasswordMode] = useState<"manual" | "generated">("generated");
+  const [state, formAction, pending] = useActionState(
+    provisionEmployeeLoginAction,
+    initialState
+  );
+
+  if (!canProvision) {
+    return (
+      <SectionCard title="Account Management" description="No login account is linked">
+        <ErrorAlert message="Your role cannot provision a login for this employee." />
+      </SectionCard>
+    );
+  }
+
+  return (
+    <SectionCard
+      title="Account Management"
+      description="No login is linked — provision an employee-role account"
+    >
+      <div className="mb-4 flex gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant={mode === "create" ? "default" : "outline"}
+          onClick={() => setMode("create")}
+        >
+          Create login
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={mode === "link" ? "default" : "outline"}
+          onClick={() => setMode("link")}
+        >
+          Link existing login
+        </Button>
+      </div>
+      <p className="mb-4 text-sm text-muted-foreground">
+        Login role is always <strong>Employee</strong>. Elevated roles cannot be assigned here.
+      </p>
+      <form action={formAction} className="space-y-4">
+        <input type="hidden" name="employeeId" value={employee.id} />
+        <input type="hidden" name="mode" value={mode} />
+        <Feedback state={state} />
+        {state.temporaryPassword && (
+          <div className="rounded-lg border border-warning/30 bg-warning-muted p-3">
+            <p className="text-xs font-semibold">Temporary password — copy it now</p>
+            <code className="mt-1 block select-all text-sm">{state.temporaryPassword}</code>
+          </div>
+        )}
+        <div className="space-y-2">
+          <Label htmlFor="provision-email">
+            {mode === "create" ? "Login email" : "Existing login email"}
+          </Label>
+          <Input
+            id="provision-email"
+            name="email"
+            type="email"
+            defaultValue={employee.email ?? ""}
+            required
+            placeholder="name@company.com"
+          />
+        </div>
+        {mode === "create" && (
+          <>
+            <input type="hidden" name="passwordMode" value={passwordMode} />
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={passwordMode === "generated" ? "default" : "outline"}
+                onClick={() => setPasswordMode("generated")}
+              >
+                Generate temporary
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={passwordMode === "manual" ? "default" : "outline"}
+                onClick={() => setPasswordMode("manual")}
+              >
+                Set manually
+              </Button>
+            </div>
+            {passwordMode === "manual" && (
+              <div className="grid gap-3">
+                <Input
+                  name="password"
+                  type="password"
+                  placeholder="New password"
+                  minLength={8}
+                  required
+                />
+                <Input
+                  name="confirmPassword"
+                  type="password"
+                  placeholder="Confirm password"
+                  minLength={8}
+                  required
+                />
+              </div>
+            )}
+            <label className="flex items-center gap-2 text-sm">
+              <input name="mustChangePassword" type="checkbox" defaultChecked />
+              User must change password on next login
+            </label>
+          </>
+        )}
+        <Button type="submit" disabled={pending}>
+          {pending
+            ? mode === "link"
+              ? "Linking…"
+              : "Creating…"
+            : mode === "link"
+              ? "Link existing login"
+              : "Create employee login"}
+        </Button>
+      </form>
+    </SectionCard>
   );
 }
 
@@ -71,18 +203,13 @@ export function AccountManagementTab({
   const [passwordMode, setPasswordMode] = useState<"manual" | "generated">("generated");
 
   if (!user) {
-    return (
-      <SectionCard title="Account Management" description="No login account is linked">
-        <p className="text-sm text-muted-foreground">
-          Create or link a login account from User Management before administering security settings.
-        </p>
-      </SectionCard>
-    );
+    // Same boundary as server: HR/SA may provision employee-role logins only.
+    const canProvision = canAdministerEmployeeAccount(currentUserRole, "employee");
+    return <ProvisionEmployeeLoginCard employee={employee} canProvision={canProvision} />;
   }
 
-  const canAdminister =
-    currentUserRole === "super_admin" ||
-    (currentUserRole === "hr" && user.role === "employee");
+  // Mirror server canAdministerEmployeeAccount — UI is not authoritative.
+  const canAdminister = canAdministerEmployeeAccount(currentUserRole, user.role);
   const isSelf = currentUserId === user.id;
 
   return (

@@ -3,7 +3,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
-      bodySizeLimit: "10mb",
+      // Align with ATTENDANCE_UPLOAD_MAX_FILE_SIZE (5MB) in attendance import validation
+      bodySizeLimit: "5mb",
     },
   },
   webpack(config) {

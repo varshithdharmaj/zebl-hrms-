@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { UserRole } from "@/generated/prisma/client";
 import type { SessionUser } from "@/lib/auth";
 import { buildTicketWhereClause, buildAnonymousTicketWhereClause } from "@/lib/tickets/ticket-access";
-import { canViewTicket, canManageTicket } from "@/lib/tickets/ticket-permissions";
+import { canViewTicket, canManageTicket, canAssignTicket } from "@/lib/tickets/ticket-permissions";
 
 describe("Helpdesk Production Security Tests", () => {
   const mockEmployee: SessionUser = {
@@ -121,12 +121,14 @@ describe("Helpdesk Production Security Tests", () => {
       expect(where.OR).toBeDefined();
     });
 
-    it("HR search query excludes anonymous tickets", () => {
+    it("HR search query excludes anonymous tickets and preserves access scope", () => {
       const where = buildTicketWhereClause(mockHR, {
         search: "sensitive",
       });
 
       expect(where).toHaveProperty("isAnonymous", false);
+      expect(where.AND).toBeDefined();
+      expect(where.OR).toBeUndefined();
     });
 
     it("Search cannot enumerate anonymous ticket numbers for non-SA", () => {
@@ -136,6 +138,8 @@ describe("Helpdesk Production Security Tests", () => {
 
       // isAnonymous = false ensures no anonymous tickets match
       expect(where).toHaveProperty("isAnonymous", false);
+      // Access scope still required alongside search
+      expect(where.AND).toBeDefined();
     });
   });
 
@@ -173,6 +177,18 @@ describe("Helpdesk Production Security Tests", () => {
       expect(result).toBe(false);
     });
 
+    it("HR cannot assign ticket not assigned to them", () => {
+      const ticket = {
+        id: "ticket-1",
+        isAnonymous: false,
+        raisedByEmployeeId: 1,
+        assignedToUserId: "other-hr",
+        department: null,
+      };
+
+      expect(canAssignTicket(mockHR, ticket)).toBe(false);
+    });
+
     it("Employee cannot manage their own ticket", () => {
       const ticket = {
         id: "ticket-1",
@@ -197,6 +213,30 @@ describe("Helpdesk Production Security Tests", () => {
 
       const result = canManageTicket(mockHR, ticket);
       expect(result).toBe(true);
+    });
+
+    it("HR can assign ticket assigned to them", () => {
+      const ticket = {
+        id: "ticket-1",
+        isAnonymous: false,
+        raisedByEmployeeId: 1,
+        assignedToUserId: "hr-1",
+        department: null,
+      };
+
+      expect(canAssignTicket(mockHR, ticket)).toBe(true);
+    });
+
+    it("Super Admin can assign ticket assigned to another HR", () => {
+      const ticket = {
+        id: "ticket-1",
+        isAnonymous: false,
+        raisedByEmployeeId: 1,
+        assignedToUserId: "other-hr",
+        department: null,
+      };
+
+      expect(canAssignTicket(mockSA, ticket)).toBe(true);
     });
   });
 

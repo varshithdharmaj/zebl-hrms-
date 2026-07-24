@@ -5,7 +5,7 @@ import { EmployeeLeaveTable } from "@/components/employee/leave-table";
 import { LeaveBalanceGrid } from "@/components/leave/leave-balance-grid";
 import { SectionCard } from "@/components/ui/section-card";
 import { getSession } from "@/lib/auth";
-import { getEmployeeLeavePageData } from "@/lib/queries";
+import { getEmployeeLeavePageData } from "@/lib/data";
 import { getUpcomingHolidays } from "@/lib/leave/leave-calendar";
 import { formatDate } from "@/lib/utils";
 

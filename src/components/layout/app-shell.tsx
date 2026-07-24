@@ -1,24 +1,52 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppTopBar, AppTopBarDesktop } from "@/components/layout/app-top-bar";
 import type { SessionUser } from "@/lib/session";
 import { cn } from "@/lib/utils";
+import { hasDirectReportsNavAction } from "@/actions/employee-nav";
 
 export function AppShell({
   user,
   children,
   variant = "default",
   showApprovals = false,
+  /**
+   * Employee shell: resolve Team Approvals nav after first paint so the layout
+   * does not block on a direct-reports COUNT (presentation-only).
+   */
+  deferApprovalsNav = false,
 }: {
   user: SessionUser;
   children: React.ReactNode;
   variant?: "default" | "wide";
   showApprovals?: boolean;
+  deferApprovalsNav?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [approvalsVisible, setApprovalsVisible] = useState(
+    deferApprovalsNav ? false : showApprovals
+  );
   const displayName = user.employeeName ?? user.email;
+
+  useEffect(() => {
+    if (!deferApprovalsNav) {
+      setApprovalsVisible(showApprovals);
+      return;
+    }
+    let cancelled = false;
+    void hasDirectReportsNavAction()
+      .then((visible) => {
+        if (!cancelled) setApprovalsVisible(visible);
+      })
+      .catch(() => {
+        if (!cancelled) setApprovalsVisible(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [deferApprovalsNav, showApprovals]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -27,7 +55,7 @@ export function AppShell({
         userName={displayName}
         collapsed={collapsed}
         onToggleCollapse={() => setCollapsed(!collapsed)}
-        showApprovals={showApprovals}
+        showApprovals={approvalsVisible}
       />
       <div
         className={cn(

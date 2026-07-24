@@ -12,6 +12,7 @@ import { MIN_REJECTION_COMMENT_LENGTH } from "@/lib/workflow/workflow-types";
 import { revokeTokensForStep } from "@/lib/approval-tokens/token-generator";
 import { validateApprovalToken } from "@/lib/approval-tokens/token-validator";
 import type { ConsumeTokenInput, ConsumeTokenResult } from "@/lib/approval-tokens/token-types";
+import { resolveTokenExpectedVersion } from "@/lib/approval-tokens/token-types";
 
 function rateLimitKey(input: ConsumeTokenInput): string {
   const ip = input.clientIp ?? "unknown";
@@ -62,6 +63,10 @@ export async function consumeApprovalToken(
 
   const actor = toWorkflowActor(user);
   const correlationId = `leave-${tokenRow.leaveRequestId}-step-${tokenRow.approvalStepId}`;
+  const expectedVersion = resolveTokenExpectedVersion(
+    tokenRow.metadata,
+    tokenRow.leaveRequest.version
+  );
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -86,14 +91,14 @@ export async function consumeApprovalToken(
           ? await advanceWorkflow(
               tokenRow.leaveRequestId,
               actor,
-              tokenRow.leaveRequest.version,
+              expectedVersion,
               tx
             )
           : await rejectWorkflow(
               tokenRow.leaveRequestId,
               actor,
               input.comment!.trim(),
-              tokenRow.leaveRequest.version,
+              expectedVersion,
               tx
             );
 

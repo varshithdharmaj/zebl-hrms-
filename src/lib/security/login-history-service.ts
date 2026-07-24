@@ -71,11 +71,11 @@ export async function recordFailedLogin(input: FailedLoginInput): Promise<void> 
   });
 }
 
-export async function validateAndTouchSession(
+export async function findActiveCurrentLoginSession(
   sessionId: string,
   userId: string
-): Promise<boolean> {
-  const session = await prisma.loginSession.findFirst({
+): Promise<{ lastActivityAt: Date } | null> {
+  return prisma.loginSession.findFirst({
     where: {
       id: sessionId,
       userId,
@@ -84,19 +84,40 @@ export async function validateAndTouchSession(
     },
     select: { lastActivityAt: true },
   });
+}
+
+/**
+ * Persist last-activity when the throttle window has elapsed.
+ * Call only after the login session has already been validated.
+ */
+export async function touchLoginSessionActivityIfStale(
+  sessionId: string,
+  userId: string,
+  lastActivityAt: Date
+): Promise<void> {
+  if (Date.now() - lastActivityAt.getTime() < ACTIVITY_WRITE_INTERVAL_MS) {
+    return;
+  }
+
+  await prisma.loginSession.updateMany({
+    where: {
+      id: sessionId,
+      userId,
+      status: LoginSessionStatus.active,
+      lastActivityAt,
+    },
+    data: { lastActivityAt: new Date() },
+  });
+}
+
+export async function validateAndTouchSession(
+  sessionId: string,
+  userId: string
+): Promise<boolean> {
+  const session = await findActiveCurrentLoginSession(sessionId, userId);
   if (!session) return false;
 
-  if (Date.now() - session.lastActivityAt.getTime() >= ACTIVITY_WRITE_INTERVAL_MS) {
-    await prisma.loginSession.updateMany({
-      where: {
-        id: sessionId,
-        userId,
-        status: LoginSessionStatus.active,
-        lastActivityAt: session.lastActivityAt,
-      },
-      data: { lastActivityAt: new Date() },
-    });
-  }
+  await touchLoginSessionActivityIfStale(sessionId, userId, session.lastActivityAt);
   return true;
 }
 
@@ -174,15 +195,31 @@ function buildWhere(
   scope?: { employeeId?: number; includeFailed?: boolean; activeOnly?: boolean }
 ): Prisma.LoginSessionWhereInput {
   const search = filters.search?.trim();
+  const includeFailed = scope?.includeFailed === true;
+
+  // Status scoping is authorization-sensitive: when includeFailed is false, failed
+  // records must never be returned — even if filters.status explicitly asks for them.
+  let statusClause: Prisma.LoginSessionWhereInput;
+  if (scope?.activeOnly) {
+    statusClause = { status: LoginSessionStatus.active, isCurrent: true };
+  } else if (!includeFailed) {
+    if (filters.status === LoginSessionStatus.failed) {
+      // Deny elevation via query params / direct service calls.
+      statusClause = { id: "__failed_login_access_denied__" };
+    } else if (filters.status) {
+      statusClause = { status: filters.status };
+    } else {
+      statusClause = { status: { not: LoginSessionStatus.failed } };
+    }
+  } else if (filters.status) {
+    statusClause = { status: filters.status };
+  } else {
+    statusClause = {};
+  }
+
   return {
     ...(scope?.employeeId ? { employeeId: scope.employeeId } : {}),
-    ...(scope?.activeOnly
-      ? { status: LoginSessionStatus.active, isCurrent: true }
-      : filters.status
-        ? { status: filters.status }
-        : !scope?.includeFailed
-          ? { status: { not: LoginSessionStatus.failed } }
-          : {}),
+    ...statusClause,
     ...(filters.employeeId ? { employeeId: filters.employeeId } : {}),
     ...(filters.role ? { user: { role: filters.role } } : {}),
     ...(filters.department
@@ -293,6 +330,8 @@ export async function getLoginHistoryExportRows(
 export const LoginHistoryService = {
   recordSuccessfulLogin,
   recordFailedLogin,
+  findActiveCurrentLoginSession,
+  touchLoginSessionActivityIfStale,
   validateAndTouchSession,
   closeSession,
   closeAllUserSessions,

@@ -7,6 +7,7 @@ import {
 } from "@/lib/auth-guards";
 import {
   changeUserRole,
+  provisionEmployeeLogin,
   resetUserPassword,
   setUserActive,
   updateUserAccountStatus,
@@ -18,6 +19,7 @@ import {
   accountIdentityUpdateSchema,
   accountStatusUpdateSchema,
   passwordResetSchema,
+  provisionEmployeeLoginSchema,
 } from "@/lib/validation/schemas/employee-account";
 import { safeParseWithSchema } from "@/lib/validation/parse";
 
@@ -154,6 +156,56 @@ export async function setUserActiveAction(
   } catch (e) {
     return {
       error: e instanceof UserManagementError ? e.message : "Failed to update user status.",
+    };
+  }
+}
+
+export async function provisionEmployeeLoginAction(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  try {
+    const session = await requireHROrSuperAdminSession();
+    const parsed = safeParseWithSchema(provisionEmployeeLoginSchema, {
+      employeeId: formData.get("employeeId"),
+      mode: formData.get("mode"),
+      email: formData.get("email"),
+      existingUserId: formData.get("existingUserId"),
+      passwordMode: formData.get("passwordMode") || "generated",
+      password: formData.get("password"),
+      confirmPassword: formData.get("confirmPassword"),
+      mustChangePassword: formData.get("mustChangePassword") === "on",
+    });
+    if (!parsed.ok) return { error: parsed.error };
+
+    // Ignore any client-supplied role — provisioning always targets employee-role accounts.
+    const result = await provisionEmployeeLogin(session, {
+      employeeId: parsed.data.employeeId,
+      mode: parsed.data.mode,
+      email: parsed.data.email || undefined,
+      existingUserId: parsed.data.existingUserId || undefined,
+      password: parsed.data.password,
+      generate: parsed.data.mode === "create" && parsed.data.passwordMode === "generated",
+      mustChangePassword: parsed.data.mustChangePassword,
+    });
+
+    revalidatePath("/admin/user-management");
+    revalidatePath("/admin/employees");
+    revalidatePath(`/admin/employees/${parsed.data.employeeId}`);
+
+    return {
+      success:
+        parsed.data.mode === "link"
+          ? "Existing login linked to this employee."
+          : "Employee login created.",
+      temporaryPassword: result.temporaryPassword,
+    };
+  } catch (error) {
+    return {
+      error:
+        error instanceof UserManagementError
+          ? error.message
+          : "Failed to provision employee login.",
     };
   }
 }

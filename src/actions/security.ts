@@ -1,6 +1,6 @@
 "use server";
 
-import { LoginSessionStatus } from "@/generated/prisma/enums";
+import { LoginSessionStatus } from "@/generated/prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { clearSessionCookie, invalidateUserSessionsWithAudit } from "@/lib/auth";
@@ -71,6 +71,9 @@ export async function forceLogoutSessionAction(formData: FormData): Promise<void
   });
   if (!target) return;
 
+  // Single-session revoke: closes this LoginSession only. JWTs carry jti=sessionId;
+  // getSession() rejects via validateAndTouchSession. Other devices remain signed in.
+  // Do NOT call invalidateUserSessions() here — that would revoke the user's entire fleet.
   await closeSession(sessionId, LoginSessionStatus.revoked);
   await writeAuditLog({
     entityType: "login_session",
@@ -84,5 +87,10 @@ export async function forceLogoutSessionAction(formData: FormData): Promise<void
     requestContext: await getRequestSecurityContext(),
     metadata: { reason: "super_admin_force_logout", targetUserId: target.userId },
   });
+
+  if (actor.sessionId === sessionId) {
+    await clearSessionCookie();
+    redirect("/login");
+  }
   revalidatePath("/admin/security/active-sessions");
 }

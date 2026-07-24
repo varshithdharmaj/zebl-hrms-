@@ -305,4 +305,23 @@ describe("setUserActive — privilege escalation & last-admin protection", () =>
       data: expect.objectContaining({ isActive: false, accountStatus: "inactive" }),
     });
   });
+
+  it("syncs linked employee when deactivating a user", async () => {
+    findUnique.mockResolvedValue({
+      id: "target-emp",
+      role: "employee",
+      isActive: true,
+      accountStatus: "active",
+      employeeId: 44,
+    });
+    update.mockResolvedValue({});
+    employeeUpdate.mockResolvedValue({});
+
+    await setUserActive(superAdminActor, "target-emp", false);
+
+    expect(employeeUpdate).toHaveBeenCalledWith({
+      where: { id: 44 },
+      data: { employeeStatus: "Inactive", isActive: false },
+    });
+  });
 });

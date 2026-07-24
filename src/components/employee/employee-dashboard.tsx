@@ -4,10 +4,10 @@ import { HistorySection } from "@/components/employee/dashboard/history-section"
 import { DashboardWidgets } from "@/components/employee/dashboard/dashboard-widgets";
 import { AttendanceTimeline } from "@/components/employee/attendance-timeline";
 import { AttendanceHeatmap } from "@/components/employee/dashboard/attendance-heatmap";
-import { getEmployeeDashboardData } from "@/lib/queries";
+import { getEmployeeDashboardData } from "@/lib/data";
 import { getLeaveBalanceSummaries } from "@/lib/leave";
 import { getEmployeeAttendanceHeatmapData, type AttendanceHeatmapMonth } from "@/lib/attendance/heatmap-data";
-import { getAttendanceDayStatus } from "@/lib/attendance/day-status";
+import { getAttendanceDayStatus, findHeatmapDayStatus } from "@/lib/attendance/day-status";
 import { getHeroStatus, type HeroStatus } from "@/lib/attendance/hero-status";
 import { startOfDay, toISODate } from "@/lib/utils";
 
@@ -26,8 +26,6 @@ export async function EmployeeDashboard({
   endDate?: string;
   heatmapMonth?: string;
 }) {
-  const today = startOfDay().toISOString().split("T")[0];
-
   const [data, balances, heatmap] = await Promise.all([
     getEmployeeDashboardData(employeeId, selectedDate, startDate, endDate),
     getLeaveBalanceSummaries(employeeId, { processAccruals: false }),
@@ -42,27 +40,34 @@ export async function EmployeeDashboard({
   ]);
 
   const isToday = data.selectedDate === toISODate(startOfDay());
+  const selectedDayDate = new Date(data.selectedDate + "T00:00:00");
 
   // Scoped resilience: if the richer classification fails, the rest of the dashboard
   // (KPIs, heatmap, history, leave balances — already resolved above) still renders.
-  // The hero and the detailed attendance card both fall back to their own inline
-  // error notices rather than taking down the whole page.
+  // Prefer the heatmap's already-classified YTD day (same classifier) to avoid a
+  // redundant ~4-query calendar wave after Promise.all.
   let heroStatus: HeroStatus | null = null;
   let expectedWorkMinutes: number | null = null;
   try {
-    const result = await getAttendanceDayStatus({
-      employeeId,
-      date: new Date(data.selectedDate + "T00:00:00"),
-      attendanceRecord: {
-        checkIn: data.day.checkIn,
-        checkOut: data.day.checkOut,
-        workedMinutes: data.day.workedMinutes,
-        overtimeMinutes: data.day.overtimeMinutes,
-        remarks: data.day.remarks,
-      },
-    });
-    expectedWorkMinutes = result.expectedWorkMinutes;
-    heroStatus = getHeroStatus(result.day, { isToday, expectedWorkMinutes });
+    const reused = findHeatmapDayStatus(heatmap, selectedDayDate);
+    if (reused) {
+      expectedWorkMinutes = reused.expectedWorkMinutes;
+      heroStatus = getHeroStatus(reused.day, { isToday, expectedWorkMinutes });
+    } else {
+      const result = await getAttendanceDayStatus({
+        employeeId,
+        date: selectedDayDate,
+        attendanceRecord: {
+          checkIn: data.day.checkIn,
+          checkOut: data.day.checkOut,
+          workedMinutes: data.day.workedMinutes,
+          overtimeMinutes: data.day.overtimeMinutes,
+          remarks: data.day.remarks,
+        },
+      });
+      expectedWorkMinutes = result.expectedWorkMinutes;
+      heroStatus = getHeroStatus(result.day, { isToday, expectedWorkMinutes });
+    }
   } catch (e) {
     console.error("[employee-dashboard] hero status failed:", e);
   }
@@ -92,7 +97,6 @@ export async function EmployeeDashboard({
           displayDate={displayDate}
           dateIso={data.selectedDate}
           heroStatus={heroStatus}
-          defaultDate={today}
           defaultStart={data.selectedStart}
           defaultEnd={data.selectedEnd}
         />
@@ -100,8 +104,10 @@ export async function EmployeeDashboard({
         {/* C. Today's attendance */}
         <AttendanceTimeline
           heroStatus={heroStatus}
+          sessions={data.day.sessions}
           overtimeMinutes={data.day.overtimeMinutes}
           expectedWorkMinutes={expectedWorkMinutes}
+          totalWorkedMinutes={data.day.workedMinutes}
           isToday={isToday}
           selectedDateLabel={selectedDayLabel}
         />

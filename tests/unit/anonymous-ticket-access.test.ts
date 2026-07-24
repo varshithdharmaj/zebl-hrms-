@@ -191,7 +191,9 @@ describe("Anonymous Ticket Query Filtering — Existence Protection", () => {
     it("HR User query with search still excludes anonymous tickets", () => {
       const where = buildTicketWhereClause(hrSession, { search: "test query" });
       expect(where.isAnonymous).toBe(false);
-      expect(where.OR).toBeDefined(); // Search OR clause present
+      // Access scope AND search — search must not replace HR OR
+      expect(where.AND).toBeDefined();
+      expect(Array.isArray(where.AND)).toBe(true);
     });
 
     it("Employee query with filters still excludes anonymous tickets", () => {

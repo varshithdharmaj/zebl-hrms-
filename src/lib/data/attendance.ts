@@ -26,23 +26,28 @@ export async function getEmployeeDashboardData(
     return getEmployeeDashboardData(employeeId, undefined, startStr, endStr);
   }
 
-  const { rangeStart, rangeEnd, startIso, endIso, rangeLabel } = parseDateRange(
+  const { rangeStart, rangeEnd, toExclusive, startIso, endIso, rangeLabel } = parseDateRange(
     startStr,
     endStr
   );
-  const dayEnd = endOfDay(selectedDate);
+  const dayEndExclusive = startOfDay(
+    new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate() + 1)
+  );
 
   const [dayRecord, periodRecords] = await Promise.all([
     prisma.attendanceRecord.findFirst({
       where: {
         employeeId,
-        attendanceDate: { gte: selectedDate, lte: dayEnd },
+        attendanceDate: { gte: selectedDate, lt: dayEndExclusive },
+      },
+      include: {
+        sessions: { orderBy: [{ checkIn: "asc" }, { id: "asc" }] },
       },
     }),
     prisma.attendanceRecord.findMany({
       where: {
         employeeId,
-        attendanceDate: { gte: rangeStart, lte: rangeEnd },
+        attendanceDate: { gte: rangeStart, lt: toExclusive },
       },
       orderBy: { attendanceDate: "asc" },
     }),
@@ -60,6 +65,31 @@ export async function getEmployeeDashboardData(
   const classifiedRecentRecords = [...classifiedPeriodRecords].reverse().slice(0, RANGE_RECORD_LIMIT);
   const aggregate = aggregateAttendanceForRange(classifiedPeriodRecords);
 
+  const sessions =
+    dayRecord?.sessions.map((s) => ({
+      id: s.id,
+      checkIn: s.checkIn,
+      checkOut: s.checkOut,
+      workedMinutes: s.workedMinutes,
+      isOpen: s.checkOut === null,
+    })) ?? [];
+
+  // Legacy fallback when sessions have not been backfilled yet
+  const displaySessions =
+    sessions.length > 0
+      ? sessions
+      : dayRecord?.checkIn
+        ? [
+            {
+              id: 0,
+              checkIn: dayRecord.checkIn,
+              checkOut: dayRecord.checkOut,
+              workedMinutes: dayRecord.workedMinutes,
+              isOpen: dayRecord.checkOut === null,
+            },
+          ]
+        : [];
+
   return {
     selectedDate: toISODate(selectedDate),
     selectedStart: startIso,
@@ -71,6 +101,8 @@ export async function getEmployeeDashboardData(
       overtimeMinutes: dayRecord?.overtimeMinutes ?? 0,
       status: dayRecord?.status ?? "No Record",
       remarks: dayRecord?.remarks ?? null,
+      sessions: displaySessions,
+      hasOpenSession: displaySessions.some((s) => s.isOpen),
     },
     period: {
       presentDays: aggregate.presentDays,
@@ -90,7 +122,7 @@ export async function getEmployeeAttendanceSummary(
   startStr?: string,
   endStr?: string
 ) {
-  const { rangeStart, rangeEnd, startIso, endIso, rangeLabel } = parseDateRange(
+  const { rangeStart, rangeEnd, toExclusive, startIso, endIso, rangeLabel } = parseDateRange(
     startStr,
     endStr
   );
@@ -98,7 +130,7 @@ export async function getEmployeeAttendanceSummary(
   const records = await prisma.attendanceRecord.findMany({
     where: {
       employeeId,
-      attendanceDate: { gte: rangeStart, lte: rangeEnd },
+      attendanceDate: { gte: rangeStart, lt: toExclusive },
     },
     orderBy: { attendanceDate: "desc" },
     take: RANGE_RECORD_LIMIT,
@@ -206,10 +238,13 @@ export async function getEmployeeAttendanceHistory(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: Record<string, any> = { employeeId };
 
-  let explicitRange: { rangeStart: Date; rangeEnd: Date } | null = null;
+  let explicitRange: { rangeStart: Date; rangeEnd: Date; toExclusive: Date } | null = null;
   if (startStr || endStr) {
     explicitRange = parseDateRange(startStr, endStr);
-    where.attendanceDate = { gte: explicitRange.rangeStart, lte: explicitRange.rangeEnd };
+    where.attendanceDate = {
+      gte: explicitRange.rangeStart,
+      lt: explicitRange.toExclusive,
+    };
   }
 
   const [records, total] = await Promise.all([

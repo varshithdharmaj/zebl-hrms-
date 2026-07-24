@@ -70,16 +70,6 @@ export function canViewOrgAnalytics(role: AppUserRole): boolean {
   return canAccessHRAdministration(role);
 }
 
-/** Organization-wide login history. Employees are restricted to their own history. */
-export function canViewAllLoginHistory(role: AppUserRole): boolean {
-  return canAccessHRAdministration(role);
-}
-
-/** Failed attempts, Excel export, and force logout are security-sensitive. */
-export function canManageLoginSessions(role: AppUserRole): boolean {
-  return isSuperAdmin(role);
-}
-
 // --- User & role administration (Super Admin only) -----------------------
 
 /** Only Super Admin may change user roles. */
@@ -115,11 +105,6 @@ export function canManageAttendanceScheduling(role: AppUserRole): boolean {
 }
 
 // --- Ticket system -------------------------------------------------------
-
-/** Access to the ticketing/helpdesk system. All roles may access (scoped differently). */
-export function canAccessTicketing(role: AppUserRole): boolean {
-  return isEmployee(role) || isHR(role) || isSuperAdmin(role);
-}
 
 /** Access to anonymous ticket queue (Super Admin only). */
 export function canAccessAnonymousTickets(role: AppUserRole): boolean {

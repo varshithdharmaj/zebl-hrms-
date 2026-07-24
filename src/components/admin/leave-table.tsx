@@ -14,9 +14,15 @@ import { canActOnWorkflow } from "@/lib/leave-status";
 import { LeaveWorkflowStatus } from "@/generated/prisma/enums";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  canUserApproveStep,
+  isSuperAdminWorkflowOverride,
+} from "@/lib/workflow/step-authorization";
+import type { WorkflowActor } from "@/lib/workflow/workflow-types";
 
 type Leave = {
   id: number;
+  employeeId: number;
   leaveType: string;
   startDate: Date;
   endDate: Date;
@@ -33,6 +39,7 @@ type Leave = {
     id: number;
     stepOrder: number;
     approverRole: string;
+    approverId: number | null;
     status: string;
     actedAt: Date | null;
     comment: string | null;
@@ -43,14 +50,22 @@ type Leave = {
 const approveInitial: WorkflowActionState = {};
 const cancelInitial: WorkflowActionState = {};
 
-function ApproveButton({ leaveId, version }: { leaveId: number; version: number }) {
+function ApproveButton({
+  leaveId,
+  version,
+  isOverride,
+}: {
+  leaveId: number;
+  version: number;
+  isOverride: boolean;
+}) {
   const [state, formAction, pending] = useActionState(approveLeaveStepAction, approveInitial);
   return (
     <form action={formAction} className="inline">
       <input type="hidden" name="leaveId" value={leaveId} />
       <input type="hidden" name="version" value={version} />
-      <Button type="submit" size="sm" disabled={pending}>
-        {pending ? "…" : "Approve"}
+      <Button type="submit" size="sm" variant={isOverride ? "secondary" : "default"} disabled={pending}>
+        {pending ? "…" : isOverride ? "Override approve" : "Approve"}
       </Button>
       {state.error && <p className="text-xs text-danger">{state.error}</p>}
     </form>
@@ -73,14 +88,22 @@ function CancelApprovedForm({ leaveId }: { leaveId: number }) {
   );
 }
 
-export function AdminLeaveTable({ leaves }: { leaves: Leave[] }) {
+export function AdminLeaveTable({
+  leaves,
+  actor,
+}: {
+  leaves: Leave[];
+  actor: WorkflowActor;
+}) {
   return (
     <DataTable
       columns={["Employee", "Type", "Dates", "Days", "Reason", "Status", "Actions"]}
       emptyMessage="No requests."
     >
       {leaves.map((leave) => {
-        const canAct = canActOnWorkflow(leave.workflowStatus);
+        const workflowOpen = canActOnWorkflow(leave.workflowStatus);
+        const canAct = workflowOpen && canUserApproveStep(actor, leave);
+        const isOverride = canAct && isSuperAdminWorkflowOverride(actor, leave);
         const steps = leave.approvalSteps.map((s) => ({
           id: s.id,
           stepOrder: s.stepOrder,
@@ -118,9 +141,25 @@ export function AdminLeaveTable({ leaves }: { leaves: Leave[] }) {
             </DataTableCell>
             <DataTableCell>
               {canAct && (
-                <div className="flex flex-wrap gap-1.5">
-                  <ApproveButton leaveId={leave.id} version={leave.version} />
-                  <RejectionDialog leaveId={leave.id} version={leave.version} />
+                <div className="space-y-1.5">
+                  {isOverride && (
+                    <p className="text-xs font-medium text-amber-700">
+                      Superadmin override — current step is not HR approval
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-1.5">
+                    <ApproveButton
+                      leaveId={leave.id}
+                      version={leave.version}
+                      isOverride={isOverride}
+                    />
+                    <RejectionDialog
+                      leaveId={leave.id}
+                      version={leave.version}
+                      triggerLabel={isOverride ? "Override reject" : "Reject"}
+                      isOverride={isOverride}
+                    />
+                  </div>
                 </div>
               )}
               {leave.workflowStatus === LeaveWorkflowStatus.approved && (

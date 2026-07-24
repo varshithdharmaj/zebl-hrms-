@@ -1,12 +1,11 @@
 import {
   ApprovalStepStatus,
-  ApproverRole,
   LeaveWorkflowStatus,
   Prisma,
 } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
-import { canAccessAdmin, isSuperAdmin } from "@/lib/permissions";
+import { canAccessAdmin } from "@/lib/permissions";
 import {
   countLeaveDays,
   deductLeaveForApproval,
@@ -15,6 +14,11 @@ import {
 } from "@/lib/leave";
 import { isValidLeaveType, type LeaveType } from "@/lib/leave-types";
 import { buildApprovalChain } from "@/lib/workflow/approval-routing";
+import {
+  canUserApproveStep,
+  canUserRejectStep,
+  isSuperAdminWorkflowOverride,
+} from "@/lib/workflow/step-authorization";
 import {
   isActiveWorkflow,
   isTerminalWorkflow,
@@ -30,6 +34,13 @@ import {
   MIN_REJECTION_COMMENT_LENGTH,
 } from "@/lib/workflow/workflow-types";
 import { emitWorkflowNotification } from "@/lib/workflow/notification-hooks";
+import { leaveRequestWithStepsInclude } from "@/lib/leave/leave-request-include";
+
+export {
+  canUserApproveStep,
+  canUserRejectStep,
+  isSuperAdminWorkflowOverride,
+} from "@/lib/workflow/step-authorization";
 
 export class WorkflowError extends Error {
   constructor(message: string) {
@@ -38,25 +49,21 @@ export class WorkflowError extends Error {
   }
 }
 
-const leaveInclude = {
-  employee: true,
-  approvalSteps: {
-    orderBy: { stepOrder: "asc" as const },
-    include: { approver: true },
-  },
-  currentStep: { include: { approver: true } },
-} satisfies Prisma.LeaveRequestInclude;
-
 export async function loadLeaveWithSteps(leaveId: number): Promise<LeaveWithSteps | null> {
   return prisma.leaveRequest.findUnique({
     where: { id: leaveId },
-    include: leaveInclude,
+    include: leaveRequestWithStepsInclude,
   }) as Promise<LeaveWithSteps | null>;
 }
 
+/** Current step from the loaded leave graph (includes `approver` when selected). */
 export function getCurrentApprovalStep(leave: LeaveWithSteps) {
   if (!leave.currentStepId) return null;
-  return leave.approvalSteps.find((s) => s.id === leave.currentStepId) ?? leave.currentStep ?? null;
+  return (
+    leave.approvalSteps.find((s) => s.id === leave.currentStepId) ??
+    leave.currentStep ??
+    null
+  );
 }
 
 export function getNextApprovalStep(leave: LeaveWithSteps) {
@@ -71,41 +78,19 @@ export function isWorkflowComplete(leave: { workflowStatus: LeaveWorkflowStatus 
   return isTerminalWorkflow(leave.workflowStatus);
 }
 
-export function canUserApproveStep(
+function stepActionAuditMetadata(
   actor: WorkflowActor,
   leave: LeaveWithSteps,
-  step = getCurrentApprovalStep(leave)
-): boolean {
-  if (!step || step.status !== ApprovalStepStatus.pending) return false;
-  if (leave.currentStepId !== step.id) return false;
-  if (!isActiveWorkflow(leave.workflowStatus)) return false;
-
-  if (actor.employeeId !== null && actor.employeeId === leave.employeeId) {
-    return false;
-  }
-
-  // Super Admin has full authority over any step.
-  if (isSuperAdmin(actor.role)) return true;
-
-  // HR final-approval step: Super Admin + HR.
-  if (step.approverRole === ApproverRole.hr_admin) {
-    return canAccessAdmin(actor.role);
-  }
-
-  // Manager / skip-level steps are authorized by the Employee hierarchy: the actor must be
-  // the employee assigned as the approver on this step, regardless of their app role.
-  if (
-    step.approverRole === ApproverRole.manager ||
-    step.approverRole === ApproverRole.skip_level_manager
-  ) {
-    return (
-      actor.employeeId !== null &&
-      step.approverId !== null &&
-      actor.employeeId === step.approverId
-    );
-  }
-
-  return false;
+  step: NonNullable<ReturnType<typeof getCurrentApprovalStep>>,
+  extra: Record<string, unknown>
+): Record<string, unknown> {
+  return {
+    ...extra,
+    actorRole: actor.role,
+    stepOrder: step.stepOrder,
+    approverRole: step.approverRole,
+    superAdminOverride: isSuperAdminWorkflowOverride(actor, leave, step),
+  };
 }
 
 async function assertVersion(
@@ -307,12 +292,14 @@ export async function advanceWorkflow(
           leaveId,
           action: AUDIT_ACTIONS.LEAVE_STEP_APPROVED,
           actor,
-          metadata: {
+          metadata: stepActionAuditMetadata(actor, leave, step, {
             stepId: step.id,
-            stepOrder: step.stepOrder,
             nextStepId: next.id,
             workflowStatus: leave.workflowStatus,
-          },
+            from: leave.workflowStatus,
+            to: leave.workflowStatus,
+            operation: "step_approve",
+          }),
         },
         tx
       );
@@ -333,7 +320,7 @@ export async function advanceWorkflow(
 
     const fresh = await tx.leaveRequest.findUnique({
       where: { id: leaveId },
-      include: leaveInclude,
+      include: leaveRequestWithStepsInclude,
     });
     if (!fresh) throw new WorkflowError("Leave request not found.");
 
@@ -344,12 +331,12 @@ export async function advanceWorkflow(
         leaveId,
         action: AUDIT_ACTIONS.LEAVE_STATUS_CHANGED,
         actor,
-        metadata: {
+        metadata: stepActionAuditMetadata(actor, leave, step, {
           from: leave.workflowStatus,
           to: LeaveWorkflowStatus.approved,
           stepId: step.id,
           operation: "final_approve",
-        },
+        }),
       },
       tx
     );
@@ -391,9 +378,9 @@ export async function rejectWorkflow(
   const step = getCurrentApprovalStep(leave);
   if (!step) throw new WorkflowError("No pending approval step.");
 
-  const canReject =
-    canUserApproveStep(actor, leave, step) || canAccessAdmin(actor.role);
-  if (!canReject) {
+  // Same step boundary as approve (API/docs: canUserApproveStep). HR must not
+  // reject manager/skip-level steps via canAccessAdmin bypass.
+  if (!canUserRejectStep(actor, leave, step)) {
     throw new WorkflowError("You are not authorized to reject this request.");
   }
 
@@ -436,12 +423,13 @@ export async function rejectWorkflow(
         leaveId,
         action: AUDIT_ACTIONS.LEAVE_REJECTED,
         actor,
-        metadata: {
+        metadata: stepActionAuditMetadata(actor, leave, step, {
           from: leave.workflowStatus,
           to: LeaveWorkflowStatus.rejected,
           stepId: step.id,
           comment: trimmed,
-        },
+          operation: "reject",
+        }),
       },
       tx
     );

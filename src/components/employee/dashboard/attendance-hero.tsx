@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DashboardToolbar } from "@/components/employee/dashboard-toolbar";
+import { DashboardDateRangeFilter } from "@/components/employee/dashboard/dashboard-date-range-filter";
 import { cn } from "@/lib/utils";
 import type { HeroStatus, HeroTone } from "@/lib/attendance/hero-status";
 
@@ -92,7 +92,6 @@ export function AttendanceHero({
   displayDate,
   dateIso,
   heroStatus,
-  defaultDate,
   defaultStart,
   defaultEnd,
 }: {
@@ -102,7 +101,6 @@ export function AttendanceHero({
   dateIso: string;
   /** null = the status computation failed; the hero renders a scoped error + retry. */
   heroStatus: HeroStatus | null;
-  defaultDate: string;
   defaultStart: string;
   defaultEnd: string;
 }) {
@@ -230,14 +228,13 @@ export function AttendanceHero({
 
         <div className="w-full shrink-0 rounded-xl border border-border bg-card/60 p-5 xl:w-[min(100%,22rem)]">
           <p className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Filters
+            Date range
           </p>
-          <Suspense fallback={<div className="h-24 animate-pulse rounded-lg bg-muted" />}>
-            <DashboardToolbar
-              defaultDate={defaultDate}
+          <Suspense fallback={<div className="h-16 animate-pulse rounded-lg bg-muted" />}>
+            <DashboardDateRangeFilter
               defaultStart={defaultStart}
               defaultEnd={defaultEnd}
-              layout="compact"
+              defaultPreset="this-month"
             />
           </Suspense>
         </div>
