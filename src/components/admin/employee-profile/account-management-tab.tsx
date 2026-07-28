@@ -427,13 +427,10 @@ export function AccountManagementTab({
 
         <div className="mt-5 flex flex-wrap gap-4 text-sm">
           <Link
-            href={`/admin/security/login-history?employeeId=${employee.id}`}
+            href={`/admin/security?employeeId=${employee.id}`}
             className="text-primary hover:underline"
           >
-            View Login History
-          </Link>
-          <Link href="/admin/security/active-sessions" className="text-primary hover:underline">
-            View Active Sessions
+            View Security & Sessions
           </Link>
           <Link href={`/admin/audit?q=${user.id}`} className="text-primary hover:underline">
             View Audit History

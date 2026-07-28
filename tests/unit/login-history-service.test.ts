@@ -4,10 +4,15 @@ import { prisma } from "@/lib/prisma";
 import {
   closeSession,
   findActiveCurrentLoginSession,
+  getActiveSessions,
   getLoginHistory,
   getLoginHistoryExportRows,
+  getSecuritySummary,
+  getSessions,
+  normalizeSessionView,
   recordFailedLogin,
   recordSuccessfulLogin,
+  resolveSessionStatusFilter,
   touchLoginSessionActivityIfStale,
   validateAndTouchSession,
 } from "@/lib/security/login-history-service";
@@ -223,5 +228,200 @@ describe("LoginHistoryService", () => {
         sessionDuration: expect.any(Number),
       }),
     });
+  });
+
+  it("getActiveSessions returns all active sessions ordered by lastActivityAt", async () => {
+    vi.mocked(prisma.loginSession.findMany)
+      .mockResolvedValueOnce([]) // expireStaleSessions
+      .mockResolvedValueOnce([
+        {
+          id: "s1",
+          lastActivityAt: new Date(),
+          status: LoginSessionStatus.active,
+        },
+      ] as never);
+
+    const rows = await getActiveSessions({ employeeId: 42 });
+    expect(rows).toHaveLength(1);
+    expect(prisma.loginSession.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: {
+          status: LoginSessionStatus.active,
+          isCurrent: true,
+          employeeId: 42,
+        },
+        orderBy: { lastActivityAt: "desc" },
+      })
+    );
+  });
+
+  it("getActiveSessions can skip expire when the hub already expired stale rows", async () => {
+    vi.mocked(prisma.loginSession.findMany).mockResolvedValue([]);
+    await getActiveSessions(undefined, { skipExpire: true });
+    expect(prisma.loginSession.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.loginSession.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          status: LoginSessionStatus.active,
+          isCurrent: true,
+        },
+      })
+    );
+  });
+
+  it("getSecuritySummary returns counts, current device, and recent events", async () => {
+    const now = new Date();
+    vi.mocked(prisma.loginSession.count).mockResolvedValue(2);
+    vi.mocked(prisma.loginSession.findFirst)
+      .mockResolvedValueOnce({
+        id: "current",
+        loginAt: now,
+        lastActivityAt: now,
+        browser: "Chrome",
+        operatingSystem: "Windows",
+        ipAddress: "192.0.2.1",
+        device: "Desktop",
+      } as never)
+      .mockResolvedValueOnce({
+        id: "last",
+        loginAt: now,
+        browser: "Chrome",
+        operatingSystem: "Windows",
+        ipAddress: "192.0.2.1",
+        device: "Desktop",
+      } as never)
+      .mockResolvedValueOnce({
+        id: "failed",
+        loginAt: now,
+        failureReason: "invalid_credentials",
+        attemptedEmail: "a@b.com",
+        ipAddress: "192.0.2.2",
+        browser: "Chrome",
+      } as never);
+
+    const summary = await getSecuritySummary({
+      employeeId: 7,
+      includeFailed: true,
+      currentSessionId: "current",
+    });
+
+    expect(summary.activeSessionCount).toBe(2);
+    expect(summary.currentDevice?.id).toBe("current");
+    expect(summary.lastLogin?.id).toBe("last");
+    expect(summary.lastFailedLogin?.failureReason).toBe("invalid_credentials");
+    expect(prisma.loginSession.findFirst).toHaveBeenCalledTimes(3);
+  });
+
+  it("getSecuritySummary omits failed login lookup when includeFailed is false", async () => {
+    vi.mocked(prisma.loginSession.count).mockResolvedValue(1);
+    vi.mocked(prisma.loginSession.findFirst)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+
+    const summary = await getSecuritySummary({
+      employeeId: 7,
+      currentSessionId: "missing",
+    });
+
+    expect(summary.lastFailedLogin).toBeNull();
+    expect(prisma.loginSession.findFirst).toHaveBeenCalledTimes(2);
+  });
+
+  it("resolveSessionStatusFilter maps ended → logged_out and keeps legacy values", () => {
+    expect(resolveSessionStatusFilter("ended")).toBe(LoginSessionStatus.logged_out);
+    expect(resolveSessionStatusFilter("logged_out")).toBe(LoginSessionStatus.logged_out);
+    expect(resolveSessionStatusFilter("active")).toBe(LoginSessionStatus.active);
+    expect(resolveSessionStatusFilter("nope")).toBeUndefined();
+  });
+
+  it("normalizeSessionView marks the viewing device as current and revocable when allowed", () => {
+    const row = {
+      id: "sess-1",
+      attemptedEmail: null,
+      loginAt: new Date(),
+      logoutAt: null,
+      lastActivityAt: new Date(),
+      status: LoginSessionStatus.active,
+      ipAddress: "192.0.2.1",
+      browser: "Chrome",
+      browserVersion: "126",
+      device: "Desktop",
+      operatingSystem: "Windows",
+      sessionDuration: null,
+      failureReason: null,
+      isCurrent: true,
+      user: null,
+      employee: null,
+    };
+
+    const current = normalizeSessionView(row, {
+      currentSessionId: "sess-1",
+      canRevoke: true,
+    });
+    expect(current.status).toBe("current");
+    expect(current.isCurrent).toBe(true);
+    expect(current.canRevoke).toBe(true);
+
+    const other = normalizeSessionView({ ...row, id: "sess-2" }, {
+      currentSessionId: "sess-1",
+      canRevoke: true,
+    });
+    expect(other.status).toBe("active");
+    expect(other.isCurrent).toBe(false);
+
+    const ended = normalizeSessionView(
+      { ...row, status: LoginSessionStatus.logged_out, logoutAt: new Date() },
+      { currentSessionId: "other", canRevoke: true }
+    );
+    expect(ended.status).toBe("ended");
+    expect(ended.canRevoke).toBe(false);
+  });
+
+  it("getSessions reuses login history and returns normalized rows", async () => {
+    vi.mocked(prisma.loginSession.count).mockResolvedValue(1);
+    vi.mocked(prisma.loginSession.findMany).mockResolvedValue([
+      {
+        id: "sess-1",
+        attemptedEmail: null,
+        loginAt: new Date(),
+        logoutAt: null,
+        lastActivityAt: new Date(),
+        status: LoginSessionStatus.active,
+        ipAddress: "192.0.2.1",
+        browser: "Chrome",
+        browserVersion: "126",
+        device: "Desktop",
+        operatingSystem: "Windows",
+        sessionDuration: null,
+        failureReason: null,
+        isCurrent: true,
+        user: null,
+        employee: null,
+      },
+    ] as never);
+
+    const result = await getSessions(
+      { page: 1 },
+      { employeeId: 1 },
+      { currentSessionId: "sess-1", canRevoke: true }
+    );
+    expect(result.total).toBe(1);
+    expect(result.rows[0]?.status).toBe("current");
+    expect(result.rows[0]?.canRevoke).toBe(true);
+  });
+
+  it("honors role page-size defaults (employee 10, admin 20)", async () => {
+    vi.mocked(prisma.loginSession.count).mockResolvedValue(0);
+    vi.mocked(prisma.loginSession.findMany).mockResolvedValue([]);
+
+    await getLoginHistory({ page: 1, pageSize: 10 });
+    expect(prisma.loginSession.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ take: 10 })
+    );
+
+    await getLoginHistory({ page: 1, pageSize: 20 });
+    expect(prisma.loginSession.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ take: 20 })
+    );
   });
 });

@@ -72,15 +72,51 @@ export const EXPECTED_EXCEL_COLUMNS = [
 ] as const;
 
 export const COLUMN_ALIASES: Record<string, string[]> = {
-  "employee code": ["employee code", "e. code", "e code", "code", "emp code", "emp. code"],
-  "employee name": ["employee name", "name", "emp name", "emp. name", "employee_name"],
-  "shift": ["shift"],
-  "in time": ["in time", "intime", "in_time", "check in", "checkin"],
-  "out time": ["out time", "outtime", "out_time", "check out", "checkout"],
-  "work duration": ["work duration", "work dur.", "work dur", "work_duration", "duration"],
-  "ot": ["ot", "overtime", "over time"],
-  "status": ["status"],
-  "remarks": ["remarks", "remark"],
+  "employee code": [
+    "employee code",
+    "e. code",
+    "e code",
+    "code",
+    "emp code",
+    "emp. code",
+  ],
+  "employee name": [
+    "employee name",
+    "name",
+    "emp name",
+    "emp. name",
+    "employee_name",
+  ],
+  shift: ["shift"],
+  // Actual punch times only — never alias scheduled "s. intime" / "s. outtime"
+  "in time": [
+    "in time",
+    "intime",
+    "in_time",
+    "check in",
+    "checkin",
+    "a. intime",
+    "a. in time",
+  ],
+  "out time": [
+    "out time",
+    "outtime",
+    "out_time",
+    "check out",
+    "checkout",
+    "a. outtime",
+    "a. out time",
+  ],
+  "work duration": [
+    "work duration",
+    "work dur.",
+    "work dur",
+    "work_duration",
+    "duration",
+  ],
+  ot: ["ot", "overtime", "over time"],
+  status: ["status"],
+  remarks: ["remarks", "remark"],
 };
 
 export function normalizeColumnName(name: string): string {

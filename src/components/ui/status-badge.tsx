@@ -20,13 +20,13 @@ const styles: Record<string, string> = {
 
 function resolveVariant(status: string): string {
   const s = status.toLowerCase();
-  if (s === "present" || s === "active") return "present";
-  if (s === "absent" || s === "resigned") return "absent";
-  if (s.includes("short")) return "short";
+  if (s === "present" || s === "active" || s === "current") return "present";
+  if (s === "absent" || s === "resigned" || s === "revoked" || s === "failed") return "absent";
+  if (s.includes("short") || s === "expired") return "short";
   if (s === "pending") return "pending";
   if (s === "approved") return "approved";
   if (s === "rejected") return "rejected";
-  if (s === "inactive") return "inactive";
+  if (s === "inactive" || s === "ended" || s === "logged out" || s === "logged_out") return "inactive";
   return "default";
 }
 

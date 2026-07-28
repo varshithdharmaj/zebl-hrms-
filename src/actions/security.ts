@@ -45,6 +45,7 @@ export async function logoutSessionAction(formData: FormData): Promise<void> {
     await clearSessionCookie();
     redirect("/login");
   }
+  revalidatePath("/employee/security");
   revalidatePath("/employee/security/active-sessions");
 }
 
@@ -92,5 +93,6 @@ export async function forceLogoutSessionAction(formData: FormData): Promise<void
     await clearSessionCookie();
     redirect("/login");
   }
+  revalidatePath("/admin/security");
   revalidatePath("/admin/security/active-sessions");
 }

@@ -3,7 +3,9 @@ import { LoginSessionStatus } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   closeSession,
+  getActiveSessions,
   getLoginHistory,
+  getSecuritySummary,
   recordFailedLogin,
   recordSuccessfulLogin,
 } from "@/lib/security/login-history-service";
@@ -81,11 +83,25 @@ describe("login history integration", () => {
     expect(history.total).toBe(1);
     expect(history.rows[0]?.status).toBe(LoginSessionStatus.active);
 
+    const active = await getActiveSessions({ employeeId }, { skipExpire: true });
+    expect(active.some((row) => row.id === marker)).toBe(true);
+
+    const summary = await getSecuritySummary({
+      employeeId,
+      currentSessionId: marker,
+    });
+    expect(summary.activeSessionCount).toBeGreaterThanOrEqual(1);
+    expect(summary.currentDevice?.id).toBe(marker);
+    expect(summary.lastLogin?.id).toBe(marker);
+
     await closeSession(marker, LoginSessionStatus.logged_out);
     const closed = await prisma.loginSession.findUnique({ where: { id: marker } });
     expect(closed?.status).toBe(LoginSessionStatus.logged_out);
     expect(closed?.logoutAt).not.toBeNull();
     expect(closed?.isCurrent).toBe(false);
+
+    const afterClose = await getActiveSessions({ employeeId }, { skipExpire: true });
+    expect(afterClose.some((row) => row.id === marker)).toBe(false);
   }, 30_000);
 
   it("persists failed attempts without a user relation", async () => {

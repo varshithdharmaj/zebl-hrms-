@@ -67,8 +67,7 @@ function groupedNavForRole(role: AppUserRole, showApprovals: boolean): NavGroup[
         {
           group: "Security",
           items: [
-            { href: "/admin/security/login-history", label: "Login History", icon: History },
-            { href: "/admin/security/active-sessions", label: "Active Sessions", icon: ShieldCheck },
+            { href: "/admin/security", label: "Security & Sessions", icon: ShieldCheck },
           ],
         },
         {
@@ -112,8 +111,7 @@ function groupedNavForRole(role: AppUserRole, showApprovals: boolean): NavGroup[
         {
           group: "Security",
           items: [
-            { href: "/employee/security/login-history", label: "My Login History", icon: History },
-            { href: "/employee/security/active-sessions", label: "Active Sessions", icon: ShieldCheck },
+            { href: "/employee/security", label: "Security & Sessions", icon: ShieldCheck },
           ],
         },
       ];

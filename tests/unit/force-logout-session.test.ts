@@ -118,6 +118,7 @@ describe("forceLogoutSessionAction", () => {
         }),
       })
     );
+    expect(revalidatePath).toHaveBeenCalledWith("/admin/security");
     expect(revalidatePath).toHaveBeenCalledWith("/admin/security/active-sessions");
     expect(clearSessionCookie).not.toHaveBeenCalled();
   });

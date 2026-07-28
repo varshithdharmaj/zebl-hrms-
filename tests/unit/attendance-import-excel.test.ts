@@ -10,6 +10,20 @@ function buildExcelBuffer(rows: unknown[][]): Buffer {
   return Buffer.from(XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }));
 }
 
+function buildMultiSheetBuffer(
+  sheets: { name: string; rows: unknown[][] }[]
+): Buffer {
+  const workbook = XLSX.utils.book_new();
+  for (const sheet of sheets) {
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.aoa_to_sheet(sheet.rows),
+      sheet.name
+    );
+  }
+  return Buffer.from(XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }));
+}
+
 const HEADER = [
   "Employee Code",
   "Employee Name",
@@ -80,7 +94,40 @@ describe("parseAttendanceExcel (regression)", () => {
     const result = parseAttendanceExcel(buffer);
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.error).toBe("Excel file has no data rows.");
+    expect(result.error).toMatch(/no valid employee rows|no data rows/i);
+  });
+
+  it("skips empty leading sheets and reads data from a later sheet", () => {
+    const buffer = buildMultiSheetBuffer([
+      { name: "Cover", rows: [[], ["Report title"], []] },
+      { name: "Empty", rows: [[]] },
+      {
+        name: "Attendance",
+        rows: [
+          HEADER,
+          ["EMP010", "Dana", "GS", "09:00", "18:00", "09:00", "0", "Present", ""],
+        ],
+      },
+    ]);
+    const result = parseAttendanceExcel(buffer);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].employeeCode).toBe("EMP010");
+  });
+
+  it("finds the header below title rows on the same sheet", () => {
+    const buffer = buildExcelBuffer([
+      ["Company Attendance Export"],
+      ["Generated: 2026-07-24"],
+      [],
+      HEADER,
+      ["EMP011", "Eve", "GS", "08:00", "17:00", "09:00", "0", "Present", ""],
+    ]);
+    const result = parseAttendanceExcel(buffer);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.rows[0].employeeCode).toBe("EMP011");
   });
 });
 
