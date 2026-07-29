@@ -47,7 +47,7 @@ function parseSheetRows(rows: unknown[][]): AttendanceImportParseResult | null {
     return { ok: false, error: "Excel file has no data rows." };
   }
 
-  return normalizeAttendanceMatrix(found.headers, dataRows);
+  return normalizeAttendanceMatrix(found.headers, dataRows, "EXCEL_DAILY");
 }
 
 /**

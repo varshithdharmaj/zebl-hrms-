@@ -5,6 +5,10 @@ export {
   isPostgresDatabase,
 } from "@/lib/config/env";
 export {
+  isAttendanceImportPreviewEnabled,
+  attendanceImportConfig,
+} from "@/lib/config/attendance-import";
+export {
   validateApplicationConfig,
   assertValidConfig,
   type ConfigIssue,

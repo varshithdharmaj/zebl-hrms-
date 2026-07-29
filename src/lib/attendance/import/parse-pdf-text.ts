@@ -117,7 +117,7 @@ function parseDelimitedLines(text: string): AttendanceImportParseResult {
     return { ok: false, error: UNSUPPORTED_LAYOUT_ERROR };
   }
 
-  const result = normalizeAttendanceMatrix(headers, dataRows);
+  const result = normalizeAttendanceMatrix(headers, dataRows, "PDF_DAILY");
   if (!result.ok) {
     if (result.error.startsWith("Missing required column:")) {
       return {
@@ -168,7 +168,7 @@ function parsePipeCellStream(text: string): AttendanceImportParseResult {
     }
     if (dataRows.length === 0) continue;
 
-    const result = normalizeAttendanceMatrix(headers, dataRows);
+    const result = normalizeAttendanceMatrix(headers, dataRows, "PDF_DAILY");
     if (result.ok) return result;
   }
 

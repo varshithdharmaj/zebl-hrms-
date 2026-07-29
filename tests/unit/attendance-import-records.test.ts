@@ -60,6 +60,8 @@ function row(partial: Partial<AttendanceImportRow> & { employeeCode: string }): 
     ot: partial.ot ?? "0",
     status: partial.status ?? "Present",
     remarks: partial.remarks ?? "",
+    attendanceDate: partial.attendanceDate,
+    source: partial.source ?? "PDF_DAILY",
   };
 }
 
@@ -232,5 +234,107 @@ describe("importAttendanceRows (shared Excel/PDF importer)", () => {
     if (result.ok) return;
     expect(result.error).toContain("2000");
     expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it("Excel rows without attendanceDate use the upload-form date", async () => {
+    employeeFindUnique.mockResolvedValue({ id: 7, employeeCode: "EMP001" });
+    attendanceRecordFindUnique.mockResolvedValue(null);
+    const formDate = new Date("2026-07-24T00:00:00.000Z");
+
+    const result = await importAttendanceRows({
+      session: hrActor,
+      fileName: "att.xlsx",
+      attendanceDate: formDate,
+      rows: [row({ employeeCode: "EMP001", source: "EXCEL_DAILY" })],
+      source: "excel",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.imported).toBe(1);
+    expect(attendanceRecordFindUnique).toHaveBeenCalledWith({
+      where: {
+        employeeId_attendanceDate: {
+          employeeId: 7,
+          attendanceDate: formDate,
+        },
+      },
+    });
+    expect(attendanceRecordCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          attendanceDate: formDate,
+        }),
+      })
+    );
+  });
+
+  it("Daily PDF rows without attendanceDate use the upload-form date", async () => {
+    employeeFindUnique.mockResolvedValue({ id: 7, employeeCode: "EMP001" });
+    attendanceRecordFindUnique.mockResolvedValue(null);
+    const formDate = new Date("2026-07-24T00:00:00.000Z");
+
+    const result = await importAttendanceRows({
+      session: hrActor,
+      fileName: "att.pdf",
+      attendanceDate: formDate,
+      rows: [row({ employeeCode: "EMP001", source: "PDF_DAILY" })],
+      source: "pdf",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(attendanceRecordCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          attendanceDate: formDate,
+        }),
+      })
+    );
+  });
+
+  it("uses each row attendanceDate when present (form date ignored)", async () => {
+    employeeFindUnique.mockResolvedValue({ id: 7, employeeCode: "EMP-A" });
+    attendanceRecordFindUnique.mockResolvedValue(null);
+
+    const formDate = new Date("2026-01-01T00:00:00.000Z");
+    const july16 = new Date("2026-07-16T00:00:00.000Z");
+    const july17 = new Date("2026-07-17T00:00:00.000Z");
+
+    const result = await importAttendanceRows({
+      session: hrActor,
+      fileName: "summary-mock.pdf",
+      attendanceDate: formDate,
+      rows: [
+        row({
+          employeeCode: "EMP-A",
+          employeeName: "Employee A",
+          attendanceDate: july16,
+          source: "PDF_SUMMARY",
+        }),
+        row({
+          employeeCode: "EMP-A",
+          employeeName: "Employee A",
+          attendanceDate: july17,
+          source: "PDF_SUMMARY",
+        }),
+      ],
+      source: "pdf",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.imported).toBe(2);
+
+    const findCalls = attendanceRecordFindUnique.mock.calls.map(
+      (c) => c[0].where.employeeId_attendanceDate.attendanceDate
+    );
+    expect(findCalls).toEqual([july16, july17]);
+
+    const createDates = attendanceRecordCreate.mock.calls.map(
+      (c) => c[0].data.attendanceDate
+    );
+    expect(createDates).toEqual([july16, july17]);
+    expect(createDates).not.toContain(formDate);
   });
 });

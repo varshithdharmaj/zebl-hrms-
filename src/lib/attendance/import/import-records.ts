@@ -11,6 +11,7 @@ import type { SessionUser } from "@/lib/session";
 import { formatTimeCell } from "./cell-utils";
 import { ATTENDANCE_UPLOAD_MAX_ROWS } from "./file-validation";
 import type { AttendanceImportFormat, AttendanceImportRow } from "./types";
+import { resolveImportAttendanceDate } from "./types";
 
 export type ImportAttendanceSuccess = {
   ok: true;
@@ -100,15 +101,19 @@ async function saveAttendanceRecord(
  * Shared attendance import (Excel + PDF): atomic DB write via interactive transaction.
  * Excel may auto-create employees; PDF rejects unknown employee codes (no create / no login).
  * Login provisioning for Excel auto-created employees runs after a successful commit (soft-fail).
+ *
+ * Date resolution (sole fallback site):
+ *   attendanceDate = row.attendanceDate ?? formAttendanceDate
  */
 export async function importAttendanceRows(params: {
   session: SessionUser;
   fileName: string;
+  /** Upload-form date — used when a row does not supply `attendanceDate`. */
   attendanceDate: Date;
   rows: AttendanceImportRow[];
   source: AttendanceImportFormat;
 }): Promise<ImportAttendanceResult> {
-  const { session, fileName, attendanceDate, rows, source } = params;
+  const { session, fileName, attendanceDate: formAttendanceDate, rows, source } = params;
 
   if (rows.length > ATTENDANCE_UPLOAD_MAX_ROWS) {
     return {
@@ -137,6 +142,7 @@ export async function importAttendanceRows(params: {
       for (const row of rows) {
         const employeeCode = row.employeeCode;
         const employeeName = row.employeeName;
+        const attendanceDate = resolveImportAttendanceDate(row, formAttendanceDate);
 
         const employee = await tx.employee.findUnique({
           where: { employeeCode },
@@ -217,7 +223,8 @@ export async function importAttendanceRows(params: {
           description: "Attendance workbook import completed.",
           requestContext,
           metadata: {
-            attendanceDate: attendanceDate.toISOString(),
+            formAttendanceDate: formAttendanceDate.toISOString(),
+            attendanceDate: formAttendanceDate.toISOString(),
             fileName,
             imported,
             skipped,

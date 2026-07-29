@@ -2,8 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ATTENDANCE_UPLOAD_MAX_FILE_SIZE } from "@/lib/attendance/import/file-validation";
 
 const requireAdminSession = vi.fn();
-const parseAttendanceExcel = vi.fn();
-const parseAttendancePdf = vi.fn();
+const parseAttendanceFile = vi.fn();
 const importAttendanceRows = vi.fn();
 const validateAttendanceUploadFile = vi.fn();
 
@@ -11,12 +10,8 @@ vi.mock("@/lib/auth-guards", () => ({
   requireAdminSession: (...args: unknown[]) => requireAdminSession(...args),
 }));
 
-vi.mock("@/lib/attendance/import/parse-excel", () => ({
-  parseAttendanceExcel: (...args: unknown[]) => parseAttendanceExcel(...args),
-}));
-
-vi.mock("@/lib/attendance/import/parse-pdf", () => ({
-  parseAttendancePdf: (...args: unknown[]) => parseAttendancePdf(...args),
+vi.mock("@/lib/attendance/import/parse-dispatch", () => ({
+  parseAttendanceFile: (...args: unknown[]) => parseAttendanceFile(...args),
 }));
 
 vi.mock("@/lib/attendance/import/import-records", () => ({
@@ -71,8 +66,7 @@ describe("uploadAttendanceAction — early size rejection", () => {
 
     expect(result.error).toBe("File size exceeds 5MB limit.");
     expect(arrayBuffer).not.toHaveBeenCalled();
-    expect(parseAttendanceExcel).not.toHaveBeenCalled();
-    expect(parseAttendancePdf).not.toHaveBeenCalled();
+    expect(parseAttendanceFile).not.toHaveBeenCalled();
     expect(importAttendanceRows).not.toHaveBeenCalled();
     expect(validateAttendanceUploadFile).not.toHaveBeenCalled();
   });
@@ -88,8 +82,9 @@ describe("uploadAttendanceAction — early size rejection", () => {
     };
 
     validateAttendanceUploadFile.mockReturnValue({ ok: true, format: "pdf" });
-    parseAttendancePdf.mockResolvedValue({
+    parseAttendanceFile.mockResolvedValue({
       ok: true,
+      reportType: "PDF_DAILY",
       rows: [
         {
           employeeCode: "EMP001",
@@ -101,6 +96,7 @@ describe("uploadAttendanceAction — early size rejection", () => {
           ot: "0",
           status: "Present",
           remarks: "",
+          source: "PDF_DAILY",
         },
       ],
     });
@@ -122,9 +118,63 @@ describe("uploadAttendanceAction — early size rejection", () => {
     } as unknown as FormData;
 
     const result = await uploadAttendanceAction({}, formData);
-    expect(arrayBuffer).toHaveBeenCalledTimes(1);
-    expect(parseAttendancePdf).toHaveBeenCalled();
-    expect(result.success).toContain("Imported 1");
-    expect(result.unknownEmployees).toBe(0);
+
+    expect(result.error).toBeUndefined();
+    expect(parseAttendanceFile).toHaveBeenCalled();
+    expect(importAttendanceRows).toHaveBeenCalled();
+  });
+
+  it("allows Summary PDF import without a form attendance date", async () => {
+    const pdfMagic = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31]);
+    const arrayBuffer = vi.fn(async () => pdfMagic.buffer);
+    const file = {
+      name: "summary.pdf",
+      type: "application/pdf",
+      size: pdfMagic.byteLength,
+      arrayBuffer,
+    };
+
+    validateAttendanceUploadFile.mockReturnValue({ ok: true, format: "pdf" });
+    parseAttendanceFile.mockResolvedValue({
+      ok: true,
+      reportType: "PDF_SUMMARY",
+      rows: [
+        {
+          employeeCode: "EMP001",
+          employeeName: "A",
+          shift: "GS",
+          inTime: "09:00",
+          outTime: "18:00",
+          workDuration: "09:00",
+          ot: "",
+          status: "Present",
+          remarks: "",
+          attendanceDate: new Date(2026, 6, 16),
+          source: "PDF_SUMMARY",
+        },
+      ],
+    });
+    importAttendanceRows.mockResolvedValue({
+      ok: true,
+      imported: 1,
+      skipped: 0,
+      uploadId: 2,
+      provisioningErrors: [],
+      rejectedUnknownEmployees: [],
+    });
+
+    const formData = {
+      get(name: string) {
+        if (name === "file") return file;
+        if (name === "attendanceDate") return "";
+        return null;
+      },
+    } as unknown as FormData;
+
+    const result = await uploadAttendanceAction({}, formData);
+    expect(result.error).toBeUndefined();
+    expect(result.success).toBeDefined();
+    expect(result.reportType).toBe("PDF_SUMMARY");
+    expect(importAttendanceRows).toHaveBeenCalled();
   });
 });

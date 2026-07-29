@@ -1,5 +1,8 @@
 # Zebl Attendance Manager
 
+[![CI](https://github.com/varshithdharmaj/ZEBL_AMS/actions/workflows/ci.yml/badge.svg)](https://github.com/varshithdharmaj/ZEBL_AMS/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/varshithdharmaj/ZEBL_AMS/actions/workflows/codeql.yml/badge.svg)](https://github.com/varshithdharmaj/ZEBL_AMS/actions/workflows/codeql.yml)
+
 Next.js 15 attendance and leave management: TypeScript, Tailwind, shadcn/ui, Prisma, **PostgreSQL**.
 
 ## Features
@@ -113,6 +116,7 @@ Unit tests run without a database. Integration tests require `DATABASE_URL=postg
 
 ## Documentation
 
+- [docs/github-actions.md](docs/github-actions.md) — CI, CodeQL, Dependabot
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system overview and layers
 - [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) — developer setup and conventions
 - [docs/WORKFLOW.md](docs/WORKFLOW.md) — leave workflow engine

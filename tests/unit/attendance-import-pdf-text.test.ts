@@ -46,6 +46,9 @@ describe("parseAttendancePdfText — supported layouts", () => {
     expect(result.rows).toHaveLength(2);
     expect(result.rows[0].employeeCode).toBe("EMP001");
     expect(result.rows[1].remarks).toBe("Late");
+    expect(result.rows[0].source).toBe("PDF_DAILY");
+    expect(result.rows[0].attendanceDate).toBeUndefined();
+    expect(result.rows[1].attendanceDate).toBeUndefined();
   });
 
   it("parses tab-delimited tables", () => {

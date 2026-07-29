@@ -1,47 +1,77 @@
 import "server-only";
 
-import { extractText, getDocumentProxy } from "unpdf";
+import { detectAttendanceReportType } from "./detect-report-type";
+import { extractAttendancePdf } from "./extract-pdf";
+import { parseAttendancePdfSummary } from "./parse-pdf-summary";
 import { parseAttendancePdfText, PDF_IMPORT_ERRORS } from "./parse-pdf-text";
-import type { AttendanceImportParseResult } from "./types";
+import type {
+  AttendanceImportParseResult,
+  AttendanceReportType,
+} from "./types";
 
-/** Copy into a plain ArrayBuffer-backed Uint8Array for PDF.js worker transfer. */
-function toTransferablePdfBytes(bytes: Uint8Array): Uint8Array {
-  const copy = new Uint8Array(bytes.byteLength);
-  copy.set(bytes);
-  return copy;
-}
+export type ParseAttendancePdfOptions = {
+  fileName?: string;
+};
+
+export type ParseAttendancePdfResult = AttendanceImportParseResult & {
+  reportType?: AttendanceReportType;
+};
 
 /**
  * Server-only PDF → normalized attendance rows.
- * Uses unpdf (PDF.js serverless build) for text extraction; does not write to the DB.
+ *
+ * - PDF_DAILY / UNKNOWN → merged-text Daily parser (unchanged)
+ * - PDF_SUMMARY → eSSL Summary state machine on PdfDocument
  */
 export async function parseAttendancePdf(
-  bytes: Uint8Array
-): Promise<AttendanceImportParseResult> {
+  bytes: Uint8Array,
+  options: ParseAttendancePdfOptions = {}
+): Promise<ParseAttendancePdfResult> {
   try {
-    const pdf = await getDocumentProxy(toTransferablePdfBytes(bytes));
-    const { text, totalPages } = await extractText(pdf, { mergePages: true });
+    const { document, mergedText } = await extractAttendancePdf(bytes);
 
-    if (!totalPages || totalPages < 1) {
+    if (!document.totalPages || document.totalPages < 1) {
       return {
         ok: false,
         error:
           "The PDF appears to be empty. Supported PDFs are structured attendance reports with recognizable tabular columns. For unsupported or complex reports, export as Excel and upload the Excel file instead.",
+        reportType: "UNKNOWN",
       };
     }
 
-    const merged = typeof text === "string" ? text : "";
-    if (!merged.trim()) {
-      return { ok: false, error: PDF_IMPORT_ERRORS.NO_TEXT };
+    if (!mergedText.trim()) {
+      return {
+        ok: false,
+        error: PDF_IMPORT_ERRORS.NO_TEXT,
+        reportType: "UNKNOWN",
+      };
     }
 
-    return parseAttendancePdfText(merged);
+    const detection = detectAttendanceReportType({
+      format: "pdf",
+      fileName: options.fileName,
+      extractedText: mergedText,
+    });
+
+    if (detection.type === "PDF_SUMMARY") {
+      const parsed = parseAttendancePdfSummary(document);
+      return { ...parsed, reportType: "PDF_SUMMARY" };
+    }
+
+    if (detection.type === "UNKNOWN") {
+      const parsed = parseAttendancePdfText(mergedText);
+      return { ...parsed, reportType: "UNKNOWN" };
+    }
+
+    const parsed = parseAttendancePdfText(mergedText);
+    return { ...parsed, reportType: "PDF_DAILY" };
   } catch (error) {
     console.error("PDF parse error:", error);
     return {
       ok: false,
       error:
         "Failed to process PDF file. The file may be corrupted, password-protected, or not a valid structured attendance PDF. For unsupported or complex reports, export as Excel and upload the Excel file instead.",
+      reportType: "UNKNOWN",
     };
   }
 }

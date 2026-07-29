@@ -24,6 +24,8 @@ npm test
 npm run validate    # all three
 ```
 
+PRs targeting `main` must pass GitHub Actions CI. See [github-actions.md](./github-actions.md).
+
 ## Code conventions
 
 | Concern | Location |

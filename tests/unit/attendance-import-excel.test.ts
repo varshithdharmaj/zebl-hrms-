@@ -51,6 +51,9 @@ describe("parseAttendanceExcel (regression)", () => {
     expect(result.rows[0].employeeCode).toBe("EMP001");
     expect(result.rows[1].employeeName).toBe("Bob");
     expect(result.rows[1].remarks).toBe("Late");
+    expect(result.rows[0].source).toBe("EXCEL_DAILY");
+    expect(result.rows[0].attendanceDate).toBeUndefined();
+    expect(result.rows[1].attendanceDate).toBeUndefined();
   });
 
   it("accepts column aliases used by the existing importer", () => {

@@ -3,7 +3,12 @@ import {
   validateExcelColumns,
 } from "@/lib/attendance";
 import { cellValue } from "./cell-utils";
-import type { AttendanceImportParseResult, AttendanceImportRow } from "./types";
+import type {
+  AttendanceImportParseResult,
+  AttendanceImportRow,
+  AttendanceImportRowDraft,
+  AttendanceReportType,
+} from "./types";
 
 type ColumnIndexMap = {
   code: number;
@@ -34,7 +39,7 @@ export function buildColumnIndexMap(headers: string[]): ColumnIndexMap {
 export function mapRowToAttendanceImportRow(
   row: unknown[],
   idx: ColumnIndexMap
-): AttendanceImportRow | null {
+): AttendanceImportRowDraft | null {
   const employeeCode = cellValue(row, idx.code);
   if (!employeeCode) return null;
 
@@ -48,16 +53,18 @@ export function mapRowToAttendanceImportRow(
     ot: idx.ot >= 0 ? (row[idx.ot] as string | number | null | undefined) : "",
     status: cellValue(row, idx.status),
     remarks: cellValue(row, idx.remarks),
+    // attendanceDate intentionally omitted — Excel / Daily PDF use form date
   };
 }
 
 /**
  * Convert a header + data matrix (Excel-style) into normalized import rows.
- * Shared by Excel and PDF table parsers.
+ * Shared by Excel and PDF table parsers. Stamps `source`; does not set row dates.
  */
 export function normalizeAttendanceMatrix(
   headers: string[],
-  dataRows: unknown[][]
+  dataRows: unknown[][],
+  source: AttendanceReportType
 ): AttendanceImportParseResult {
   const columnError = validateExcelColumns(headers);
   if (columnError) return { ok: false, error: columnError };
@@ -67,7 +74,7 @@ export function normalizeAttendanceMatrix(
 
   for (const row of dataRows) {
     const mapped = mapRowToAttendanceImportRow(row, idx);
-    if (mapped) rows.push(mapped);
+    if (mapped) rows.push({ ...mapped, source });
   }
 
   if (rows.length === 0) {

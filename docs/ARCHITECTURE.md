@@ -49,3 +49,9 @@ src/
 - [DATABASE.md](./DATABASE.md)
 - [DEPLOYMENT.md](./DEPLOYMENT.md)
 - [CODE_OWNERSHIP.md](./CODE_OWNERSHIP.md)
+- [attendance-import-phase1.md](./attendance-import-phase1.md) — report-type detection foundation
+- [attendance-import-phase2.md](./attendance-import-phase2.md) — per-row attendance date contract
+- [attendance-import-phase3a.md](./attendance-import-phase3a.md) — structured PDF extraction
+- [attendance-import-phase4.md](./attendance-import-phase4.md) — eSSL Summary PDF parser
+- [attendance-import-phase5.md](./attendance-import-phase5.md) — import preview & validation
+- [attendance-import-phase5b.md](./attendance-import-phase5b.md) — optional preview (default: direct import)
