@@ -43,6 +43,7 @@ src/
 
 ## Related docs
 
+- [DAYWISE_DEVELOPMENT_LOG.md](./DAYWISE_DEVELOPMENT_LOG.md) — chronological project summary
 - [AUTH.md](./AUTH.md)
 - [WORKFLOW.md](./WORKFLOW.md)
 - [NOTIFICATIONS.md](./NOTIFICATIONS.md)
