@@ -8,6 +8,7 @@ import {
   toWorkflowActor,
   WorkflowError,
 } from "@/lib/workflow/leave-workflow";
+import { emitWorkflowNotification } from "@/lib/workflow/notification-hooks";
 import { MIN_REJECTION_COMMENT_LENGTH } from "@/lib/workflow/workflow-types";
 import { revokeTokensForStep } from "@/lib/approval-tokens/token-generator";
 import { validateApprovalToken } from "@/lib/approval-tokens/token-validator";
@@ -160,6 +161,12 @@ export async function consumeApprovalToken(
 
       return workflowResult;
     });
+
+    // Workflow mutations ran inside this transaction; emit only after commit so
+    // token generation / recipient resolution see committed currentStep state.
+    if (result.pendingNotification) {
+      await emitWorkflowNotification(result.pendingNotification);
+    }
 
     return {
       success: true,

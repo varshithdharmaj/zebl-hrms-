@@ -81,6 +81,19 @@
   --dashboard-gap: 1.25rem;
   --dashboard-gap-lg: 1.5rem;
   --radius-card: 0.75rem;
+  /* Attendance heatmap — soft enterprise pastels (light) */
+  --heatmap-present: #6ee7b7;
+  --heatmap-excellent: #059669;
+  --heatmap-absent: #fda4af;
+  --heatmap-leave: #fb7185;
+  --heatmap-holiday: #e2e8f0;
+  --heatmap-weekly-off: #f1f5f9;
+  --heatmap-insufficient: #fcd34d;
+  --heatmap-empty: #f8fafc;
+  --heatmap-cell-fg: #0f172a;
+  --heatmap-excellent-fg: #ffffff;
+  --heatmap-month-tint: rgb(15 23 42 / 0.045);
+  --heatmap-month-outline: rgb(15 23 42 / 0.1);
   color-scheme: light;
 }
 
@@ -117,6 +130,19 @@
   --warning-muted: #3a2a0d;
   --danger: #f87171;
   --danger-muted: #3d1418;
+  /* Attendance heatmap — muted mid-tones (dark) */
+  --heatmap-present: #0f766e;
+  --heatmap-excellent: #34d399;
+  --heatmap-absent: #9f1239;
+  --heatmap-leave: #e11d48;
+  --heatmap-holiday: #334155;
+  --heatmap-weekly-off: #1e293b;
+  --heatmap-insufficient: #b45309;
+  --heatmap-empty: #121826;
+  --heatmap-cell-fg: #f1f5f9;
+  --heatmap-excellent-fg: #0f172a;
+  --heatmap-month-tint: rgb(226 232 240 / 0.07);
+  --heatmap-month-outline: rgb(226 232 240 / 0.14);
   color-scheme: dark;
 }
 

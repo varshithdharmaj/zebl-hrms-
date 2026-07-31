@@ -12,6 +12,7 @@ import {
   countActiveSuperAdmins,
   employeeStatusToUserAccountFields,
   generateSecureTemporaryPassword,
+  EXCEL_UPLOAD_DEFAULT_PASSWORD,
 } from "@/lib/admin/account-lifecycle";
 import {
   canAdministerEmployeeAccount,
@@ -585,7 +586,10 @@ export async function provisionEmployeeLogin(
   }
 
   const password = input.generate ? generateSecureTemporaryPassword() : input.password ?? "";
-  if (password.length < 8) {
+  const isExcelUploadDefault =
+    input.auditOperation === "upload_auto_create" &&
+    password === EXCEL_UPLOAD_DEFAULT_PASSWORD;
+  if (!isExcelUploadDefault && password.length < 8) {
     throw new UserManagementError("Password must be at least 8 characters.");
   }
   const passwordHash = await bcrypt.hash(password, 10);

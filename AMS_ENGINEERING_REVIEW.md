@@ -445,19 +445,19 @@ Server actions use `auth-guards.ts` (`requireAdminSession`, `requireApproveLeave
 
 ```mermaid
 flowchart TD
-  Start[Leave submitted] --> M{Has direct manager?}
-  M -->|Yes| Step1[Step: manager]
+  Start[Leave submitted] --> M{Has Team Lead?}
+  M -->|Yes| Step1[Step: manager / Team Lead]
   M -->|No| HR[Step: hr_admin]
-  Step1 --> L{days >= LONG_LEAVE_THRESHOLD?}
-  L -->|Yes| Skip[Step: skip_level_manager]
+  Step1 --> L{Team Lead has manager?}
+  L -->|Yes| Skip[Step: skip_level_manager / Manager]
   L -->|No| HR2[Step: hr_admin]
   Skip --> HR2
-  Step1 --> HR2
 ```
 
-- `LONG_LEAVE_THRESHOLD_DAYS` defined in `workflow-types.ts`
+- Chain built in `approval-routing.ts` (always includes Department Head when hierarchy allows; not duration-gated)
 - HR step always present (`approverId: null`, role `hr_admin`)
-- Admin users can approve any pending step; managers only their assigned step
+- Super Admin can approve any pending step; Team Lead / Manager only their designated `approverId` step
+- Display labels: Team Lead / Manager / HR (`approver-role-labels.ts`)
 
 ### Workflow state machine
 

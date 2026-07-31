@@ -1,46 +1,62 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { AlertTriangle } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarOff,
+  Check,
+  CircleAlert,
+  Info,
+  Palmtree,
+  Star,
+  X,
+} from "lucide-react";
 import { SectionCard } from "@/components/ui/section-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn, minutesToHours } from "@/lib/utils";
+import { cn, minutesToHours, toISODate } from "@/lib/utils";
 import { calculateStreaks } from "@/lib/attendance/streak-calculator";
-import type { AttendanceDayResult } from "@/lib/attendance/day-classification";
+import {
+  isWorkedDayCategory,
+  type AttendanceDayResult,
+} from "@/lib/attendance/day-classification";
 import type { AttendanceHeatmapMonth } from "@/lib/attendance/heatmap-data";
 import {
+  CATEGORY_COLOR,
   CATEGORY_LABEL,
+  HEATMAP_COLOR,
   RATIO_TIER_COLOR,
   RATIO_TIER_LABEL,
+  heatmapCellForeground,
+  isExcellentTier,
 } from "@/lib/attendance/day-labels";
+import {
+  buildHeatmapMonthStats,
+  buildMonthWeekRanges,
+  monthKeyFromDate,
+  type HeatmapMonthStats,
+  type MonthWeekRange,
+} from "@/lib/attendance/heatmap-month-stats";
 
-// GitHub-style weekday labels
 const WEEKDAY_LABELS = ["", "Mon", "", "Wed", "", "Fri", ""];
 
+/** Preserve footprint: 26px cells, 3px gaps (Phase 8C). */
+const CELL = 26;
+const GAP = 3;
+const STEP = CELL + GAP;
+const WEEKDAY_GUTTER = 32; // matches `w-8` weekday label column
+const MONTH_LABEL_ROW = 18;
+
 export function isWorkedCategory(category: AttendanceDayResult["category"]): boolean {
-  return category === "PRESENT" || category === "WORKED_ON_WEEKLY_OFF" || category === "WORKED_ON_HOLIDAY";
+  return isWorkedDayCategory(category);
 }
 
-// Simplified 4-tier color mapping — muted, professional, theme-compatible
 export function getCellColor(day: AttendanceDayResult): string {
-  if (isWorkedCategory(day.category) && day.ratioTier) {
+  if (isWorkedDayCategory(day.category) && day.ratioTier) {
     return RATIO_TIER_COLOR[day.ratioTier];
   }
-  switch (day.category) {
-    case "HOLIDAY":
-      return "#71717a"; // Neutral muted gray
-    case "WEEKLY_OFF":
-      return "#52525b"; // Subtle neutral gray
-    case "LEAVE":
-      return "#be123c"; // Muted rose/pink
-    case "ABSENT":
-      return "#991b1b"; // Muted red
-    case "INSUFFICIENT_DATA":
-      return "#d97706"; // Muted amber
-    default:
-      return "#18181b"; // Dark neutral (no data)
-  }
+  return CATEGORY_COLOR[day.category] ?? HEATMAP_COLOR.empty;
 }
 
 export function buildTooltipText(day: AttendanceDayResult, expectedWorkMinutes: number): string {
@@ -52,8 +68,13 @@ export function buildTooltipText(day: AttendanceDayResult, expectedWorkMinutes: 
   });
   const parts = [`${dateLabel}`, CATEGORY_LABEL[day.category]];
 
-  if (isWorkedCategory(day.category)) {
-    if (day.ratioTier) parts.push(RATIO_TIER_LABEL[day.ratioTier]);
+  if (isWorkedDayCategory(day.category)) {
+    if (day.ratioTier) {
+      parts.push(
+        isExcellentTier(day.ratioTier) ? "Excellent" : "Present",
+        RATIO_TIER_LABEL[day.ratioTier]
+      );
+    }
     parts.push(`Worked: ${minutesToHours(day.workedMinutes)}`);
     if (expectedWorkMinutes > 0) parts.push(`Expected: ${minutesToHours(expectedWorkMinutes)}`);
     if (day.overtimeMinutes > 0) parts.push(`Overtime: ${minutesToHours(day.overtimeMinutes)}`);
@@ -74,54 +95,225 @@ export function buildTooltipText(day: AttendanceDayResult, expectedWorkMinutes: 
   return parts.join(" · ");
 }
 
-// Compact activity cell with small date number
 function ContributionCell({
   day,
   expectedWorkMinutes,
   isSelected,
   isToday,
+  dimmed,
   href,
+  onMonthIntent,
 }: {
   day: AttendanceDayResult;
   expectedWorkMinutes: number;
   isSelected: boolean;
   isToday: boolean;
+  dimmed: boolean;
   href: string;
+  onMonthIntent: (monthKey: string | null) => void;
 }) {
   const color = getCellColor(day);
+  const fg = heatmapCellForeground(
+    isWorkedDayCategory(day.category) ? day.ratioTier : null
+  );
   const tooltip = buildTooltipText(day, expectedWorkMinutes);
   const dateNum = day.date.getDate();
+  const monthKey = monthKeyFromDate(day.date);
 
   return (
-    <div className="group relative">
+    <div
+      className="group relative"
+      data-month={monthKey}
+      onMouseEnter={() => onMonthIntent(monthKey)}
+      onFocusCapture={() => onMonthIntent(monthKey)}
+    >
       <Link
         href={href}
         scroll={false}
         className={cn(
-          // Compact cell: 26px square, 6px radius, 3px gap (preserved from Phase 8C)
-          "relative flex items-center justify-center h-[26px] w-[26px] rounded-md transition-all duration-150",
-          "hover:ring-2 hover:ring-primary/40 hover:scale-105 hover:z-10",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus:z-10",
-          // Selected/today indicators
-          isSelected && "ring-2 ring-primary scale-105",
-          isToday && !isSelected && "ring-1 ring-primary/50"
+          "relative flex h-[26px] w-[26px] items-center justify-center rounded-[5px] border border-black/5 transition-[opacity,box-shadow,background-color] duration-150 dark:border-white/10",
+          "hover:z-10 hover:ring-2 hover:ring-primary/35",
+          "focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "motion-reduce:transition-none",
+          isSelected && "z-10 ring-2 ring-primary",
+          isToday && !isSelected && "z-[1] ring-2 ring-foreground/55 ring-offset-1 ring-offset-card",
+          dimmed && "opacity-35"
         )}
-        style={{ backgroundColor: color }}
+        style={{ backgroundColor: color, color: fg }}
         aria-label={tooltip}
-        title={tooltip}
         aria-current={isToday ? "date" : undefined}
       >
-        <span className="text-[0.5rem] font-medium text-white/90 dark:text-white/80 select-none">
+        <span className="select-none text-[0.5rem] font-semibold tabular-nums opacity-90">
           {dateNum}
         </span>
       </Link>
 
       <div
         role="tooltip"
-        className="pointer-events-none invisible absolute bottom-full left-1/2 z-30 mb-2 w-max max-w-xs -translate-x-1/2 rounded-lg border border-border bg-card px-3 py-2 text-left text-xs text-foreground opacity-0 shadow-xl transition-opacity group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100"
+        className="pointer-events-none invisible absolute bottom-full left-1/2 z-30 mb-2 w-max max-w-xs -translate-x-1/2 rounded-lg border border-border bg-card px-3 py-2 text-left text-xs text-foreground opacity-0 shadow-elevated transition-opacity group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100"
       >
         {tooltip}
       </div>
+    </div>
+  );
+}
+
+function LegendSwatch({
+  color,
+  className,
+}: {
+  color: string;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "mt-0.5 h-3.5 w-3.5 shrink-0 rounded-[3px] border border-black/5 dark:border-white/10",
+        className
+      )}
+      style={{ backgroundColor: color }}
+      aria-hidden
+    />
+  );
+}
+
+function HeatmapLegend() {
+  return (
+    <div className="mt-6 grid gap-6 border-t border-border pt-4 sm:grid-cols-3">
+      <div>
+        <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Attendance
+        </h4>
+        <ul className="space-y-2.5">
+          <li className="flex items-start gap-2 text-xs">
+            <LegendSwatch color={HEATMAP_COLOR.present} />
+            <div>
+              <div className="flex items-center gap-1.5 font-medium text-foreground">
+                <Check className="h-3 w-3 text-muted-foreground" aria-hidden />
+                Present
+              </div>
+              <p className="text-muted-foreground">Worked, below expected hours</p>
+            </div>
+          </li>
+          <li className="flex items-start gap-2 text-xs">
+            <LegendSwatch color={HEATMAP_COLOR.excellent} />
+            <div>
+              <div className="flex items-center gap-1.5 font-medium text-foreground">
+                <Star className="h-3 w-3 text-muted-foreground" aria-hidden />
+                Excellent
+              </div>
+              <p className="text-muted-foreground">Met or exceeded expected hours</p>
+            </div>
+          </li>
+          <li className="flex items-start gap-2 text-xs">
+            <LegendSwatch color={HEATMAP_COLOR.absent} />
+            <div>
+              <div className="flex items-center gap-1.5 font-medium text-foreground">
+                <X className="h-3 w-3 text-muted-foreground" aria-hidden />
+                Absent
+              </div>
+              <p className="text-muted-foreground">Expected working day, no attendance</p>
+            </div>
+          </li>
+          <li className="flex items-start gap-2 text-xs">
+            <LegendSwatch color={HEATMAP_COLOR.leave} />
+            <div>
+              <div className="flex items-center gap-1.5 font-medium text-foreground">
+                <CalendarOff className="h-3 w-3 text-muted-foreground" aria-hidden />
+                Leave
+              </div>
+              <p className="text-muted-foreground">Approved leave</p>
+            </div>
+          </li>
+        </ul>
+      </div>
+
+      <div>
+        <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Context
+        </h4>
+        <ul className="space-y-2.5">
+          <li className="flex items-start gap-2 text-xs">
+            <LegendSwatch color={HEATMAP_COLOR.holiday} />
+            <div>
+              <div className="flex items-center gap-1.5 font-medium text-foreground">
+                <Palmtree className="h-3 w-3 text-muted-foreground" aria-hidden />
+                Holiday
+              </div>
+              <p className="text-muted-foreground">Organisation holiday</p>
+            </div>
+          </li>
+          <li className="flex items-start gap-2 text-xs">
+            <LegendSwatch color={HEATMAP_COLOR.weeklyOff} />
+            <div>
+              <div className="flex items-center gap-1.5 font-medium text-foreground">
+                <CalendarOff className="h-3 w-3 text-muted-foreground" aria-hidden />
+                Weekly off
+              </div>
+              <p className="text-muted-foreground">Scheduled non-working day</p>
+            </div>
+          </li>
+        </ul>
+      </div>
+
+      <div>
+        <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Needs attention
+        </h4>
+        <ul className="space-y-2.5">
+          <li className="flex items-start gap-2 text-xs">
+            <LegendSwatch color={HEATMAP_COLOR.insufficient} />
+            <div>
+              <div className="flex items-center gap-1.5 font-medium text-foreground">
+                <CircleAlert className="h-3 w-3 text-muted-foreground" aria-hidden />
+                Insufficient data
+              </div>
+              <p className="text-muted-foreground">Check-in without usable duration</p>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function MonthSummaryBar({ stats }: { stats: HeatmapMonthStats }) {
+  const avg =
+    stats.averageWorkedMinutes != null ? minutesToHours(stats.averageWorkedMinutes) : "—";
+  const pct = stats.attendancePercent != null ? `${stats.attendancePercent}%` : "—";
+
+  return (
+    <div
+      className="mb-4 rounded-lg border border-border bg-muted/40 px-3 py-2.5"
+      aria-live="polite"
+    >
+      <p className="text-xs font-semibold text-foreground">{stats.label} summary</p>
+      <dl className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <div className="flex gap-1">
+          <dt>Attendance</dt>
+          <dd className="font-medium text-foreground">{pct}</dd>
+        </div>
+        <div className="flex gap-1">
+          <dt>Present</dt>
+          <dd className="font-medium text-foreground">{stats.presentDays}</dd>
+        </div>
+        <div className="flex gap-1">
+          <dt>Excellent</dt>
+          <dd className="font-medium text-foreground">{stats.excellentDays}</dd>
+        </div>
+        <div className="flex gap-1">
+          <dt>Absent</dt>
+          <dd className="font-medium text-foreground">{stats.absentDays}</dd>
+        </div>
+        <div className="flex gap-1">
+          <dt>Leave</dt>
+          <dd className="font-medium text-foreground">{stats.leaveDays}</dd>
+        </div>
+        <div className="flex gap-1">
+          <dt>Avg hours</dt>
+          <dd className="font-medium text-foreground">{avg}</dd>
+        </div>
+      </dl>
     </div>
   );
 }
@@ -164,7 +356,6 @@ export function AttendanceHeatmapSkeleton() {
   );
 }
 
-// Organize 12-month data into GitHub-style calendar weeks
 function organizeIntoWeeks(days: AttendanceDayResult[]): (AttendanceDayResult | null)[][] {
   if (days.length === 0) return [];
 
@@ -173,9 +364,8 @@ function organizeIntoWeeks(days: AttendanceDayResult[]): (AttendanceDayResult | 
   let weekStarted = false;
 
   days.forEach((day) => {
-    const dayOfWeek = day.date.getDay(); // 0 = Sunday
+    const dayOfWeek = day.date.getDay();
 
-    // Start new week on Sunday
     if (dayOfWeek === 0 && weekStarted) {
       weeks.push(currentWeek);
       currentWeek = Array(7).fill(null);
@@ -185,7 +375,6 @@ function organizeIntoWeeks(days: AttendanceDayResult[]): (AttendanceDayResult | 
     weekStarted = true;
   });
 
-  // Push remaining week if it has any days
   if (currentWeek.some((d) => d !== null)) {
     weeks.push(currentWeek);
   }
@@ -193,24 +382,21 @@ function organizeIntoWeeks(days: AttendanceDayResult[]): (AttendanceDayResult | 
   return weeks;
 }
 
-// Get month labels with their week positions
-function getMonthLabels(weeks: (AttendanceDayResult | null)[][]): { label: string; weekIndex: number }[] {
-  const labels: { label: string; weekIndex: number }[] = [];
+function getMonthLabels(weeks: (AttendanceDayResult | null)[][]): { label: string; weekIndex: number; monthKey: string }[] {
+  const labels: { label: string; weekIndex: number; monthKey: string }[] = [];
   let lastMonth = -1;
 
   weeks.forEach((week, weekIndex) => {
-    // Find the first non-null day in this week
     const firstDay = week.find((d) => d !== null);
     if (!firstDay) return;
 
     const month = firstDay.date.getMonth();
     const year = firstDay.date.getFullYear();
 
-    // Add label if this is a new month
     if (month !== lastMonth) {
       const monthName = firstDay.date.toLocaleDateString("en-IN", { month: "short" });
       const label = weekIndex === 0 ? `${monthName} ${year}` : monthName;
-      labels.push({ label, weekIndex });
+      labels.push({ label, weekIndex, monthKey: monthKeyFromDate(firstDay.date) });
       lastMonth = month;
     }
   });
@@ -218,93 +404,159 @@ function getMonthLabels(weeks: (AttendanceDayResult | null)[][]): { label: strin
   return labels;
 }
 
+function MonthWindowOverlay({
+  range,
+  weekCount,
+}: {
+  range: MonthWeekRange;
+  weekCount: number;
+}) {
+  if (weekCount === 0) return null;
+  const left = WEEKDAY_GUTTER + range.startWeek * STEP;
+  const width = (range.endWeek - range.startWeek + 1) * STEP - GAP;
+  const top = MONTH_LABEL_ROW + GAP;
+  const height = 7 * STEP - GAP;
+
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute z-0 rounded-lg transition-[opacity,transform] duration-200 motion-reduce:transition-none"
+      style={{
+        left,
+        top,
+        width,
+        height,
+        backgroundColor: "var(--heatmap-month-tint)",
+        boxShadow: "inset 0 0 0 1px var(--heatmap-month-outline)",
+      }}
+    />
+  );
+}
+
 export function AttendanceHeatmap({ month }: { month: AttendanceHeatmapMonth | null }) {
   const searchParams = useSearchParams();
   const selectedDate = searchParams.get("date");
-  const today = new Date();
+  const today = useMemo(() => new Date(), []);
 
-  function cellHref(day: AttendanceDayResult): string {
-    const params = new URLSearchParams(searchParams.toString());
-    const dateStr = day.date.toISOString().split("T")[0];
-    params.set("date", dateStr!);
-    return `/employee/dashboard?${params.toString()}`;
-  }
+  const [hoveredMonthKey, setHoveredMonthKey] = useState<string | null>(null);
+  const [pinnedMonthKey, setPinnedMonthKey] = useState<string | null>(null);
 
-  if (!month) {
+  const activeMonthKey = hoveredMonthKey ?? pinnedMonthKey;
+
+  const derived = useMemo(() => {
+    if (!month) return null;
+    const weeks = organizeIntoWeeks(month.days);
+    return {
+      streaks: calculateStreaks(month.days, today),
+      weeks,
+      monthLabels: getMonthLabels(weeks),
+      monthRanges: buildMonthWeekRanges(weeks),
+      monthStats: buildHeatmapMonthStats(month.days),
+    };
+  }, [month, today]);
+
+  const searchParamsString = searchParams.toString();
+  const cellHref = useMemo(() => {
+    return (day: AttendanceDayResult): string => {
+      const params = new URLSearchParams(searchParamsString);
+      params.set("date", toISODate(day.date));
+      return `/employee/dashboard?${params.toString()}`;
+    };
+  }, [searchParamsString]);
+
+  if (!month || !derived) {
     return <AttendanceHeatmapErrorNotice />;
   }
 
-  // Calculate streaks and summary metrics from year-to-date dataset
-  const { currentStreak, bestStreak, targetDaysCount } = calculateStreaks(month.days, today);
-
-  // Organize into calendar weeks
-  const weeks = organizeIntoWeeks(month.days);
-  const monthLabels = getMonthLabels(weeks);
+  const { streaks, weeks, monthLabels, monthRanges, monthStats } = derived;
+  const { currentStreak, bestStreak, targetDaysCount } = streaks;
+  const activeRange = activeMonthKey
+    ? monthRanges.find((r) => r.monthKey === activeMonthKey) ?? null
+    : null;
+  const activeStats = activeMonthKey ? monthStats.get(activeMonthKey) ?? null : null;
 
   return (
     <SectionCard
       title="Attendance activity"
       description="Daily working-hour effectiveness over the current year"
       action={
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <span className="flex h-4 w-4 items-center justify-center rounded-full border border-current">i</span>
-            Click any day to select
-          </span>
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Info className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span>Hover a month for summary · click a day to select</span>
         </div>
       }
     >
-      {/* Compact summary */}
       <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-        <span className="font-medium text-foreground">{targetDaysCount} days at 8+ hours</span>
+        <span className="font-medium text-foreground">{targetDaysCount} excellent days</span>
         <span aria-hidden>·</span>
         <span>{currentStreak}-day streak</span>
         <span aria-hidden>·</span>
         <span>Best {bestStreak} days</span>
       </div>
 
-      {/* Year-to-date contribution graph */}
-      <div className="overflow-x-auto pb-2">
-        <div className="inline-flex flex-col gap-[3px]">
-          {/* Month labels */}
-          <div className="flex items-center gap-[3px] pl-9">
+      {activeStats && <MonthSummaryBar stats={activeStats} />}
+
+      <div
+        className="overflow-x-auto pb-2"
+        onMouseLeave={() => setHoveredMonthKey(null)}
+      >
+        <div className="relative inline-flex flex-col gap-[3px]">
+          {activeRange && <MonthWindowOverlay range={activeRange} weekCount={weeks.length} />}
+
+          <div className="relative z-[1] flex items-center gap-[3px] pl-9" style={{ minHeight: MONTH_LABEL_ROW }}>
             {weeks.map((_, weekIndex) => {
               const label = monthLabels.find((m) => m.weekIndex === weekIndex);
               return (
                 <div key={weekIndex} className="w-[26px] text-left">
                   {label && (
-                    <span className="whitespace-nowrap text-[0.625rem] font-medium text-muted-foreground">
+                    <button
+                      type="button"
+                      className={cn(
+                        "whitespace-nowrap text-[0.625rem] font-medium text-muted-foreground transition-colors",
+                        "hover:text-foreground focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        activeMonthKey === label.monthKey && "text-foreground"
+                      )}
+                      onMouseEnter={() => setHoveredMonthKey(label.monthKey)}
+                      onFocus={() => setHoveredMonthKey(label.monthKey)}
+                      onClick={() =>
+                        setPinnedMonthKey((prev) =>
+                          prev === label.monthKey ? null : label.monthKey
+                        )
+                      }
+                      aria-pressed={pinnedMonthKey === label.monthKey}
+                      aria-label={`${label.label} summary`}
+                    >
                       {label.label}
-                    </span>
+                    </button>
                   )}
                 </div>
               );
             })}
           </div>
 
-          {/* Weekday rows */}
           {[0, 1, 2, 3, 4, 5, 6].map((dayIndex) => (
-            <div key={dayIndex} className="flex items-center gap-[3px]">
-              {/* Weekday label */}
-              <div className="w-8 text-right pr-1">
+            <div key={dayIndex} className="relative z-[1] flex items-center gap-[3px]">
+              <div className="w-8 pr-1 text-right">
                 <span className="text-[0.625rem] font-medium text-muted-foreground">
                   {WEEKDAY_LABELS[dayIndex]}
                 </span>
               </div>
 
-              {/* Cells for this weekday across all weeks */}
               {weeks.map((week, weekIndex) => {
                 const day = week[dayIndex];
                 if (!day) {
                   return <div key={weekIndex} className="h-[26px] w-[26px]" />;
                 }
 
-                const dayStr = day.date.toISOString().split("T")[0];
+                const dayStr = toISODate(day.date);
                 const isSelected = selectedDate === dayStr;
                 const isToday =
                   day.date.getDate() === today.getDate() &&
                   day.date.getMonth() === today.getMonth() &&
                   day.date.getFullYear() === today.getFullYear();
+                const dimmed = Boolean(
+                  activeMonthKey && monthKeyFromDate(day.date) !== activeMonthKey
+                );
 
                 return (
                   <ContributionCell
@@ -313,7 +565,9 @@ export function AttendanceHeatmap({ month }: { month: AttendanceHeatmapMonth | n
                     expectedWorkMinutes={month.expectedWorkMinutes}
                     isSelected={isSelected}
                     isToday={isToday}
+                    dimmed={dimmed}
                     href={cellHref(day)}
+                    onMonthIntent={setHoveredMonthKey}
                   />
                 );
               })}
@@ -326,78 +580,7 @@ export function AttendanceHeatmap({ month }: { month: AttendanceHeatmapMonth | n
         <p className="mt-4 text-center text-xs text-muted-foreground">No days to show for this period.</p>
       )}
 
-      {/* Two-column legend matching reference design */}
-      <div className="mt-6 grid gap-6 border-t border-border pt-4 sm:grid-cols-2">
-        {/* WORKED DURATION */}
-        <div>
-          <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Worked Duration
-          </h4>
-          <div className="space-y-2">
-            <div className="flex items-start gap-2">
-              <span className="mt-0.5 h-3 w-3 shrink-0 rounded-sm bg-[#991b1b]" aria-hidden />
-              <div className="text-xs">
-                <div className="font-medium text-foreground">Very low</div>
-                <div className="text-muted-foreground">&lt; 3h</div>
-              </div>
-            </div>
-            <div className="flex items-start gap-2">
-              <span className="mt-0.5 h-3 w-3 shrink-0 rounded-sm bg-[#c2410c]" aria-hidden />
-              <div className="text-xs">
-                <div className="font-medium text-foreground">Partial</div>
-                <div className="text-muted-foreground">3h – 5h</div>
-              </div>
-            </div>
-            <div className="flex items-start gap-2">
-              <span className="mt-0.5 h-3 w-3 shrink-0 rounded-sm bg-[#65a30d]" aria-hidden />
-              <div className="text-xs">
-                <div className="font-medium text-foreground">Near target</div>
-                <div className="text-muted-foreground">5h – 7h 59m</div>
-              </div>
-            </div>
-            <div className="flex items-start gap-2">
-              <span className="mt-0.5 h-3 w-3 shrink-0 rounded-sm bg-[#15803d]" aria-hidden />
-              <div className="text-xs">
-                <div className="font-medium text-foreground">Target met</div>
-                <div className="text-muted-foreground">≥ 8h</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* CONTEXT */}
-        <div>
-          <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Context
-          </h4>
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-xs">
-              <span className="h-3 w-3 shrink-0 rounded-sm bg-[#be123c]" aria-hidden />
-              <span className="font-medium text-foreground">Leave</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="h-3 w-3 shrink-0 rounded-sm bg-[#71717a]" aria-hidden />
-              <span className="font-medium text-foreground">Holiday</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="h-3 w-3 shrink-0 rounded-sm bg-[#52525b]" aria-hidden />
-              <span className="font-medium text-foreground">Weekly off</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <span
-                className="h-3 w-3 shrink-0 rounded-sm bg-[#d97706] opacity-60"
-                style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 2px, currentColor 2px, currentColor 3px)" }}
-                aria-hidden
-              />
-              <span className="font-medium text-foreground">Insufficient data</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="h-3 w-3 shrink-0 rounded-sm border-2 border-[#991b1b]" aria-hidden />
-              <span className="font-medium text-foreground">Absent</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <HeatmapLegend />
     </SectionCard>
   );
 }

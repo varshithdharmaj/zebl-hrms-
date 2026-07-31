@@ -14,11 +14,22 @@ export async function getManager(employeeId: number): Promise<ManagerSummary | n
           name: true,
           department: true,
           designation: true,
+          isActive: true,
         },
       },
     },
   });
-  return employee?.manager ?? null;
+  const manager = employee?.manager;
+  // Inactive / missing managers are treated as unresolved so approval routing
+  // falls through to HR instead of assigning a non-actionable step.
+  if (!manager || !manager.isActive) return null;
+  return {
+    id: manager.id,
+    employeeCode: manager.employeeCode,
+    name: manager.name,
+    department: manager.department,
+    designation: manager.designation,
+  };
 }
 
 export async function getDirectReports(employeeId: number): Promise<ManagerSummary[]> {

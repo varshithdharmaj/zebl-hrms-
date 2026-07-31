@@ -33,7 +33,10 @@ import {
   MIN_CANCELLATION_REASON_LENGTH,
   MIN_REJECTION_COMMENT_LENGTH,
 } from "@/lib/workflow/workflow-types";
-import { emitWorkflowNotification } from "@/lib/workflow/notification-hooks";
+import {
+  emitWorkflowNotification,
+  type WorkflowNotificationEvent,
+} from "@/lib/workflow/notification-hooks";
 import { leaveRequestWithStepsInclude } from "@/lib/leave/leave-request-include";
 
 export {
@@ -170,6 +173,17 @@ async function finalizeApproval(
   });
 }
 
+/**
+ * Emit only after the workflow transaction has committed so token generation
+ * and recipient resolution see committed currentStepId / version / steps.
+ */
+async function emitAfterCommit(
+  notification: WorkflowNotificationEvent | null | undefined
+): Promise<void> {
+  if (!notification) return;
+  await emitWorkflowNotification(notification);
+}
+
 export async function createLeaveWorkflow(params: {
   employeeId: number;
   leaveType: string;
@@ -184,7 +198,7 @@ export async function createLeaveWorkflow(params: {
     leaveDays: params.days,
   });
 
-  return prisma.$transaction(async (tx) => {
+  const leaveId = await prisma.$transaction(async (tx) => {
     const now = new Date();
     const leave = await tx.leaveRequest.create({
       data: {
@@ -236,14 +250,16 @@ export async function createLeaveWorkflow(params: {
       tx
     );
 
-    await emitWorkflowNotification({
-      leaveRequestId: leave.id,
-      event: "submitted",
-      workflowStatus: LeaveWorkflowStatus.pending_approval,
-    });
-
-    return { leaveId: leave.id };
+    return leave.id;
   });
+
+  await emitAfterCommit({
+    leaveRequestId: leaveId,
+    event: "submitted",
+    workflowStatus: LeaveWorkflowStatus.pending_approval,
+  });
+
+  return { leaveId };
 }
 
 export async function advanceWorkflow(
@@ -262,8 +278,9 @@ export async function advanceWorkflow(
   }
 
   const version = expectedVersion ?? leave.version;
+  let pendingNotification: WorkflowNotificationEvent | null = null;
 
-  const run = async (tx: Prisma.TransactionClient) => {
+  const run = async (tx: Prisma.TransactionClient): Promise<WorkflowActionResult> => {
     await assertVersion(tx, leaveId, version);
 
     const now = new Date();
@@ -304,12 +321,12 @@ export async function advanceWorkflow(
         tx
       );
 
-      await emitWorkflowNotification({
+      pendingNotification = {
         leaveRequestId: leaveId,
         event: "approval_required",
         workflowStatus: leave.workflowStatus,
         metadata: { nextStepId: next.id, nextApproverId: next.approverId },
-      });
+      };
 
       return {
         leaveId,
@@ -341,11 +358,11 @@ export async function advanceWorkflow(
       tx
     );
 
-    await emitWorkflowNotification({
+    pendingNotification = {
       leaveRequestId: leaveId,
       event: "final_approved",
       workflowStatus: LeaveWorkflowStatus.approved,
-    });
+    };
 
     return {
       leaveId,
@@ -354,8 +371,17 @@ export async function advanceWorkflow(
     };
   };
 
-  if (existingTx) return run(existingTx);
-  return prisma.$transaction(run);
+  if (existingTx) {
+    const result = await run(existingTx);
+    return {
+      ...result,
+      pendingNotification: pendingNotification ?? undefined,
+    };
+  }
+
+  const result = await prisma.$transaction(run);
+  await emitAfterCommit(pendingNotification);
+  return result;
 }
 
 export async function rejectWorkflow(
@@ -379,14 +405,15 @@ export async function rejectWorkflow(
   if (!step) throw new WorkflowError("No pending approval step.");
 
   // Same step boundary as approve (API/docs: canUserApproveStep). HR must not
-  // reject manager/skip-level steps via canAccessAdmin bypass.
+  // reject Team Lead / Department Head steps via canAccessAdmin bypass.
   if (!canUserRejectStep(actor, leave, step)) {
     throw new WorkflowError("You are not authorized to reject this request.");
   }
 
   const version = expectedVersion ?? leave.version;
+  let pendingNotification: WorkflowNotificationEvent | null = null;
 
-  const run = async (tx: Prisma.TransactionClient) => {
+  const run = async (tx: Prisma.TransactionClient): Promise<WorkflowActionResult> => {
     await assertVersion(tx, leaveId, version);
 
     const now = new Date();
@@ -434,12 +461,12 @@ export async function rejectWorkflow(
       tx
     );
 
-    await emitWorkflowNotification({
+    pendingNotification = {
       leaveRequestId: leaveId,
       event: "rejected",
       workflowStatus: LeaveWorkflowStatus.rejected,
       metadata: { comment: trimmed },
-    });
+    };
 
     return {
       leaveId,
@@ -448,8 +475,17 @@ export async function rejectWorkflow(
     };
   };
 
-  if (existingTx) return run(existingTx);
-  return prisma.$transaction(run);
+  if (existingTx) {
+    const result = await run(existingTx);
+    return {
+      ...result,
+      pendingNotification: pendingNotification ?? undefined,
+    };
+  }
+
+  const result = await prisma.$transaction(run);
+  await emitAfterCommit(pendingNotification);
+  return result;
 }
 
 export async function withdrawWorkflow(
@@ -474,7 +510,7 @@ export async function withdrawWorkflow(
     throw new WorkflowError("Cannot withdraw after an approver has taken action.");
   }
 
-  return prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx) => {
     await assertVersion(tx, leaveId, leave.version);
 
     const now = new Date();
@@ -499,19 +535,19 @@ export async function withdrawWorkflow(
       },
       tx
     );
-
-    await emitWorkflowNotification({
-      leaveRequestId: leaveId,
-      event: "withdrawn",
-      workflowStatus: LeaveWorkflowStatus.withdrawn,
-    });
-
-    return {
-      leaveId,
-      workflowStatus: LeaveWorkflowStatus.withdrawn,
-      message: "Leave request withdrawn.",
-    };
   });
+
+  await emitAfterCommit({
+    leaveRequestId: leaveId,
+    event: "withdrawn",
+    workflowStatus: LeaveWorkflowStatus.withdrawn,
+  });
+
+  return {
+    leaveId,
+    workflowStatus: LeaveWorkflowStatus.withdrawn,
+    message: "Leave request withdrawn.",
+  };
 }
 
 export async function cancelWorkflow(
@@ -542,7 +578,7 @@ export async function cancelWorkflow(
     throw new WorkflowError("Invalid leave type on request.");
   }
 
-  return prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx) => {
     await assertVersion(tx, leaveId, leave.version);
 
     await restoreLeaveBalanceForCancellation({
@@ -578,20 +614,20 @@ export async function cancelWorkflow(
       },
       tx
     );
-
-    await emitWorkflowNotification({
-      leaveRequestId: leaveId,
-      event: "cancelled",
-      workflowStatus: LeaveWorkflowStatus.cancelled,
-      metadata: { comment: trimmed },
-    });
-
-    return {
-      leaveId,
-      workflowStatus: LeaveWorkflowStatus.cancelled,
-      message: "Approved leave cancelled and balance restored.",
-    };
   });
+
+  await emitAfterCommit({
+    leaveRequestId: leaveId,
+    event: "cancelled",
+    workflowStatus: LeaveWorkflowStatus.cancelled,
+    metadata: { comment: trimmed },
+  });
+
+  return {
+    leaveId,
+    workflowStatus: LeaveWorkflowStatus.cancelled,
+    message: "Approved leave cancelled and balance restored.",
+  };
 }
 
 export function toWorkflowActor(session: {

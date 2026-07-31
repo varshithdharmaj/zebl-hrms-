@@ -17,16 +17,54 @@ export const CATEGORY_LABEL: Record<AttendanceDayCategory, string> = {
   WORKED_ON_HOLIDAY: "Worked on holiday",
 };
 
-// Simplified 4-tier attendance activity scale — professional, muted, theme-compatible
+/** CSS custom properties — resolve against light/dark theme tokens in globals.css. */
+export const HEATMAP_COLOR = {
+  present: "var(--heatmap-present)",
+  excellent: "var(--heatmap-excellent)",
+  absent: "var(--heatmap-absent)",
+  leave: "var(--heatmap-leave)",
+  holiday: "var(--heatmap-holiday)",
+  weeklyOff: "var(--heatmap-weekly-off)",
+  insufficient: "var(--heatmap-insufficient)",
+  empty: "var(--heatmap-empty)",
+  cellFg: "var(--heatmap-cell-fg)",
+  excellentFg: "var(--heatmap-excellent-fg)",
+} as const;
+
+/**
+ * Worked-day intensity → visual swatch.
+ * Below-target tiers share Present (soft green); target/overtime share Excellent (rich green).
+ * Classifier tiers are unchanged — this is presentation only.
+ */
 export const RATIO_TIER_COLOR: Record<AttendanceRatioTier, string> = {
-  very_low: "#991b1b", // Deep muted red — minimal work
-  partial: "#c2410c", // Muted orange — below target
-  near_target: "#65a30d", // Attractive light green — approaching target
-  target: "#15803d", // Rich deep green — target met (includes overtime)
-  overtime: "#15803d", // Same as target — overtime not visually distinct
+  very_low: HEATMAP_COLOR.present,
+  partial: HEATMAP_COLOR.present,
+  near_target: HEATMAP_COLOR.present,
+  target: HEATMAP_COLOR.excellent,
+  overtime: HEATMAP_COLOR.excellent,
 };
 
-// Activity graph cells don't display text (date shown in tooltip only)
+export const CATEGORY_COLOR: Record<AttendanceDayCategory, string> = {
+  PRESENT: HEATMAP_COLOR.present,
+  WORKED_ON_WEEKLY_OFF: HEATMAP_COLOR.present,
+  WORKED_ON_HOLIDAY: HEATMAP_COLOR.present,
+  ABSENT: HEATMAP_COLOR.absent,
+  LEAVE: HEATMAP_COLOR.leave,
+  HOLIDAY: HEATMAP_COLOR.holiday,
+  WEEKLY_OFF: HEATMAP_COLOR.weeklyOff,
+  INSUFFICIENT_DATA: HEATMAP_COLOR.insufficient,
+};
+
+/** True when the tier maps to the Excellent (target-met) swatch. */
+export function isExcellentTier(ratioTier: AttendanceRatioTier | null | undefined): boolean {
+  return ratioTier === "target" || ratioTier === "overtime";
+}
+
+export function heatmapCellForeground(ratioTier: AttendanceRatioTier | null | undefined): string {
+  return isExcellentTier(ratioTier) ? HEATMAP_COLOR.excellentFg : HEATMAP_COLOR.cellFg;
+}
+
+// Activity graph cells don't display status text as fill labels (date numeral only)
 export const RATIO_TIER_TEXT_CLASS: Record<AttendanceRatioTier, string> = {
   very_low: "text-transparent",
   partial: "text-transparent",

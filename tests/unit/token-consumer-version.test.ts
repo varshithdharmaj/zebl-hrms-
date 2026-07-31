@@ -71,6 +71,10 @@ vi.mock("@/lib/workflow/leave-workflow", () => {
   };
 });
 
+vi.mock("@/lib/workflow/notification-hooks", () => ({
+  emitWorkflowNotification: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("@/lib/audit", () => ({
   AUDIT_ACTIONS: {
     TOKEN_CONSUMED: "token.consumed",

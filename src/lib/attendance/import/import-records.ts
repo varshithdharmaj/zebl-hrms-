@@ -7,6 +7,7 @@ import {
   provisionEmployeeLogin,
   UserManagementError,
 } from "@/lib/admin/user-management";
+import { EXCEL_UPLOAD_DEFAULT_PASSWORD } from "@/lib/admin/account-lifecycle";
 import type { SessionUser } from "@/lib/session";
 import { formatTimeCell } from "./cell-utils";
 import { ATTENDANCE_UPLOAD_MAX_ROWS } from "./file-validation";
@@ -252,8 +253,9 @@ export async function importAttendanceRows(params: {
           employeeId: created.id,
           mode: "create",
           email,
-          generate: true,
-          mustChangePassword: true,
+          password: EXCEL_UPLOAD_DEFAULT_PASSWORD,
+          generate: false,
+          mustChangePassword: false,
           auditOperation: "upload_auto_create",
         });
         await prisma.notificationPreference.create({

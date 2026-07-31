@@ -19,6 +19,14 @@ Labels and helpers: `src/lib/workflow/workflow-status.ts`.
 
 Multi-step chain stored in `leave_approval_steps`. Current step on `leave_requests.current_step_id`.
 
+Built by `buildApprovalChain()` (`approval-routing.ts`):
+
+1. **Team Lead** (`ApproverRole.manager`) — `employee.managerId` when present
+2. **Manager / Department Head** (`ApproverRole.skip_level_manager`) — Team Lead's `managerId` when present
+3. **HR** (`ApproverRole.hr_admin`) — always final
+
+Display labels: `approver-role-labels.ts` (Team Lead / Manager / HR). Enum values are not renamed.
+
 ## Tokens (email/Teams links)
 
 `src/lib/approval-tokens/` — single-use tokens, transactional consume (`token-consumer.ts`).
@@ -31,6 +39,11 @@ Multi-step chain stored in `leave_approval_steps`. Current step on `leave_reques
 ## Notifications
 
 Hooks in `workflow/notification-hooks.ts` enqueue email/Teams on state changes.
+
+**Emit timing:** workflow notifications are dispatched **after** the Prisma transaction commits
+(`leave-workflow.ts`), so approval-token generation and recipient resolution always see
+committed `currentStepId` / step rows / `version`. Email-token consume paths defer emit via
+`pendingNotification` until the outer token transaction commits.
 
 ## Bulk operations
 

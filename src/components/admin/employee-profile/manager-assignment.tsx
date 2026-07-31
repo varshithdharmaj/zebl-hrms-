@@ -40,7 +40,8 @@ export function ManagerAssignmentFields({
       <div>
         <h3 className="text-sm font-semibold text-foreground">Reporting structure</h3>
         <p className="mt-1 text-xs text-muted-foreground">
-          Assign a direct manager for leave routing (workflow engine uses this in a later phase).
+          Assign the Team Lead (direct reporting manager). Leave approval routes to this person
+          first, then to their manager (Department Head) when assigned, then HR.
         </p>
       </div>
 
@@ -48,7 +49,7 @@ export function ManagerAssignmentFields({
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">
-          <p className="text-xs font-medium text-muted-foreground">Current manager</p>
+          <p className="text-xs font-medium text-muted-foreground">Current Team Lead</p>
           <p className="text-sm font-medium text-foreground">
             {currentManager
               ? `${currentManager.name} (${currentManager.employeeCode})`
@@ -72,13 +73,13 @@ export function ManagerAssignmentFields({
       </div>
 
       <div className="space-y-2">
-        <Label>Reports to</Label>
+        <Label>Reports to (Team Lead)</Label>
         <Select value={managerId} onValueChange={setManagerId}>
           <SelectTrigger>
-            <SelectValue placeholder="Select manager" />
+            <SelectValue placeholder="Select Team Lead" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="none">No manager</SelectItem>
+            <SelectItem value="none">No Team Lead</SelectItem>
             {filtered.map((c) => (
               <SelectItem key={c.id} value={String(c.id)} disabled={c.id === employeeId}>
                 {c.name} · {c.employeeCode}

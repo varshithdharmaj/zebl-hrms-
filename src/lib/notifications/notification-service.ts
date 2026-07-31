@@ -148,13 +148,14 @@ export async function handleWorkflowNotificationEvent(
 
   switch (eventName) {
     case "LEAVE_SUBMITTED": {
-      const manager = await resolveManagerForEmployee(leaveRow.employeeId);
-      if (manager) {
+      // First actionable approver: Team Lead when present; otherwise HR (HR-only chain).
+      const teamLead = await resolveManagerForEmployee(leaveRow.employeeId);
+      if (teamLead) {
         payload.viewUrl = `${appBaseUrl()}/employee/approvals`;
         const withLinks = await attachEmailApprovalLinks(event.leaveRequestId, payload);
         await queueEmail(
           NotificationType.approval_required,
-          manager,
+          teamLead,
           `[Zebl AMS] Approval required — ${payload.employeeName}`,
           withLinks,
           correlationId,
@@ -165,21 +166,47 @@ export async function handleWorkflowNotificationEvent(
           `Approval required — ${payload.employeeName}`,
           withLinks,
           correlationId,
-          manager.userId,
+          teamLead.userId,
           { approvalAlert: true }
         );
-      }
-      if (shouldNotifyHrOnSubmit()) {
+        // Optional HR awareness on submit (Team Lead is first step).
+        if (shouldNotifyHrOnSubmit()) {
+          const hrList = await getHrRecipients();
+          for (const hr of hrList) {
+            payload.viewUrl = `${appBaseUrl()}/admin/leaves`;
+            await queueEmail(
+              NotificationType.leave_submitted,
+              hr,
+              `[Zebl AMS] Leave submitted — ${payload.employeeName}`,
+              payload,
+              `${correlationId}-hr-${hr.email}`,
+              { statusAlert: true }
+            );
+          }
+        }
+      } else {
+        // HR-only chain: notify HR with approval links (do not rely solely on
+        // resolveCurrentStepApprover — may run before the submit TX commits).
         const hrList = await getHrRecipients();
-        for (const hr of hrList) {
+        const primary = (await resolveCurrentStepApprover(event.leaveRequestId)) ?? hrList[0];
+        if (primary) {
           payload.viewUrl = `${appBaseUrl()}/admin/leaves`;
+          const withLinks = await attachEmailApprovalLinks(event.leaveRequestId, payload);
           await queueEmail(
-            NotificationType.leave_submitted,
-            hr,
-            `[Zebl AMS] Leave submitted — ${payload.employeeName}`,
-            payload,
-            `${correlationId}-hr-${hr.email}`,
-            { statusAlert: true }
+            NotificationType.approval_required,
+            primary,
+            `[Zebl AMS] Approval required — ${payload.employeeName}`,
+            withLinks,
+            correlationId,
+            { approvalAlert: true }
+          );
+          await queueTeams(
+            NotificationType.approval_required,
+            `Approval required — ${payload.employeeName}`,
+            withLinks,
+            correlationId,
+            primary.userId,
+            { approvalAlert: true }
           );
         }
       }
@@ -190,7 +217,11 @@ export async function handleWorkflowNotificationEvent(
     case "STEP_APPROVED": {
       const approver = await resolveCurrentStepApprover(event.leaveRequestId);
       if (approver) {
-        payload.viewUrl = `${appBaseUrl()}/employee/approvals`;
+        // HR / Super Admin inbox is admin leaves; line managers use team approvals.
+        payload.viewUrl =
+          approver.role === "hr"
+            ? `${appBaseUrl()}/admin/leaves`
+            : `${appBaseUrl()}/employee/approvals`;
         const withLinks = await attachEmailApprovalLinks(event.leaveRequestId, payload);
         await queueEmail(
           NotificationType.approval_required,
@@ -246,6 +277,7 @@ export async function handleWorkflowNotificationEvent(
         : payload.rejectionReason;
       const employee = await getEmployeeUserEmail(leaveRow.employeeId);
       if (employee) {
+        payload.viewUrl = `${appBaseUrl()}/employee/leaves`;
         await queueEmail(
           NotificationType.leave_rejected,
           employee,
@@ -261,6 +293,7 @@ export async function handleWorkflowNotificationEvent(
     case "LEAVE_WITHDRAWN": {
       const manager = await resolveManagerForEmployee(leaveRow.employeeId);
       if (manager) {
+        payload.viewUrl = `${appBaseUrl()}/employee/approvals`;
         await queueEmail(
           NotificationType.leave_withdrawn,
           manager,
@@ -279,6 +312,7 @@ export async function handleWorkflowNotificationEvent(
         : payload.rejectionReason;
       const employee = await getEmployeeUserEmail(leaveRow.employeeId);
       if (employee) {
+        payload.viewUrl = `${appBaseUrl()}/employee/leaves`;
         await queueEmail(
           NotificationType.leave_cancelled,
           employee,

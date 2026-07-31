@@ -33,10 +33,29 @@ export type WorkflowActionResult = {
   leaveId: number;
   workflowStatus: LeaveWorkflowStatus;
   message: string;
+  /**
+   * Set only when advance/reject runs inside an outer transaction (`existingTx`).
+   * Caller must emit after that transaction commits.
+   */
+  pendingNotification?: {
+    leaveRequestId: number;
+    event:
+      | "submitted"
+      | "step_approved"
+      | "approval_required"
+      | "final_approved"
+      | "rejected"
+      | "withdrawn"
+      | "cancelled";
+    workflowStatus: LeaveWorkflowStatus;
+    metadata?: {
+      comment?: string;
+      nextStepId?: number;
+      nextApproverId?: number | null;
+      actorEmail?: string;
+    };
+  };
 };
 
 export const MIN_REJECTION_COMMENT_LENGTH = 10;
 export const MIN_CANCELLATION_REASON_LENGTH = 10;
-
-/** Configurable — long leave triggers skip-level manager in chain */
-export const LONG_LEAVE_THRESHOLD_DAYS = 5;

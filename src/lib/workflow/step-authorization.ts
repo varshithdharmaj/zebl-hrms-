@@ -52,7 +52,9 @@ export function getCurrentApprovalStepFromLeave(
  *
  * - Super Admin: any pending step (may be an override — see isSuperAdminWorkflowOverride)
  * - HR: only `hr_admin` step
- * - Manager / skip-level: only when actor.employeeId matches step.approverId
+ * - Team Lead (`manager`) / Department Head (`skip_level_manager`):
+ *   only when actor.employeeId matches step.approverId
+ * - Previous/future steps cannot act: requires step.status pending AND currentStepId match
  */
 export function canUserApproveStep(
   actor: WorkflowActor,
@@ -75,7 +77,7 @@ export function canUserApproveStep(
     return canAccessAdmin(actor.role);
   }
 
-  // Manager / skip-level steps: designated approver only.
+  // Team Lead / Department Head steps: designated approver only.
   if (
     step.approverRole === ApproverRole.manager ||
     step.approverRole === ApproverRole.skip_level_manager

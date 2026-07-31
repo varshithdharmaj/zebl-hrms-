@@ -9,8 +9,7 @@ export async function getPendingApprovalsForActor(session: SessionUser) {
     return getPendingHrApprovals();
   }
 
-  // Line-manager capability is derived from the Employee hierarchy, not the role: any
-  // user linked to an employee record who is the assigned approver on a pending step.
+  // Team Lead / Department Head capability is hierarchy-based (approverId), not UserRole.
   if (session.employeeId) {
     return getPendingManagerApprovals(session.employeeId);
   }

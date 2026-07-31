@@ -3,7 +3,12 @@ import {
   getCellColor,
   buildTooltipText,
 } from "@/components/employee/dashboard/attendance-heatmap";
-import { RATIO_TIER_COLOR } from "@/lib/attendance/day-labels";
+import {
+  CATEGORY_COLOR,
+  HEATMAP_COLOR,
+  RATIO_TIER_COLOR,
+  isExcellentTier,
+} from "@/lib/attendance/day-labels";
 import type { AttendanceDayResult } from "@/lib/attendance/day-classification";
 
 function baseDay(overrides: Partial<AttendanceDayResult> = {}): AttendanceDayResult {
@@ -26,12 +31,17 @@ function baseDay(overrides: Partial<AttendanceDayResult> = {}): AttendanceDayRes
 }
 
 describe("getCellColor", () => {
-  it("returns ratio tier colors for worked days", () => {
+  it("maps below-target worked days to Present and target+ to Excellent", () => {
+    expect(getCellColor(baseDay({ ratioTier: "very_low" }))).toBe(HEATMAP_COLOR.present);
+    expect(getCellColor(baseDay({ ratioTier: "partial" }))).toBe(HEATMAP_COLOR.present);
+    expect(getCellColor(baseDay({ ratioTier: "near_target" }))).toBe(HEATMAP_COLOR.present);
+    expect(getCellColor(baseDay({ ratioTier: "target" }))).toBe(HEATMAP_COLOR.excellent);
+    expect(getCellColor(baseDay({ ratioTier: "overtime" }))).toBe(HEATMAP_COLOR.excellent);
+  });
+
+  it("keeps RATIO_TIER_COLOR in sync with getCellColor", () => {
     expect(getCellColor(baseDay({ ratioTier: "very_low" }))).toBe(RATIO_TIER_COLOR.very_low);
-    expect(getCellColor(baseDay({ ratioTier: "partial" }))).toBe(RATIO_TIER_COLOR.partial);
-    expect(getCellColor(baseDay({ ratioTier: "near_target" }))).toBe(RATIO_TIER_COLOR.near_target);
     expect(getCellColor(baseDay({ ratioTier: "target" }))).toBe(RATIO_TIER_COLOR.target);
-    expect(getCellColor(baseDay({ ratioTier: "overtime" }))).toBe(RATIO_TIER_COLOR.overtime);
   });
 
   it("returns distinct colors for special categories", () => {
@@ -40,14 +50,20 @@ describe("getCellColor", () => {
     const leave = getCellColor(baseDay({ category: "LEAVE", ratioTier: null }));
     const absent = getCellColor(baseDay({ category: "ABSENT", ratioTier: null }));
 
-    // Ensure each has a color (truthy string)
-    expect(holiday).toBeTruthy();
-    expect(weeklyOff).toBeTruthy();
-    expect(leave).toBeTruthy();
-    expect(absent).toBeTruthy();
-
-    // Ensure they're all different
+    expect(holiday).toBe(CATEGORY_COLOR.HOLIDAY);
+    expect(weeklyOff).toBe(CATEGORY_COLOR.WEEKLY_OFF);
+    expect(leave).toBe(CATEGORY_COLOR.LEAVE);
+    expect(absent).toBe(CATEGORY_COLOR.ABSENT);
     expect(new Set([holiday, weeklyOff, leave, absent]).size).toBe(4);
+  });
+});
+
+describe("isExcellentTier", () => {
+  it("treats target and overtime as excellent", () => {
+    expect(isExcellentTier("target")).toBe(true);
+    expect(isExcellentTier("overtime")).toBe(true);
+    expect(isExcellentTier("near_target")).toBe(false);
+    expect(isExcellentTier(null)).toBe(false);
   });
 });
 
@@ -59,6 +75,7 @@ describe("buildTooltipText", () => {
     );
     expect(text).toContain("Worked: 8h");
     expect(text).toContain("Expected: 8h");
+    expect(text).toContain("Excellent");
     expect(text).toContain("Check-in: 09:00");
     expect(text).toContain("Check-out: 17:00");
   });

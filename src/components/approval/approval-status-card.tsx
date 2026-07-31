@@ -1,5 +1,6 @@
 import { formatDate } from "@/lib/utils";
 import type { PublicApprovalView } from "@/lib/approval-tokens/token-types";
+import { getApproverRoleLabel } from "@/lib/workflow/approver-role-labels";
 
 export function ApprovalStatusCard({ view }: { view: PublicApprovalView }) {
   const expiresLabel = formatDate(view.expiresAt);
@@ -37,7 +38,7 @@ export function ApprovalStatusCard({ view }: { view: PublicApprovalView }) {
         </div>
         <div className="flex justify-between gap-4">
           <dt className="text-muted-foreground">Your role</dt>
-          <dd className="font-medium capitalize">{view.approverRole.replace(/_/g, " ")}</dd>
+          <dd className="font-medium">{getApproverRoleLabel(view.approverRole)}</dd>
         </div>
         <div className="flex justify-between gap-4">
           <dt className="text-muted-foreground">Workflow</dt>

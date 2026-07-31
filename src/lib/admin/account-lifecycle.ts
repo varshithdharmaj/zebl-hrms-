@@ -172,4 +172,10 @@ export function generateSecureTemporaryPassword(): string {
   return `Zb-${str}9a!`;
 }
 
+/**
+ * Fixed password for employees auto-created from Excel attendance upload.
+ * Demo/ops convenience only — not used for HR, Super Admin, or manual provisioning.
+ */
+export const EXCEL_UPLOAD_DEFAULT_PASSWORD = "123";
+
 export { statusToIsActive };
