@@ -169,27 +169,14 @@ export async function buildAttendanceImportPreview(
 
     if (code && !employeeByCode.has(code)) {
       unknownEmployees++;
-      if (input.format === "pdf") {
-        if (status === "valid") status = "unknown_employee";
-        messages.push("Unknown employee — PDF import will skip this row");
-        warnings.push({
-          code: "unknown_employee",
-          message: `${code}: unknown employee (PDF import does not create employees)`,
-          rowIndex: i,
-          employeeCode: code,
-        });
-        // Still importable flag false for PDF unknown — importer skips them
-        importable = false;
-      } else {
-        if (status === "valid") status = "warning";
-        messages.push("Unknown employee — Excel import will auto-create");
-        warnings.push({
-          code: "unknown_employee_excel",
-          message: `${code}: will be created on confirm`,
-          rowIndex: i,
-          employeeCode: code,
-        });
-      }
+      if (status === "valid") status = "warning";
+      messages.push("Unknown employee — import will auto-create with login");
+      warnings.push({
+        code: "unknown_employee_auto_create",
+        message: `${code}: will be created on import (${code.toLowerCase()}@zebl.com)`,
+        rowIndex: i,
+        employeeCode: code,
+      });
     }
 
     if (code && resolvedDate && !Number.isNaN(resolvedDate.getTime())) {
@@ -249,20 +236,6 @@ export async function buildAttendanceImportPreview(
       validationStatus: status,
       messages,
       importable,
-    });
-  }
-
-  // PDF with zero known employees → blocking error
-  if (
-    input.format === "pdf" &&
-    input.rows.length > 0 &&
-    importableRows === 0 &&
-    unknownEmployees === input.rows.filter((r) => r.employeeCode.trim()).length
-  ) {
-    errors.push({
-      code: "all_unknown_employees",
-      message:
-        "No matching employees found for PDF import. Add employees first or use Excel import.",
     });
   }
 

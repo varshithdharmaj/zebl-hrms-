@@ -100,8 +100,8 @@ async function saveAttendanceRecord(
 
 /**
  * Shared attendance import (Excel + PDF): atomic DB write via interactive transaction.
- * Excel may auto-create employees; PDF rejects unknown employee codes (no create / no login).
- * Login provisioning for Excel auto-created employees runs after a successful commit (soft-fail).
+ * Unknown employee codes are auto-created for both Excel and PDF, then login is
+ * provisioned after commit as `{code}@zebl.com` with the default upload password (soft-fail).
  *
  * Date resolution (sole fallback site):
  *   attendanceDate = row.attendanceDate ?? formAttendanceDate
@@ -150,11 +150,6 @@ export async function importAttendanceRows(params: {
         });
 
         if (!employee) {
-          if (source === "pdf") {
-            rejectedUnknownEmployees.push(employeeCode);
-            continue;
-          }
-
           const created = await tx.employee.create({
             data: {
               employeeCode,
@@ -195,12 +190,6 @@ export async function importAttendanceRows(params: {
           row,
         });
         imported++;
-      }
-
-      if (imported === 0 && skipped === 0 && rejectedUnknownEmployees.length > 0) {
-        throw new ImportAbortError(
-          `No matching employees found for PDF import. Unknown employee code(s): ${rejectedUnknownEmployees.slice(0, 5).join(", ")}${rejectedUnknownEmployees.length > 5 ? "…" : ""}. PDF import does not create employees — add them first or use Excel import.`
-        );
       }
 
       if (imported === 0 && skipped === 0 && rows.length > 0) {

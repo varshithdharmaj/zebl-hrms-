@@ -114,9 +114,9 @@ export async function uploadAttendanceAction(
     revalidatePath("/admin/payroll-attendance");
     revalidatePath("/admin/upload");
 
-    const { imported, skipped, provisioningErrors, rejectedUnknownEmployees } = importResult;
+    const { imported, skipped, provisioningErrors } = importResult;
     const message = `Imported ${imported} record(s)${skipped > 0 ? `, skipped ${skipped} duplicate(s)` : ""}.`;
-    const unknownEmployees = rejectedUnknownEmployees.length;
+    const unknownEmployees = 0;
 
     const datesImported = [
       ...new Set(
@@ -142,12 +142,7 @@ export async function uploadAttendanceAction(
       datesImported.sort();
     }
 
-    const softErrors = [
-      ...provisioningErrors,
-      ...rejectedUnknownEmployees.map(
-        (code) => `${code}: unknown employee (PDF import does not create employees)`
-      ),
-    ];
+    const softErrors = [...provisioningErrors];
 
     const base = {
       imported,

@@ -120,47 +120,56 @@ describe("importAttendanceRows (shared Excel/PDF importer)", () => {
     expect(provisionEmployeeLogin).not.toHaveBeenCalled();
   });
 
-  it("rejects unknown employees for PDF without creating or provisioning", async () => {
+  it("PDF auto-creates unknown employees then provisions after commit", async () => {
     employeeFindUnique.mockResolvedValue(null);
+    employeeCreate.mockResolvedValue({ id: 15, employeeCode: "UNKNOWN99" });
 
     const result = await importAttendanceRows({
       session: hrActor,
       fileName: "att.pdf",
       attendanceDate: new Date("2026-07-24T00:00:00.000Z"),
-      rows: [row({ employeeCode: "UNKNOWN99" })],
-      source: "pdf",
-    });
-
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.error).toContain("UNKNOWN99");
-    expect(result.error.toLowerCase()).toContain("does not create");
-    expect(employeeCreate).not.toHaveBeenCalled();
-    expect(provisionEmployeeLogin).not.toHaveBeenCalled();
-    expect(attendanceRecordCreate).not.toHaveBeenCalled();
-  });
-
-  it("imports known PDF rows and reports unknown codes without creating them", async () => {
-    employeeFindUnique.mockImplementation(async ({ where }: { where: { employeeCode: string } }) => {
-      if (where.employeeCode === "EMP001") return { id: 7, employeeCode: "EMP001" };
-      return null;
-    });
-    attendanceRecordFindUnique.mockResolvedValue(null);
-
-    const result = await importAttendanceRows({
-      session: hrActor,
-      fileName: "att.pdf",
-      attendanceDate: new Date("2026-07-24T00:00:00.000Z"),
-      rows: [row({ employeeCode: "EMP001" }), row({ employeeCode: "GHOST1" })],
+      rows: [row({ employeeCode: "UNKNOWN99", employeeName: "New Hire" })],
       source: "pdf",
     });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.imported).toBe(1);
-    expect(result.rejectedUnknownEmployees).toEqual(["GHOST1"]);
-    expect(employeeCreate).not.toHaveBeenCalled();
-    expect(provisionEmployeeLogin).not.toHaveBeenCalled();
+    expect(result.rejectedUnknownEmployees).toEqual([]);
+    expect(employeeCreate).toHaveBeenCalled();
+    expect(provisionEmployeeLogin).toHaveBeenCalledWith(
+      hrActor,
+      expect.objectContaining({
+        employeeId: 15,
+        email: "unknown99@zebl.com",
+        mode: "create",
+      })
+    );
+    expect(notificationPreferenceCreate).toHaveBeenCalled();
+  });
+
+  it("PDF creates missing employees while importing known ones", async () => {
+    employeeFindUnique.mockImplementation(async ({ where }: { where: { employeeCode: string } }) => {
+      if (where.employeeCode === "EMP001") return { id: 7, employeeCode: "EMP001" };
+      return null;
+    });
+    employeeCreate.mockResolvedValue({ id: 22, employeeCode: "GHOST1" });
+    attendanceRecordFindUnique.mockResolvedValue(null);
+
+    const result = await importAttendanceRows({
+      session: hrActor,
+      fileName: "att.pdf",
+      attendanceDate: new Date("2026-07-24T00:00:00.000Z"),
+      rows: [row({ employeeCode: "EMP001" }), row({ employeeCode: "GHOST1", employeeName: "Ghost" })],
+      source: "pdf",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.imported).toBe(2);
+    expect(result.rejectedUnknownEmployees).toEqual([]);
+    expect(employeeCreate).toHaveBeenCalledTimes(1);
+    expect(provisionEmployeeLogin).toHaveBeenCalledTimes(1);
   });
 
   it("skips duplicates for the same employee and date", async () => {
