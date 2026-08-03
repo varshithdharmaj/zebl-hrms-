@@ -102,7 +102,14 @@ function ResultSummary({ state }: { state: UploadState }) {
   );
 }
 
-export function UploadForm({ defaultDate }: { defaultDate: string }) {
+export function UploadForm({
+  defaultDate,
+  previewEnabled: _previewEnabled = false,
+}: {
+  defaultDate: string;
+  /** Accepted for API compatibility; preview UI ships separately. */
+  previewEnabled?: boolean;
+}) {
   const [state, formAction, pending] = useActionState(uploadAttendanceAction, initialState);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileInputId = useId();
