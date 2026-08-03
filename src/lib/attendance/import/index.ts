@@ -8,6 +8,7 @@ export type {
 export {
   SUMMARY_PDF_NOT_SUPPORTED_ERROR,
   resolveImportAttendanceDate,
+  rowsProvideAttendanceDates,
 } from "./types";
 export {
   ATTENDANCE_UPLOAD_MAX_FILE_SIZE,
@@ -53,6 +54,7 @@ export {
 export {
   parseEsslDailyBasicPdf,
   looksLikeEsslDailyBasicPdf,
+  extractEsslDailyAttendanceDate,
   ESSL_DAILY_PDF_IMPORT_ERRORS,
 } from "./parse-pdf-daily-essl";
 export type {

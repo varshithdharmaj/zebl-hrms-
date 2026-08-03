@@ -1,14 +1,30 @@
 import { describe, expect, it } from "vitest";
 import {
+  extractEsslDailyAttendanceDate,
   looksLikeEsslDailyBasicPdf,
   parseEsslDailyBasicPdf,
 } from "@/lib/attendance/import/parse-pdf-daily-essl";
+import { toISODate } from "@/lib/utils";
 import {
   buildEsslDailyBasicPdfDocument,
   ESSL_DAILY_COLUMN_X,
   esslDailyAbsentRow,
   esslDailyPresentRow,
 } from "../fixtures/essl-daily-basic-pdf";
+
+describe("extractEsslDailyAttendanceDate", () => {
+  it("reads Attendance Date header", () => {
+    const d = extractEsslDailyAttendanceDate(
+      "Attendance Date 29-Jul-2026 Department Default"
+    );
+    expect(d).toBeInstanceOf(Date);
+    expect(toISODate(d!)).toBe("2026-07-29");
+  });
+
+  it("returns null when no date is present", () => {
+    expect(extractEsslDailyAttendanceDate("SNo E. Code Name Shift")).toBeNull();
+  });
+});
 
 describe("parseEsslDailyBasicPdf", () => {
   it("parses present, absent, and wrapped Morning shift rows", () => {
@@ -58,6 +74,8 @@ describe("parseEsslDailyBasicPdf", () => {
       status: "Present",
       source: "PDF_DAILY",
     });
+    expect(result.rows[0].attendanceDate).toBeInstanceOf(Date);
+    expect(result.rows.every((r) => r.attendanceDate instanceof Date)).toBe(true);
     expect(result.rows[1].employeeCode).toBe("660005");
     expect(result.rows[1].shift).toBe("GS");
     expect(result.rows[2]).toMatchObject({

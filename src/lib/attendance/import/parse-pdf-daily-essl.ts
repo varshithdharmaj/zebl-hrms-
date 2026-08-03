@@ -1,3 +1,4 @@
+import { startOfDay } from "@/lib/utils";
 import type { PdfDocument, PdfPage, PdfTextItem } from "./pdf-document";
 import type { AttendanceImportParseResult, AttendanceImportRow } from "./types";
 
@@ -9,6 +10,86 @@ export const ESSL_DAILY_PDF_IMPORT_ERRORS = {
 } as const;
 
 const Y_CLUSTER_TOLERANCE = 3;
+
+const MONTHS: Record<string, number> = {
+  jan: 0,
+  feb: 1,
+  mar: 2,
+  apr: 3,
+  may: 4,
+  jun: 5,
+  jul: 6,
+  aug: 7,
+  sep: 8,
+  oct: 9,
+  nov: 10,
+  dec: 11,
+};
+
+/** Parse eSSL day tokens: 29-Jul-2026, 29-Jul-26, 29/07/2026 */
+export function parseEsslDayToken(token: string): Date | null {
+  const t = token.trim();
+  let m = t.match(/^(\d{1,2})[-/]([A-Za-z]{3})[-/](\d{2,4})$/);
+  if (m) {
+    const day = Number(m[1]);
+    const month = MONTHS[m[2].toLowerCase()];
+    if (month === undefined || day < 1 || day > 31) return null;
+    let year = Number(m[3]);
+    if (year < 100) year += 2000;
+    const d = startOfDay(new Date(year, month, day));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  m = t.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{2,4})$/);
+  if (m) {
+    const day = Number(m[1]);
+    const month = Number(m[2]) - 1;
+    let year = Number(m[3]);
+    if (year < 100) year += 2000;
+    if (month < 0 || month > 11 || day < 1 || day > 31) return null;
+    const d = startOfDay(new Date(year, month, day));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
+/**
+ * Extract Attendance Date from eSSL Daily Basic Report text.
+ * Prefers "Attendance Date 29-Jul-2026"; falls back to "Jul 29 2026 To …".
+ */
+export function extractEsslDailyAttendanceDate(text: string): Date | null {
+  const corpus = text.replace(/\s+/g, " ").trim();
+  if (!corpus) return null;
+
+  const labeled = corpus.match(
+    /\bAttendance\s+Date\s+(\d{1,2}[-/][A-Za-z]{3}[-/]\d{2,4}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4})\b/i
+  );
+  if (labeled) {
+    const d = parseEsslDayToken(labeled[1]!);
+    if (d) return d;
+  }
+
+  const period = corpus.match(
+    /\b([A-Za-z]{3})\s+(\d{1,2})\s+(\d{4})\s+To\b/i
+  );
+  if (period) {
+    const month = MONTHS[period[1]!.toLowerCase()];
+    const day = Number(period[2]);
+    const year = Number(period[3]);
+    if (month !== undefined && day >= 1 && day <= 31) {
+      const d = startOfDay(new Date(year, month, day));
+      if (!Number.isNaN(d.getTime())) return d;
+    }
+  }
+
+  return null;
+}
+
+export function extractEsslDailyAttendanceDateFromDocument(
+  document: PdfDocument
+): Date | null {
+  const text = document.pages.map((p) => p.text).join("\n");
+  return extractEsslDailyAttendanceDate(text);
+}
 
 type ColumnKey =
   | "snoCode"
@@ -291,6 +372,8 @@ function parsePageRows(
 /**
  * Parse eSSL Daily Attendance Report (Basic Report) using column X geometry.
  * Handles wrapped shift labels (Morning/Evening) and missing In/Out on Absent rows.
+ * When "Attendance Date" is present in the PDF, stamps it on every row; otherwise
+ * rows omit attendanceDate so the upload form date is used as fallback.
  */
 export function parseEsslDailyBasicPdf(
   document: PdfDocument
@@ -311,6 +394,8 @@ export function parseEsslDailyBasicPdf(
     return { ok: false, error: ESSL_DAILY_PDF_IMPORT_ERRORS.NO_ROWS };
   }
 
+  const attendanceDate = extractEsslDailyAttendanceDateFromDocument(document);
+
   const rows: AttendanceImportRow[] = accumulated.map((r) => ({
     employeeCode: r.employeeCode,
     employeeName: r.employeeName,
@@ -321,6 +406,7 @@ export function parseEsslDailyBasicPdf(
     ot: r.ot,
     status: r.status,
     remarks: r.remarks,
+    ...(attendanceDate ? { attendanceDate } : {}),
     source: "PDF_DAILY",
   }));
 

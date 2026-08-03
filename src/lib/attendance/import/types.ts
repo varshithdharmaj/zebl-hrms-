@@ -60,3 +60,14 @@ export function resolveImportAttendanceDate(
 ): Date {
   return row.attendanceDate ?? formAttendanceDate;
 }
+
+/** True when every row carries a usable per-row attendance date from the file. */
+export function rowsProvideAttendanceDates(
+  rows: readonly Pick<AttendanceImportRow, "attendanceDate">[]
+): boolean {
+  if (rows.length === 0) return false;
+  return rows.every(
+    (r) =>
+      r.attendanceDate instanceof Date && !Number.isNaN(r.attendanceDate.getTime())
+  );
+}

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { formatTimeCell } from "./cell-utils";
-import { resolveImportAttendanceDate } from "./types";
+import { resolveImportAttendanceDate, rowsProvideAttendanceDates } from "./types";
 import type { AttendanceImportFormat, AttendanceImportRow, AttendanceReportType } from "./types";
 import type {
   AttendanceImportIssue,
@@ -43,7 +43,9 @@ export type BuildAttendancePreviewInput = {
 export async function buildAttendanceImportPreview(
   input: BuildAttendancePreviewInput
 ): Promise<AttendanceImportPreview> {
-  const datesFromFile = input.reportType === "PDF_SUMMARY";
+  const datesFromFile =
+    input.reportType === "PDF_SUMMARY" ||
+    (input.reportType === "PDF_DAILY" && rowsProvideAttendanceDates(input.rows));
   const formIso = toISODate(startOfDay(input.formAttendanceDate));
 
   const codes = [

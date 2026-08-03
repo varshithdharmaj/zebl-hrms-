@@ -4,10 +4,17 @@ export type AttendanceReportMetadata = {
   reportType: AttendanceReportType;
   /** True when the upload form must collect an attendance date. */
   requiresAttendanceDate: boolean;
-  /** True when dates come from the file (Summary PDF). */
+  /** True when dates come from the file (Summary PDF or Daily with extracted date). */
   datesFromFile: boolean;
   /** Short UI label for the detected report. */
   label: string;
+  /** ISO date (yyyy-mm-dd) extracted from a Daily PDF header, when available. */
+  detectedAttendanceDate?: string | null;
+};
+
+export type BuildAttendanceReportMetadataOptions = {
+  /** ISO yyyy-mm-dd from Daily PDF "Attendance Date" header. */
+  detectedAttendanceDate?: string | null;
 };
 
 /**
@@ -15,8 +22,11 @@ export type AttendanceReportMetadata = {
  * Pure — safe for client and tests.
  */
 export function buildAttendanceReportMetadata(
-  reportType: AttendanceReportType
+  reportType: AttendanceReportType,
+  options: BuildAttendanceReportMetadataOptions = {}
 ): AttendanceReportMetadata {
+  const detected = options.detectedAttendanceDate ?? null;
+
   switch (reportType) {
     case "EXCEL_DAILY":
       return {
@@ -25,13 +35,18 @@ export function buildAttendanceReportMetadata(
         datesFromFile: false,
         label: "Excel Daily detected",
       };
-    case "PDF_DAILY":
+    case "PDF_DAILY": {
+      const hasDetected = Boolean(detected);
       return {
         reportType,
-        requiresAttendanceDate: true,
-        datesFromFile: false,
-        label: "Daily Attendance PDF detected",
+        requiresAttendanceDate: !hasDetected,
+        datesFromFile: hasDetected,
+        label: hasDetected
+          ? "Daily Attendance PDF detected (date from file)"
+          : "Daily Attendance PDF detected",
+        detectedAttendanceDate: detected,
       };
+    }
     case "PDF_SUMMARY":
       return {
         reportType,

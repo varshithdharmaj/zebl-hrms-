@@ -6,6 +6,7 @@ import {
   looksLikeEsslDailyBasicPdf,
   parseEsslDailyBasicPdf,
 } from "@/lib/attendance/import/parse-pdf-daily-essl";
+import { toISODate } from "@/lib/utils";
 
 const REAL_PDF = "C:/Users/ADMIN/Downloads/DailyAttendance_BasicReport.pdf";
 
@@ -33,6 +34,8 @@ describe("eSSL Daily Basic Report — real PDF", () => {
         workDuration: "8:51",
         status: "Present",
       });
+      expect(madhukar?.attendanceDate).toBeInstanceOf(Date);
+      expect(toISODate(madhukar!.attendanceDate!)).toBe("2026-07-29");
 
       const morning = result.rows.find((r) => r.employeeCode === "1");
       expect(morning?.shift).toBe("Morning");

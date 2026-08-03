@@ -9,6 +9,7 @@ import {
 } from "@/lib/attendance/import/file-validation";
 import { parseAttendanceFile } from "@/lib/attendance/import/parse-dispatch";
 import { importAttendanceRows } from "@/lib/attendance/import/import-records";
+import { rowsProvideAttendanceDates } from "@/lib/attendance/import/types";
 
 export type UploadState = {
   error?: string;
@@ -77,7 +78,10 @@ export async function uploadAttendanceAction(
 
     const reportType =
       parseResult.reportType ?? (validation.format === "excel" ? "EXCEL_DAILY" : "PDF_DAILY");
-    const datesFromFile = reportType === "PDF_SUMMARY";
+    // Summary always has row dates; Daily uses extracted header date when present
+    const datesFromFile =
+      reportType === "PDF_SUMMARY" ||
+      (reportType === "PDF_DAILY" && rowsProvideAttendanceDates(parseResult.rows));
 
     let attendanceDate: Date;
     if (datesFromFile) {

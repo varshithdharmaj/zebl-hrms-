@@ -22,9 +22,10 @@ type EsslDailyCell = { text: string; x: number };
  */
 export function buildEsslDailyBasicPdfDocument(
   pages: EsslDailyCell[][][],
-  options: { title?: string } = {}
+  options: { title?: string; attendanceDateLabel?: string } = {}
 ): PdfDocument {
   const title = options.title ?? "Daily Attendance Report (Basic Report)";
+  const attendanceDateLabel = options.attendanceDateLabel ?? "Attendance Date 29-Jul-2026";
   const pdfPages: PdfPage[] = pages.map((rowGroups, pageIndex) => {
     const pageNumber = pageIndex + 1;
     const items: PdfTextItem[] = [];
@@ -32,6 +33,15 @@ export function buildEsslDailyBasicPdfDocument(
 
     items.push({ text: title, x: 210, y, width: 200, height: 10, hasEOL: true });
     y -= 28;
+    items.push({
+      text: attendanceDateLabel,
+      x: 18,
+      y,
+      width: Math.max(40, attendanceDateLabel.length * 5),
+      height: 10,
+      hasEOL: true,
+    });
+    y -= 24;
 
     const header: EsslDailyCell[] = [
       { text: "SNo E. Code", x: ESSL_DAILY_COLUMN_X.snoCode },
