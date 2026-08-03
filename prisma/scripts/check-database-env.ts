@@ -28,8 +28,22 @@ function loadEnvFile(filename: string): void {
 loadEnvFile(".env");
 loadEnvFile(".env.local");
 
-if (process.env.ZEBL_SKIP_DB_STARTUP?.trim() === "true") {
-  console.log("[AMS] ZEBL_SKIP_DB_STARTUP=true — skipping database env check");
+// Runtime secrets (Cloudflare dashboard) are not injected into `npm run build`.
+// Skip when explicitly opted out, or when Cloudflare CI is building the Worker.
+const isCloudflareBuild =
+  process.env.CF_PAGES === "1" ||
+  process.env.CLOUDFLARE_BUILD === "1" ||
+  Boolean(process.env.CF_PAGES_COMMIT_SHA?.trim()) ||
+  Boolean(process.env.WORKERS_CI?.trim());
+
+if (
+  process.env.ZEBL_SKIP_DB_STARTUP?.trim() === "true" ||
+  isCloudflareBuild
+) {
+  const reason = isCloudflareBuild
+    ? "Cloudflare CI build (runtime secrets are not available here)"
+    : "ZEBL_SKIP_DB_STARTUP=true";
+  console.log(`[AMS] Skipping database env check — ${reason}`);
   process.exit(0);
 }
 
