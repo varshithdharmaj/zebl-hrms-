@@ -36,7 +36,7 @@ describe("import-job-payload", () => {
       sampleRow({ employeeCode: "GHOST", attendanceDate: undefined }),
     ];
     const compressed = compressPayload(rows);
-    expect(Buffer.isBuffer(compressed)).toBe(true);
+    expect(compressed).toBeInstanceOf(Uint8Array);
     expect(compressed.byteLength).toBeGreaterThan(0);
 
     const restored = decompressPayload(compressed);

@@ -132,7 +132,7 @@ describe("attendance import jobs", () => {
           status: "UPLOADED",
           totalRows: 2,
           nextRowIndex: 0,
-          payloadCompressed: expect.any(Buffer),
+          payloadCompressed: expect.any(Uint8Array),
         }),
       })
     );
