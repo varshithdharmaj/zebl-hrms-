@@ -126,7 +126,8 @@ export async function importAttendanceRows(params: {
   const requestContext = await getRequestSecurityContext();
 
   try {
-    const txResult = await prisma.$transaction(async (tx) => {
+    const txResult = await prisma.$transaction(
+      async (tx) => {
       let imported = 0;
       let skipped = 0;
       const rejectedUnknownEmployees: string[] = [];
@@ -232,8 +233,13 @@ export async function importAttendanceRows(params: {
         rejectedUnknownEmployees,
         newEmployees,
       };
-    });
-
+      },
+      {
+        // Large Daily PDFs create many employees + records; default 20s is too short on Neon.
+        maxWait: 20_000,
+        timeout: 120_000,
+      }
+    );
     const provisioningErrors: string[] = [];
     for (const created of txResult.newEmployees) {
       const email = `${created.employeeCode.toLowerCase()}@zebl.com`;
@@ -272,6 +278,17 @@ export async function importAttendanceRows(params: {
       return { ok: false, error: error.userMessage };
     }
     console.error("Attendance import database error:", error);
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String((error as { code?: unknown }).code ?? "")
+        : "";
+    if (code === "P2028") {
+      return {
+        ok: false,
+        error:
+          "Import timed out while writing to the database. Please try again — large files with many new employees can take longer on the first import.",
+      };
+    }
     return { ok: false, error: "Import failed due to a database error. Please try again." };
   }
 }
