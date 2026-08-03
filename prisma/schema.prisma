@@ -54,6 +54,14 @@ enum AttendanceOverrideType {
   weekly_off
 }
 
+enum AttendanceImportJobStatus {
+  UPLOADED
+  PROCESSING
+  FAILED
+  COMPLETED
+  CANCELLED
+}
+
 enum LeaveRequestStatus {
   pending
   approved
@@ -297,6 +305,35 @@ model AttendanceUpload {
   records     AttendanceRecord[]
 
   @@map("attendance_uploads")
+}
+
+/// Resumable attendance import: parse once, import in committed chunks, resume without re-upload.
+model AttendanceImportJob {
+  id                 String                    @id @default(cuid())
+  createdByUserId    String                    @map("created_by_user_id")
+  status             AttendanceImportJobStatus @default(UPLOADED)
+  fileName           String                    @map("file_name")
+  source             String
+  reportType         String?                   @map("report_type")
+  formAttendanceDate DateTime?                 @map("form_attendance_date")
+  totalRows          Int                       @map("total_rows")
+  nextRowIndex       Int                       @default(0) @map("next_row_index")
+  importedCount      Int                       @default(0) @map("imported_count")
+  skippedCount       Int                       @default(0) @map("skipped_count")
+  employeesCreated   Int                       @default(0) @map("employees_created")
+  usersCreated       Int                       @default(0) @map("users_created")
+  warningsCount      Int                       @default(0) @map("warnings_count")
+  errorCount         Int                       @default(0) @map("error_count")
+  errorMessage       String?                   @map("error_message")
+  payloadCompressed  Bytes                     @map("payload_compressed")
+  parserVersion      String                    @map("parser_version")
+  startedAt          DateTime?                 @map("started_at")
+  completedAt        DateTime?                 @map("completed_at")
+  createdAt          DateTime                  @default(now()) @map("created_at")
+  updatedAt          DateTime                  @updatedAt @map("updated_at")
+
+  @@index([createdByUserId, status, createdAt])
+  @@map("attendance_import_jobs")
 }
 
 model AttendanceRecord {

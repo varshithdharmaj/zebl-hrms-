@@ -3,7 +3,8 @@ import { ATTENDANCE_UPLOAD_MAX_FILE_SIZE } from "@/lib/attendance/import/file-va
 
 const requireAdminSession = vi.fn();
 const parseAttendanceFile = vi.fn();
-const importAttendanceRows = vi.fn();
+const createAttendanceImportJob = vi.fn();
+const processAttendanceImportJob = vi.fn();
 const validateAttendanceUploadFile = vi.fn();
 
 vi.mock("@/lib/auth-guards", () => ({
@@ -14,8 +15,11 @@ vi.mock("@/lib/attendance/import/parse-dispatch", () => ({
   parseAttendanceFile: (...args: unknown[]) => parseAttendanceFile(...args),
 }));
 
-vi.mock("@/lib/attendance/import/import-records", () => ({
-  importAttendanceRows: (...args: unknown[]) => importAttendanceRows(...args),
+vi.mock("@/lib/attendance/import/import-job", () => ({
+  createAttendanceImportJob: (...args: unknown[]) => createAttendanceImportJob(...args),
+  processAttendanceImportJob: (...args: unknown[]) => processAttendanceImportJob(...args),
+  resumeAttendanceImportJob: vi.fn(),
+  listResumableAttendanceImportJobs: vi.fn(async () => []),
 }));
 
 vi.mock("@/lib/attendance/import/file-validation", async () => {
@@ -67,7 +71,7 @@ describe("uploadAttendanceAction — early size rejection", () => {
     expect(result.error).toBe("File size exceeds 5MB limit.");
     expect(arrayBuffer).not.toHaveBeenCalled();
     expect(parseAttendanceFile).not.toHaveBeenCalled();
-    expect(importAttendanceRows).not.toHaveBeenCalled();
+    expect(createAttendanceImportJob).not.toHaveBeenCalled();
     expect(validateAttendanceUploadFile).not.toHaveBeenCalled();
   });
 
@@ -100,13 +104,18 @@ describe("uploadAttendanceAction — early size rejection", () => {
         },
       ],
     });
-    importAttendanceRows.mockResolvedValue({
+    createAttendanceImportJob.mockResolvedValue({ ok: true, jobId: "job-1" });
+    processAttendanceImportJob.mockResolvedValue({
       ok: true,
+      jobId: "job-1",
+      status: "COMPLETED",
       imported: 1,
       skipped: 0,
-      uploadId: 1,
+      employeesCreated: 0,
+      usersCreated: 0,
       provisioningErrors: [],
-      rejectedUnknownEmployees: [],
+      nextRowIndex: 1,
+      totalRows: 1,
     });
 
     const formData = {
@@ -121,7 +130,8 @@ describe("uploadAttendanceAction — early size rejection", () => {
 
     expect(result.error).toBeUndefined();
     expect(parseAttendanceFile).toHaveBeenCalled();
-    expect(importAttendanceRows).toHaveBeenCalled();
+    expect(createAttendanceImportJob).toHaveBeenCalled();
+    expect(processAttendanceImportJob).toHaveBeenCalledWith("job-1", expect.anything());
   });
 
   it("allows Summary PDF import without a form attendance date", async () => {
@@ -154,13 +164,18 @@ describe("uploadAttendanceAction — early size rejection", () => {
         },
       ],
     });
-    importAttendanceRows.mockResolvedValue({
+    createAttendanceImportJob.mockResolvedValue({ ok: true, jobId: "job-2" });
+    processAttendanceImportJob.mockResolvedValue({
       ok: true,
+      jobId: "job-2",
+      status: "COMPLETED",
       imported: 1,
       skipped: 0,
-      uploadId: 2,
+      employeesCreated: 0,
+      usersCreated: 0,
       provisioningErrors: [],
-      rejectedUnknownEmployees: [],
+      nextRowIndex: 1,
+      totalRows: 1,
     });
 
     const formData = {
@@ -175,6 +190,6 @@ describe("uploadAttendanceAction — early size rejection", () => {
     expect(result.error).toBeUndefined();
     expect(result.success).toBeDefined();
     expect(result.reportType).toBe("PDF_SUMMARY");
-    expect(importAttendanceRows).toHaveBeenCalled();
+    expect(createAttendanceImportJob).toHaveBeenCalled();
   });
 });

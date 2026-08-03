@@ -1,6 +1,5 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { deriveAttendanceStatus, parseDurationToMinutes, parseOTToMinutes } from "@/lib/attendance";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
 import { getRequestSecurityContext } from "@/lib/security/request-context";
 import {
@@ -9,10 +8,9 @@ import {
 } from "@/lib/admin/user-management";
 import { EXCEL_UPLOAD_DEFAULT_PASSWORD } from "@/lib/admin/account-lifecycle";
 import type { SessionUser } from "@/lib/session";
-import { formatTimeCell } from "./cell-utils";
 import { ATTENDANCE_UPLOAD_MAX_ROWS } from "./file-validation";
+import { importAttendanceRowBatch } from "./import-batch";
 import type { AttendanceImportFormat, AttendanceImportRow } from "./types";
-import { resolveImportAttendanceDate } from "./types";
 
 export type ImportAttendanceSuccess = {
   ok: true;
@@ -30,71 +28,12 @@ export type ImportAttendanceFailure = {
 
 export type ImportAttendanceResult = ImportAttendanceSuccess | ImportAttendanceFailure;
 
-type DbClient = Prisma.TransactionClient | typeof prisma;
-
 class ImportAbortError extends Error {
   readonly userMessage: string;
   constructor(userMessage: string) {
     super(userMessage);
     this.name = "ImportAbortError";
     this.userMessage = userMessage;
-  }
-}
-
-async function saveAttendanceRecord(
-  client: DbClient,
-  params: {
-    employeeId: number;
-    uploadId: number;
-    attendanceDate: Date;
-    row: AttendanceImportRow;
-  }
-): Promise<void> {
-  const { employeeId, uploadId, attendanceDate, row } = params;
-  const checkIn = formatTimeCell(row.inTime);
-  const checkOut = formatTimeCell(row.outTime);
-  const workDuration = row.workDuration;
-
-  let workedMinutes = parseDurationToMinutes(workDuration);
-  if (workedMinutes === 0 && checkIn && checkOut) {
-    const inParts = checkIn.split(":").map(Number);
-    const outParts = checkOut.split(":").map(Number);
-    if (inParts.length >= 2 && outParts.length >= 2) {
-      const inMins = inParts[0] * 60 + inParts[1];
-      const outMins = outParts[0] * 60 + outParts[1];
-      workedMinutes = outMins >= inMins ? outMins - inMins : 24 * 60 - inMins + outMins;
-    }
-  }
-
-  const overtimeMinutes = parseOTToMinutes(row.ot);
-  const status = deriveAttendanceStatus(checkIn, workedMinutes);
-  const remarks = row.remarks || row.status || null;
-
-  const created = await client.attendanceRecord.create({
-    data: {
-      employeeId,
-      uploadId,
-      attendanceDate,
-      shift: row.shift || null,
-      checkIn,
-      checkOut,
-      workDuration: workDuration || null,
-      workedMinutes,
-      overtimeMinutes,
-      status,
-      remarks,
-    },
-  });
-
-  if (checkIn) {
-    await client.attendanceSession.create({
-      data: {
-        attendanceId: created.id,
-        checkIn,
-        checkOut,
-        workedMinutes,
-      },
-    });
   }
 }
 
@@ -105,6 +44,8 @@ async function saveAttendanceRecord(
  *
  * Date resolution (sole fallback site):
  *   attendanceDate = row.attendanceDate ?? formAttendanceDate
+ *
+ * Prefer `processAttendanceImportJob` for large uploads (chunked + resumable).
  */
 export async function importAttendanceRows(params: {
   session: SessionUser;
@@ -127,119 +68,70 @@ export async function importAttendanceRows(params: {
 
   try {
     const txResult = await prisma.$transaction(
-      async (tx) => {
-      let imported = 0;
-      let skipped = 0;
-      const rejectedUnknownEmployees: string[] = [];
-      const newEmployees: { id: number; employeeCode: string }[] = [];
+      async (tx: Prisma.TransactionClient) => {
+        const rejectedUnknownEmployees: string[] = [];
 
-      const upload = await tx.attendanceUpload.create({
-        data: {
-          fileName,
-          uploadedBy: session.email,
-          recordCount: 0,
-        },
-      });
-
-      for (const row of rows) {
-        const employeeCode = row.employeeCode;
-        const employeeName = row.employeeName;
-        const attendanceDate = resolveImportAttendanceDate(row, formAttendanceDate);
-
-        const employee = await tx.employee.findUnique({
-          where: { employeeCode },
-        });
-
-        if (!employee) {
-          const created = await tx.employee.create({
-            data: {
-              employeeCode,
-              name: employeeName || employeeCode,
-              shift: row.shift || null,
-            },
-          });
-          newEmployees.push({ id: created.id, employeeCode });
-
-          await saveAttendanceRecord(tx, {
-            employeeId: created.id,
-            uploadId: upload.id,
-            attendanceDate,
-            row,
-          });
-          imported++;
-          continue;
-        }
-
-        const existing = await tx.attendanceRecord.findUnique({
-          where: {
-            employeeId_attendanceDate: {
-              employeeId: employee.id,
-              attendanceDate,
-            },
-          },
-        });
-
-        if (existing) {
-          skipped++;
-          continue;
-        }
-
-        await saveAttendanceRecord(tx, {
-          employeeId: employee.id,
-          uploadId: upload.id,
-          attendanceDate,
-          row,
-        });
-        imported++;
-      }
-
-      if (imported === 0 && skipped === 0 && rows.length > 0) {
-        throw new ImportAbortError("No attendance records were imported.");
-      }
-
-      await tx.attendanceUpload.update({
-        where: { id: upload.id },
-        data: { recordCount: imported },
-      });
-
-      await writeAuditLog(
-        {
-          entityType: "attendance_upload",
-          entityId: String(upload.id),
-          action: AUDIT_ACTIONS.ATTENDANCE_UPLOAD_COMPLETED,
-          actorUserId: session.id,
-          actorEmail: session.email,
-          employeeId: session.employeeId,
-          module: "attendance",
-          description: "Attendance workbook import completed.",
-          requestContext,
-          metadata: {
-            formAttendanceDate: formAttendanceDate.toISOString(),
-            attendanceDate: formAttendanceDate.toISOString(),
+        const upload = await tx.attendanceUpload.create({
+          data: {
             fileName,
-            imported,
-            skipped,
-            source,
-            rejectedUnknownEmployees,
+            uploadedBy: session.email,
+            recordCount: 0,
           },
-        },
-        tx
-      );
+        });
 
-      return {
-        imported,
-        skipped,
-        uploadId: upload.id,
-        rejectedUnknownEmployees,
-        newEmployees,
-      };
+        const batch = await importAttendanceRowBatch(tx, {
+          rows,
+          formAttendanceDate,
+          uploadId: upload.id,
+        });
+
+        if (batch.imported === 0 && batch.skipped === 0 && rows.length > 0) {
+          throw new ImportAbortError("No attendance records were imported.");
+        }
+
+        await tx.attendanceUpload.update({
+          where: { id: upload.id },
+          data: { recordCount: batch.imported },
+        });
+
+        await writeAuditLog(
+          {
+            entityType: "attendance_upload",
+            entityId: String(upload.id),
+            action: AUDIT_ACTIONS.ATTENDANCE_UPLOAD_COMPLETED,
+            actorUserId: session.id,
+            actorEmail: session.email,
+            employeeId: session.employeeId,
+            module: "attendance",
+            description: "Attendance workbook import completed.",
+            requestContext,
+            metadata: {
+              formAttendanceDate: formAttendanceDate.toISOString(),
+              attendanceDate: formAttendanceDate.toISOString(),
+              fileName,
+              imported: batch.imported,
+              skipped: batch.skipped,
+              source,
+              rejectedUnknownEmployees,
+            },
+          },
+          tx
+        );
+
+        return {
+          imported: batch.imported,
+          skipped: batch.skipped,
+          uploadId: upload.id,
+          rejectedUnknownEmployees,
+          newEmployees: batch.newEmployees,
+        };
       },
       {
-        // Large Daily PDFs create many employees + records; default 20s is too short on Neon.
         maxWait: 20_000,
         timeout: 120_000,
       }
     );
+
     const provisioningErrors: string[] = [];
     for (const created of txResult.newEmployees) {
       const email = `${created.employeeCode.toLowerCase()}@zebl.com`;

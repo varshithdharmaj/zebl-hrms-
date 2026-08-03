@@ -35,6 +35,20 @@ export {
 } from "./parse-pdf-text";
 export { normalizeAttendanceMatrix } from "./normalize-matrix";
 export { formatTimeCell, cellValue } from "./cell-utils";
+export {
+  IMPORT_CHUNK_SIZE,
+  ATTENDANCE_IMPORT_PARSER_VERSION,
+  compressPayload,
+  decompressPayload,
+} from "./import-job-payload";
+export {
+  createAttendanceImportJob,
+  processAttendanceImportJob,
+  resumeAttendanceImportJob,
+  listResumableAttendanceImportJobs,
+} from "./import-job";
+export { importAttendanceRowBatch } from "./import-batch";
+export { importAttendanceRows } from "./import-records";
 export type {
   PdfDocument,
   PdfPage,

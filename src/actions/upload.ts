@@ -8,7 +8,13 @@ import {
   validateAttendanceUploadFile,
 } from "@/lib/attendance/import/file-validation";
 import { parseAttendanceFile } from "@/lib/attendance/import/parse-dispatch";
-import { importAttendanceRows } from "@/lib/attendance/import/import-records";
+import {
+  createAttendanceImportJob,
+  processAttendanceImportJob,
+  resumeAttendanceImportJob,
+  listResumableAttendanceImportJobs,
+  type ProcessAttendanceImportJobResult,
+} from "@/lib/attendance/import/import-job";
 import { rowsProvideAttendanceDates } from "@/lib/attendance/import/types";
 
 export type UploadState = {
@@ -21,11 +27,77 @@ export type UploadState = {
   reportType?: string;
   durationMs?: number;
   datesImported?: string[];
+  /** Resumable job id when import failed mid-way. */
+  jobId?: string;
+  jobStatus?: string;
+  nextRowIndex?: number;
+  totalRows?: number;
+  employeesCreated?: number;
 };
 
+function revalidateAttendancePaths(): void {
+  revalidatePath("/admin/dashboard");
+  revalidatePath("/admin/attendance");
+  revalidatePath("/admin/payroll-attendance");
+  revalidatePath("/admin/upload");
+}
+
+function toIsoDate(d: Date): string {
+  const x = startOfDay(d);
+  const y = x.getFullYear();
+  const m = String(x.getMonth() + 1).padStart(2, "0");
+  const day = String(x.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function mapProcessResultToState(
+  result: ProcessAttendanceImportJobResult,
+  extras: {
+    started: number;
+    reportType?: string;
+    datesImported?: string[];
+  }
+): UploadState {
+  const base = {
+    imported: result.imported,
+    skipped: result.skipped,
+    unknownEmployees: 0,
+    reportType: extras.reportType,
+    durationMs: Date.now() - extras.started,
+    datesImported: extras.datesImported,
+    jobId: result.jobId,
+    jobStatus: result.status,
+    nextRowIndex: result.nextRowIndex,
+    totalRows: result.totalRows,
+    employeesCreated: result.employeesCreated,
+  };
+
+  if (result.ok) {
+    const message = `Imported ${result.imported} record(s)${result.skipped > 0 ? `, skipped ${result.skipped} duplicate(s)` : ""}.`;
+    const softErrors = [...result.provisioningErrors];
+    if (softErrors.length > 0) {
+      return {
+        success: message,
+        ...base,
+        error: softErrors.slice(0, 5).join("; "),
+      };
+    }
+    return { success: message, ...base };
+  }
+
+  const progressHint =
+    result.totalRows > 0
+      ? ` Progress: ${result.nextRowIndex}/${result.totalRows} rows processed (${result.imported} imported, ${result.skipped} skipped).`
+      : "";
+
+  return {
+    ...base,
+    error: `${result.error}${progressHint}`,
+  };
+}
+
 /**
- * Direct import path (default when preview is disabled).
- * Reuses parseAttendanceFile + importAttendanceRows — no preview cache.
+ * Direct import path: parse → create job → process in chunks (resumable).
  */
 export async function uploadAttendanceAction(
   _prev: UploadState,
@@ -78,7 +150,6 @@ export async function uploadAttendanceAction(
 
     const reportType =
       parseResult.reportType ?? (validation.format === "excel" ? "EXCEL_DAILY" : "PDF_DAILY");
-    // Summary always has row dates; Daily uses extracted header date when present
     const datesFromFile =
       reportType === "PDF_SUMMARY" ||
       (reportType === "PDF_DAILY" && rowsProvideAttendanceDates(parseResult.rows));
@@ -101,71 +172,45 @@ export async function uploadAttendanceAction(
       }
     }
 
-    const importResult = await importAttendanceRows({
+    const created = await createAttendanceImportJob({
       session,
       fileName: file.name,
-      attendanceDate,
-      rows: parseResult.rows,
       source: validation.format,
+      reportType,
+      formAttendanceDate: attendanceDate,
+      rows: parseResult.rows,
     });
 
-    if (!importResult.ok) {
-      return { error: importResult.error };
+    if (!created.ok) {
+      return { error: created.error };
     }
 
-    revalidatePath("/admin/dashboard");
-    revalidatePath("/admin/attendance");
-    revalidatePath("/admin/payroll-attendance");
-    revalidatePath("/admin/upload");
-
-    const { imported, skipped, provisioningErrors } = importResult;
-    const message = `Imported ${imported} record(s)${skipped > 0 ? `, skipped ${skipped} duplicate(s)` : ""}.`;
-    const unknownEmployees = 0;
+    const processResult = await processAttendanceImportJob(created.jobId, session);
 
     const datesImported = [
       ...new Set(
         parseResult.rows
           .map((r) => r.attendanceDate)
           .filter((d): d is Date => d instanceof Date && !Number.isNaN(d.getTime()))
-          .map((d) => {
-            const x = startOfDay(d);
-            const y = x.getFullYear();
-            const m = String(x.getMonth() + 1).padStart(2, "0");
-            const day = String(x.getDate()).padStart(2, "0");
-            return `${y}-${m}-${day}`;
-          })
+          .map((d) => toIsoDate(d))
       ),
     ].sort();
 
     if (!datesFromFile) {
-      const y = attendanceDate.getFullYear();
-      const m = String(attendanceDate.getMonth() + 1).padStart(2, "0");
-      const day = String(attendanceDate.getDate()).padStart(2, "0");
-      const formIso = `${y}-${m}-${day}`;
+      const formIso = toIsoDate(attendanceDate);
       if (!datesImported.includes(formIso)) datesImported.push(formIso);
       datesImported.sort();
     }
 
-    const softErrors = [...provisioningErrors];
-
-    const base = {
-      imported,
-      skipped,
-      unknownEmployees,
-      reportType,
-      durationMs: Date.now() - started,
-      datesImported: datesImported.length > 0 ? datesImported : undefined,
-    };
-
-    if (softErrors.length > 0) {
-      return {
-        success: message,
-        ...base,
-        error: softErrors.slice(0, 5).join("; "),
-      };
+    if (processResult.ok) {
+      revalidateAttendancePaths();
     }
 
-    return { success: message, ...base };
+    return mapProcessResultToState(processResult, {
+      started,
+      reportType,
+      datesImported: datesImported.length > 0 ? datesImported : undefined,
+    });
   } catch (e) {
     console.error("Upload error:", e);
     return {
@@ -173,4 +218,76 @@ export async function uploadAttendanceAction(
         "Failed to process attendance file. Please check the format and try again, or use Excel import.",
     };
   }
+}
+
+/**
+ * Resume a failed/uploaded import job without re-uploading the file.
+ */
+export async function resumeAttendanceImportAction(
+  _prev: UploadState,
+  formData: FormData
+): Promise<UploadState> {
+  let session;
+  try {
+    session = await requireAdminSession();
+  } catch {
+    return { error: "Unauthorized." };
+  }
+
+  const jobId = String(formData.get("jobId") ?? "").trim();
+  if (!jobId) {
+    return { error: "Missing import job id." };
+  }
+
+  const started = Date.now();
+  try {
+    const processResult = await resumeAttendanceImportJob(jobId, session);
+    if (processResult.ok) {
+      revalidateAttendancePaths();
+    }
+    return mapProcessResultToState(processResult, { started });
+  } catch (e) {
+    console.error("Resume import error:", e);
+    return {
+      error: "Failed to resume import. Please try Continue Import again.",
+      jobId,
+    };
+  }
+}
+
+export type ResumableImportJobSummary = {
+  id: string;
+  fileName: string;
+  status: string;
+  importedCount: number;
+  skippedCount: number;
+  nextRowIndex: number;
+  totalRows: number;
+  errorMessage: string | null;
+  updatedAt: string;
+};
+
+/** Load recent resumable jobs for the signed-in admin. */
+export async function getResumableAttendanceImportJobsAction(): Promise<
+  ResumableImportJobSummary[]
+> {
+  let session;
+  try {
+    session = await requireAdminSession();
+  } catch {
+    return [];
+  }
+
+  const jobs = await listResumableAttendanceImportJobs(session.id, 5);
+  return jobs.map((j) => ({
+    id: j.id,
+    fileName: j.fileName,
+    status: j.status,
+    importedCount: j.importedCount,
+    skippedCount: j.skippedCount,
+    nextRowIndex: j.nextRowIndex,
+    totalRows: j.totalRows,
+    errorMessage: j.errorMessage,
+    updatedAt: j.updatedAt.toISOString(),
+  }));
 }

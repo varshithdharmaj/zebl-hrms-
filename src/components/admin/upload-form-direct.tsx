@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   useActionState,
@@ -6,11 +6,18 @@ import {
   useId,
   useRef,
   useState,
+  useTransition,
   type DragEvent,
   type KeyboardEvent,
 } from "react";
 import { FileSpreadsheet, FileText, Loader2, Upload } from "lucide-react";
-import { uploadAttendanceAction, type UploadState } from "@/actions/upload";
+import {
+  getResumableAttendanceImportJobsAction,
+  resumeAttendanceImportAction,
+  uploadAttendanceAction,
+  type ResumableImportJobSummary,
+  type UploadState,
+} from "@/actions/upload";
 import { AttendanceDateDetectionPanel } from "@/components/admin/attendance-date-detection-panel";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -95,12 +102,12 @@ function ResultSummary({ state }: { state: UploadState }) {
         <div>
           <dt className="text-xs text-muted-foreground">Duration</dt>
           <dd className="font-semibold tabular-nums">
-            {state.durationMs != null ? `${(state.durationMs / 1000).toFixed(1)}s` : "—"}
+            {state.durationMs != null ? `${(state.durationMs / 1000).toFixed(1)}s` : "â€”"}
           </dd>
         </div>
         <div>
           <dt className="text-xs text-muted-foreground">Report</dt>
-          <dd className="font-semibold">{state.reportType ?? "—"}</dd>
+          <dd className="font-semibold">{state.reportType ?? "â€”"}</dd>
         </div>
       </dl>
       {state.datesImported && state.datesImported.length > 0 && (
@@ -117,11 +124,16 @@ function ResultSummary({ state }: { state: UploadState }) {
 }
 
 /**
- * Default upload path: Upload → validate → import → result.
+ * Default upload path: Upload â†’ parse â†’ job â†’ chunked import â†’ result.
  * Used when ENABLE_ATTENDANCE_IMPORT_PREVIEW is false.
  */
 export function UploadFormDirect({ defaultDate }: { defaultDate: string }) {
-  const [state, formAction, pending] = useActionState(uploadAttendanceAction, initialState);
+  const [state, formAction, uploadPending] = useActionState(uploadAttendanceAction, initialState);
+  const [resumeState, resumeAction, resumePending] = useActionState(
+    resumeAttendanceImportAction,
+    initialState
+  );
+  const [resumeTransitionPending, startResumeTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const resultFocusRef = useRef<HTMLDivElement>(null);
   const fileInputId = useId();
@@ -134,18 +146,38 @@ export function UploadFormDirect({ defaultDate }: { defaultDate: string }) {
   const [clientError, setClientError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [recentJobs, setRecentJobs] = useState<ResumableImportJobSummary[]>([]);
   const detection = useAttendanceReportDetection(selectedFile);
 
-  const displayError = clientError ?? (state.success ? null : state.error) ?? null;
-  const showResult = Boolean(state.success);
+  const activeState = resumeState.jobId || resumeState.success ? resumeState : state;
+  const busy = uploadPending || resumePending || resumeTransitionPending;
+  const displayError =
+    clientError ?? (activeState.success ? null : activeState.error) ?? null;
+  const showResult = Boolean(activeState.success);
   const detecting = detection.status === "detecting";
-  const canSubmit = Boolean(selectedFile) && !pending && !detecting;
+  const canSubmit = Boolean(selectedFile) && !busy && !detecting;
+  const resumableJobId =
+    activeState.jobId &&
+    activeState.jobStatus !== "COMPLETED" &&
+    !activeState.success
+      ? activeState.jobId
+      : null;
 
   useEffect(() => {
-    if (state.success) {
+    if (activeState.success) {
       resultFocusRef.current?.focus();
     }
-  }, [state.success]);
+  }, [activeState.success]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getResumableAttendanceImportJobsAction().then((jobs) => {
+      if (!cancelled) setRecentJobs(jobs);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeState.success, activeState.jobId, activeState.jobStatus]);
 
   function syncFileInput(file: File | null) {
     const input = fileInputRef.current;
@@ -163,7 +195,7 @@ export function UploadFormDirect({ defaultDate }: { defaultDate: string }) {
     if (!current || current.name !== selectedFile.name || current.size !== selectedFile.size) {
       syncFileInput(selectedFile);
     }
-  }, [selectedFile, pending, state]);
+  }, [selectedFile, busy, activeState]);
 
   function applyFile(file: File | null) {
     if (!file) {
@@ -188,12 +220,12 @@ export function UploadFormDirect({ defaultDate }: { defaultDate: string }) {
     event.preventDefault();
     event.stopPropagation();
     setDragActive(false);
-    if (pending) return;
+    if (busy || busy) return;
     applyFile(event.dataTransfer.files?.[0] ?? null);
   }
 
   function onDropzoneKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (pending) return;
+    if (busy) return;
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       fileInputRef.current?.click();
@@ -209,30 +241,91 @@ export function UploadFormDirect({ defaultDate }: { defaultDate: string }) {
   return (
     <SectionCard
       title="Import file"
-      description="XLSX, XLS, or PDF · Maximum 5 MB · Matched by employee code"
+      description="XLSX, XLS, or PDF Â· Maximum 5 MB Â· Matched by employee code"
       className="max-w-xl"
     >
-      <form action={formAction} className="space-y-5" aria-busy={pending}>
+      <form action={formAction} className="space-y-5" aria-busy={busy}>
         {showResult && (
           <div ref={resultFocusRef} tabIndex={-1} className="outline-none">
-            <ResultSummary state={state} />
+            <ResultSummary state={activeState} />
           </div>
         )}
         {displayError && (
-          <div id={errorId}>
+          <div id={errorId} className="space-y-3">
             <ErrorAlert message={displayError} />
+            {resumableJobId && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    const fd = new FormData();
+                    fd.set("jobId", resumableJobId);
+                    startResumeTransition(() => {
+                      resumeAction(fd);
+                    });
+                  }}
+                >
+                  {resumePending || resumeTransitionPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+                      Continuingâ€¦
+                    </>
+                  ) : (
+                    "Continue Import"
+                  )}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Resumes from row {activeState.nextRowIndex ?? 0} of{" "}
+                  {activeState.totalRows ?? "?"} without re-uploading.
+                </p>
+              </div>
+            )}
           </div>
         )}
-        {state.success && state.error && (
+        {activeState.success && activeState.error && (
           <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-4 py-3 text-sm text-foreground">
             <p className="font-medium">Warnings</p>
-            <p className="mt-1 text-muted-foreground">{state.error}</p>
+            <p className="mt-1 text-muted-foreground">{activeState.error}</p>
           </div>
         )}
 
-        {pending && (
+        {recentJobs.length > 0 && (
+          <div className="rounded-lg border border-border bg-muted/20 px-3 py-3 text-sm">
+            <p className="font-medium text-foreground">Recent imports</p>
+            <ul className="mt-2 space-y-2">
+              {recentJobs.map((job) => (
+                <li
+                  key={job.id}
+                  className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"
+                >
+                  <span className="min-w-0 truncate">
+                    {job.fileName} Â· {job.nextRowIndex}/{job.totalRows} Â· {job.status}
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => {
+                      const fd = new FormData();
+                      fd.set("jobId", job.id);
+                      startResumeTransition(() => {
+                        resumeAction(fd);
+                      });
+                    }}
+                  >
+                    Continue
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {busy && (
           <div className="space-y-3" aria-live="polite" aria-busy="true">
-            <p className="text-sm text-muted-foreground">Importing attendance…</p>
+            <p className="text-sm text-muted-foreground">Importing attendanceâ€¦</p>
             <Skeleton className="h-20 w-full" />
           </div>
         )}
@@ -246,7 +339,7 @@ export function UploadFormDirect({ defaultDate }: { defaultDate: string }) {
             type="file"
             accept={ACCEPT}
             required
-            disabled={pending}
+            disabled={busy}
             className="sr-only"
             aria-describedby={`${helpId}${displayError ? ` ${errorId}` : ""}`}
             aria-invalid={displayError ? true : undefined}
@@ -258,22 +351,22 @@ export function UploadFormDirect({ defaultDate }: { defaultDate: string }) {
           {!selectedFile ? (
             <div
               role="button"
-              tabIndex={pending ? -1 : 0}
+              tabIndex={busy ? -1 : 0}
               aria-controls={fileInputId}
               aria-label="Choose attendance file to upload"
               onKeyDown={onDropzoneKeyDown}
               onClick={() => {
-                if (!pending) fileInputRef.current?.click();
+                if (!busy) fileInputRef.current?.click();
               }}
               onDragEnter={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                if (!pending) setDragActive(true);
+                if (!busy) setDragActive(true);
               }}
               onDragOver={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                if (!pending) setDragActive(true);
+                if (!busy) setDragActive(true);
               }}
               onDragLeave={(event) => {
                 event.preventDefault();
@@ -287,12 +380,12 @@ export function UploadFormDirect({ defaultDate }: { defaultDate: string }) {
                 dragActive
                   ? "border-primary bg-primary/5"
                   : "border-border bg-muted/30 hover:border-primary/40 hover:bg-muted/50",
-                pending && "pointer-events-none opacity-60"
+                busy && "pointer-events-none opacity-60"
               )}
             >
               <Upload className="mb-3 h-8 w-8 text-muted-foreground" aria-hidden />
               <p className="text-sm font-medium text-foreground">
-                Drop Excel or PDF here…
+                Drop Excel or PDF hereâ€¦
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
                 or{" "}
@@ -301,14 +394,14 @@ export function UploadFormDirect({ defaultDate }: { defaultDate: string }) {
                 </span>
               </p>
               <p id={helpId} className="mt-3 text-xs text-muted-foreground">
-                XLSX, XLS, or PDF · Maximum 5 MB
+                XLSX, XLS, or PDF Â· Maximum 5 MB
               </p>
             </div>
           ) : (
             <div
               className={cn(
                 "flex items-center gap-3 rounded-lg border border-border bg-muted/20 px-3 py-3",
-                pending && "opacity-70"
+                busy && "opacity-70"
               )}
             >
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-card">
@@ -317,14 +410,14 @@ export function UploadFormDirect({ defaultDate }: { defaultDate: string }) {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-foreground">{selectedFile.name}</p>
                 <p className="text-xs text-muted-foreground">
-                  {fileTypeLabel(selectedFile.name)} · {formatFileSize(selectedFile.size)}
+                  {fileTypeLabel(selectedFile.name)} Â· {formatFileSize(selectedFile.size)}
                 </p>
               </div>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={pending}
+                disabled={busy}
                 onClick={() => {
                   applyFile(null);
                   fileInputRef.current?.click();
@@ -342,7 +435,7 @@ export function UploadFormDirect({ defaultDate }: { defaultDate: string }) {
           dateInputId={dateInputId}
           attendanceDate={attendanceDate}
           onAttendanceDateChange={setAttendanceDate}
-          disabled={pending}
+          disabled={busy}
         />
 
         <div className="space-y-2">
@@ -375,10 +468,10 @@ export function UploadFormDirect({ defaultDate }: { defaultDate: string }) {
         </div>
 
         <Button type="submit" disabled={!canSubmit} aria-disabled={!canSubmit}>
-          {pending ? (
+          {busy ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
-              <span>Importing…</span>
+              <span>Importingâ€¦</span>
               <span className="sr-only">Import in progress</span>
             </>
           ) : (
