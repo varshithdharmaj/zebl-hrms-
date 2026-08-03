@@ -1,0 +1,143 @@
+import {
+  isTargetOrBetterTier,
+  isWorkedDayCategory,
+  type AttendanceDayResult,
+} from "@/lib/attendance/day-classification";
+
+export type HeatmapMonthStats = {
+  monthKey: string;
+  year: number;
+  monthIndex: number;
+  /** e.g. "Jul 2026" */
+  label: string;
+  /** Worked days below target (Present swatch). */
+  presentDays: number;
+  /** Worked days at target or overtime (Excellent swatch). */
+  excellentDays: number;
+  absentDays: number;
+  leaveDays: number;
+  insufficientDays: number;
+  /**
+   * Attended (present + excellent) / (attended + absent + insufficient) × 100.
+   * Null when the denominator is 0 (month is only leave/holiday/weekly-off).
+   */
+  attendancePercent: number | null;
+  /** Mean worked minutes across attended days; null when none. */
+  averageWorkedMinutes: number | null;
+};
+
+export type MonthWeekRange = {
+  monthKey: string;
+  label: string;
+  startWeek: number;
+  endWeek: number;
+};
+
+type MutableMonthStats = HeatmapMonthStats & {
+  workedMinutesSum: number;
+  workedDaysCount: number;
+};
+
+export function monthKeyFromDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+export function monthLabelFromKey(monthKey: string): string {
+  const [y, m] = monthKey.split("-").map(Number);
+  const date = new Date(y!, (m ?? 1) - 1, 1);
+  return date.toLocaleDateString("en-IN", { month: "short", year: "numeric" });
+}
+
+/** Aggregate per-calendar-month stats from the already-loaded heatmap day list. */
+export function buildHeatmapMonthStats(days: AttendanceDayResult[]): Map<string, HeatmapMonthStats> {
+  const map = new Map<string, MutableMonthStats>();
+
+  for (const day of days) {
+    const key = monthKeyFromDate(day.date);
+    let stats = map.get(key);
+    if (!stats) {
+      stats = {
+        monthKey: key,
+        year: day.date.getFullYear(),
+        monthIndex: day.date.getMonth(),
+        label: monthLabelFromKey(key),
+        presentDays: 0,
+        excellentDays: 0,
+        absentDays: 0,
+        leaveDays: 0,
+        insufficientDays: 0,
+        attendancePercent: null,
+        averageWorkedMinutes: null,
+        workedMinutesSum: 0,
+        workedDaysCount: 0,
+      };
+      map.set(key, stats);
+    }
+
+    if (isWorkedDayCategory(day.category)) {
+      if (isTargetOrBetterTier(day.ratioTier)) stats.excellentDays += 1;
+      else stats.presentDays += 1;
+      stats.workedMinutesSum += day.workedMinutes;
+      stats.workedDaysCount += 1;
+    } else if (day.category === "ABSENT") {
+      stats.absentDays += 1;
+    } else if (day.category === "LEAVE") {
+      stats.leaveDays += 1;
+    } else if (day.category === "INSUFFICIENT_DATA") {
+      stats.insufficientDays += 1;
+    }
+  }
+
+  const result = new Map<string, HeatmapMonthStats>();
+  for (const [key, stats] of map) {
+    const attended = stats.presentDays + stats.excellentDays;
+    const denom = attended + stats.absentDays + stats.insufficientDays;
+    result.set(key, {
+      monthKey: stats.monthKey,
+      year: stats.year,
+      monthIndex: stats.monthIndex,
+      label: stats.label,
+      presentDays: stats.presentDays,
+      excellentDays: stats.excellentDays,
+      absentDays: stats.absentDays,
+      leaveDays: stats.leaveDays,
+      insufficientDays: stats.insufficientDays,
+      attendancePercent: denom > 0 ? Math.round((attended / denom) * 100) : null,
+      averageWorkedMinutes:
+        stats.workedDaysCount > 0 ? Math.round(stats.workedMinutesSum / stats.workedDaysCount) : null,
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Week-index span for each month present in the GitHub-style week grid.
+ * A week that straddles two months counts toward every month that has a day in it.
+ */
+export function buildMonthWeekRanges(
+  weeks: (AttendanceDayResult | null)[][]
+): MonthWeekRange[] {
+  const byKey = new Map<string, { startWeek: number; endWeek: number }>();
+
+  weeks.forEach((week, weekIndex) => {
+    const keys = new Set<string>();
+    for (const day of week) {
+      if (day) keys.add(monthKeyFromDate(day.date));
+    }
+    for (const key of keys) {
+      const existing = byKey.get(key);
+      if (!existing) byKey.set(key, { startWeek: weekIndex, endWeek: weekIndex });
+      else existing.endWeek = weekIndex;
+    }
+  });
+
+  return [...byKey.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([monthKey, span]) => ({
+      monthKey,
+      label: monthLabelFromKey(monthKey),
+      startWeek: span.startWeek,
+      endWeek: span.endWeek,
+    }));
+}
