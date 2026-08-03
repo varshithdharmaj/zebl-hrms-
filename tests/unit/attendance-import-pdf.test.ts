@@ -83,22 +83,20 @@ describe("parseAttendancePdf (extraction adapter + report detection)", () => {
     expect(result.error.toLowerCase()).toMatch(/corrupt|failed to process/);
   });
 
-  it("dispatches Summary PDFs to the eSSL Summary parser (not hard-reject)", async () => {
-    const document = buildSummaryPdfDocumentFromLines([
+  it("dispatches eSSL Daily Basic Report PDFs to the geometry parser", async () => {
+    const { buildEsslDailyBasicPdfDocument, esslDailyPresentRow } = await import(
+      "../fixtures/essl-daily-basic-pdf"
+    );
+    const document = buildEsslDailyBasicPdfDocument([
       [
-        "Summary Report — 15 Days",
-        ...employeeSection({
+        ...esslDailyPresentRow({
+          sno: 1,
           code: "660005",
           name: "Madhukar",
-          rows: [
-            "16-Jul-2026  09:00  18:00  GS  09:00  Present",
-            "17-Jul-2026  Weekly Off",
-          ],
-        }),
-        ...employeeSection({
-          code: "660001",
-          name: "Sowmya",
-          rows: ["16-Jul-2026  09:30  18:00  GS  08:30  Present"],
+          shift: "GS",
+          inTime: "08:10:29",
+          outTime: "17:01:36",
+          work: "8:51",
         }),
       ],
     ]);
@@ -109,14 +107,12 @@ describe("parseAttendancePdf (extraction adapter + report detection)", () => {
     });
 
     const result = await parseAttendancePdf(new Uint8Array([0x25, 0x50, 0x44, 0x46]), {
-      fileName: "summary.pdf",
+      fileName: "DailyAttendance_BasicReport.pdf",
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.reportType).toBe("PDF_SUMMARY");
-    expect(result.rows.length).toBeGreaterThanOrEqual(3);
-    expect(result.rows.every((r) => r.source === "PDF_SUMMARY")).toBe(true);
-    expect(result.rows.every((r) => r.attendanceDate !== undefined)).toBe(true);
-    expect(toISODate(result.rows[0].attendanceDate!)).toBe("2026-07-16");
+    expect(result.reportType).toBe("PDF_DAILY");
+    expect(result.rows[0].employeeCode).toBe("660005");
+    expect(result.rows[0].inTime).toBe("08:10:29");
   });
 });

@@ -2,6 +2,10 @@ import "server-only";
 
 import { detectAttendanceReportType } from "./detect-report-type";
 import { extractAttendancePdf } from "./extract-pdf";
+import {
+  looksLikeEsslDailyBasicPdf,
+  parseEsslDailyBasicPdf,
+} from "./parse-pdf-daily-essl";
 import { parseAttendancePdfSummary } from "./parse-pdf-summary";
 import { parseAttendancePdfText, PDF_IMPORT_ERRORS } from "./parse-pdf-text";
 import type {
@@ -20,8 +24,8 @@ export type ParseAttendancePdfResult = AttendanceImportParseResult & {
 /**
  * Server-only PDF → normalized attendance rows.
  *
- * - PDF_DAILY / UNKNOWN → merged-text Daily parser (unchanged)
  * - PDF_SUMMARY → eSSL Summary state machine on PdfDocument
+ * - PDF_DAILY → eSSL Daily Basic (geometry) when recognized, else delimited-text Daily parser
  */
 export async function parseAttendancePdf(
   bytes: Uint8Array,
@@ -58,13 +62,19 @@ export async function parseAttendancePdf(
       return { ...parsed, reportType: "PDF_SUMMARY" };
     }
 
-    if (detection.type === "UNKNOWN") {
-      const parsed = parseAttendancePdfText(mergedText);
-      return { ...parsed, reportType: "UNKNOWN" };
+    // eSSL Daily Attendance (Basic Report): column geometry — not pipe/tab/multi-space text
+    if (looksLikeEsslDailyBasicPdf(document, mergedText)) {
+      const essl = parseEsslDailyBasicPdf(document);
+      if (essl.ok) {
+        return { ...essl, reportType: "PDF_DAILY" };
+      }
+      // Fall through to delimited parser only when geometry path found no usable header
     }
 
+    const reportType: AttendanceReportType =
+      detection.type === "UNKNOWN" ? "UNKNOWN" : "PDF_DAILY";
     const parsed = parseAttendancePdfText(mergedText);
-    return { ...parsed, reportType: "PDF_DAILY" };
+    return { ...parsed, reportType };
   } catch (error) {
     console.error("PDF parse error:", error);
     return {
