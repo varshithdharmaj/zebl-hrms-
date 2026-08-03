@@ -62,12 +62,12 @@ function deserializeRow(row: SerializedImportRow): AttendanceImportRow {
  * Compress parsed import rows for durable job storage (gzip JSON).
  * Dates are stored as ISO strings.
  */
-export function compressPayload(rows: AttendanceImportRow[]): Buffer {
+export function compressPayload(rows: AttendanceImportRow[]): Uint8Array {
   const envelope: PayloadEnvelope = {
     version: ATTENDANCE_IMPORT_PARSER_VERSION,
     rows: rows.map(serializeRow),
   };
-  return gzipSync(Buffer.from(JSON.stringify(envelope), "utf8"));
+  return new Uint8Array(gzipSync(Buffer.from(JSON.stringify(envelope), "utf8")));
 }
 
 /**
