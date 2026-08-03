@@ -1,8 +1,12 @@
--- CreateEnum
-CREATE TYPE "AttendanceImportJobStatus" AS ENUM ('UPLOADED', 'PROCESSING', 'FAILED', 'COMPLETED', 'CANCELLED');
+-- Idempotent: safe if partially applied or ensured at runtime first.
 
--- CreateTable
-CREATE TABLE "attendance_import_jobs" (
+DO $$ BEGIN
+  CREATE TYPE "AttendanceImportJobStatus" AS ENUM ('UPLOADED', 'PROCESSING', 'FAILED', 'COMPLETED', 'CANCELLED');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE TABLE IF NOT EXISTS "attendance_import_jobs" (
     "id" TEXT NOT NULL,
     "created_by_user_id" TEXT NOT NULL,
     "status" "AttendanceImportJobStatus" NOT NULL DEFAULT 'UPLOADED',
@@ -29,5 +33,5 @@ CREATE TABLE "attendance_import_jobs" (
     CONSTRAINT "attendance_import_jobs_pkey" PRIMARY KEY ("id")
 );
 
--- CreateIndex
-CREATE INDEX "attendance_import_jobs_created_by_user_id_status_created_at_idx" ON "attendance_import_jobs"("created_by_user_id", "status", "created_at");
+CREATE INDEX IF NOT EXISTS "attendance_import_jobs_created_by_user_id_status_created_at_idx"
+ON "attendance_import_jobs"("created_by_user_id", "status", "created_at");

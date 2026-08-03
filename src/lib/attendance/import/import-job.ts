@@ -10,6 +10,7 @@ import type { SessionUser } from "@/lib/session";
 import { startOfDay } from "@/lib/utils";
 import { ATTENDANCE_UPLOAD_MAX_ROWS } from "./file-validation";
 import { importAttendanceRowBatch, type NewEmployeeRef } from "./import-batch";
+import { ensureAttendanceImportJobSchema } from "./ensure-import-job-schema";
 import {
   ATTENDANCE_IMPORT_PARSER_VERSION,
   IMPORT_CHUNK_SIZE,
@@ -90,6 +91,8 @@ export async function createAttendanceImportJob(
     };
   }
 
+  await ensureAttendanceImportJobSchema();
+
   const payloadCompressed = compressPayload(input.rows);
   const job = await prisma.attendanceImportJob.create({
     data: {
@@ -151,6 +154,8 @@ export async function processAttendanceImportJob(
   jobId: string,
   session: SessionUser
 ): Promise<ProcessAttendanceImportJobResult> {
+  await ensureAttendanceImportJobSchema();
+
   const job = await prisma.attendanceImportJob.findUnique({ where: { id: jobId } });
   if (!job) {
     return {
@@ -454,6 +459,8 @@ export async function listResumableAttendanceImportJobs(
     updatedAt: Date;
   }>
 > {
+  await ensureAttendanceImportJobSchema();
+
   const jobs = await prisma.attendanceImportJob.findMany({
     where: {
       createdByUserId: userId,

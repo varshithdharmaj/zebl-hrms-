@@ -33,6 +33,8 @@ vi.mock("@/lib/prisma", () => ({
       create: (...args: unknown[]) => notificationPreferenceCreate(...args),
     },
     $transaction: (...args: unknown[]) => transaction(...args),
+    $queryRaw: vi.fn(async () => [{ exists: true }]),
+    $executeRawUnsafe: vi.fn(async () => 0),
   },
 }));
 
