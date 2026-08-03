@@ -175,6 +175,7 @@ Use a free external cron (e.g. [cron-job.org](https://cron-job.org)) to hit your
 | Symptom | Cause | Fix |
 |---------|--------|-----|
 | `prisma.payrollSettings` undefined | Client not generated | `postinstall` / redeploy after `prisma generate` |
+| `Query Engine for runtime "rhel-openssl-3.0.x"` / Server Action 500 | Engine binary not traced into `/var/task` (custom `src/generated/prisma` output) | Ensure `binaryTargets` includes `rhel-openssl-3.0.x` and `outputFileTracingIncludes` covers `./src/generated/prisma/**/*`; redeploy |
 | `DATABASE_URL is not set` at build | Missing Vercel env | Add `DATABASE_URL` in project settings |
 | `Configuration validation failed` | Missing `AUTH_SECRET` | Set 32+ char secret |
 | `Can't reach database server` | Neon asleep / wrong URL | Wake Neon; check pooled URL & SSL |

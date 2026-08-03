@@ -42,13 +42,13 @@ export async function register() {
       if (dbProbe.hint) console.error(dbProbe.hint);
       const skip = process.env.ZEBL_SKIP_DB_STARTUP?.trim() === "true";
       const isDev = process.env.NODE_ENV !== "production";
+      // Fail fast in local/dev so misconfigured DBs are obvious. In production, do not
+      // throw here — a hard instrumentation failure turns every request into a 500
+      // (including Server Actions → "unexpected response was received from the server").
       if (!skip && isDev) {
         throw new Error(
           `${dbProbe.message ?? "Database connection failed."} Set ZEBL_SKIP_DB_STARTUP=true to bypass (not recommended).`
         );
-      }
-      if (!skip && process.env.NODE_ENV === "production") {
-        throw new Error(dbProbe.message ?? "Database connection failed.");
       }
     }
   }

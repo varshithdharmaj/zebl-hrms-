@@ -6,11 +6,13 @@
 //   engineType = "client"
 // }
 
-// Local Node.js / next dev config:
+// Local Node.js / Vercel (Next.js) config:
 generator client {
-  provider   = "prisma-client-js"
-  output     = "../src/generated/prisma"
-  engineType = "library"
+  provider      = "prisma-client-js"
+  output        = "../src/generated/prisma"
+  engineType    = "library"
+  // Vercel serverless runtime needs the RHEL engine; native covers local Windows/macOS/Linux.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
