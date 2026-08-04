@@ -9,7 +9,7 @@ import { EXCEL_UPLOAD_DEFAULT_PASSWORD } from "@/lib/admin/account-lifecycle";
 import type { SessionUser } from "@/lib/session";
 import { startOfDay } from "@/lib/utils";
 import { ATTENDANCE_UPLOAD_MAX_ROWS } from "./file-validation";
-import { importAttendanceRowBatch, type NewEmployeeRef } from "./import-batch";
+import { importAttendanceRowBatch, type NewEmployeeRef, type SkippedImportRow } from "./import-batch";
 import { ensureAttendanceImportJobSchema } from "./ensure-import-job-schema";
 import {
   ATTENDANCE_IMPORT_PARSER_VERSION,
@@ -39,6 +39,7 @@ export type ProcessAttendanceImportJobSuccess = {
   provisioningErrors: string[];
   nextRowIndex: number;
   totalRows: number;
+  skippedRows: SkippedImportRow[];
 };
 
 export type ProcessAttendanceImportJobFailure = {
@@ -53,11 +54,19 @@ export type ProcessAttendanceImportJobFailure = {
   nextRowIndex: number;
   totalRows: number;
   provisioningErrors: string[];
+  skippedRows: SkippedImportRow[];
 };
 
 export type ProcessAttendanceImportJobResult =
   | ProcessAttendanceImportJobSuccess
   | ProcessAttendanceImportJobFailure;
+
+/** Cap skipped row details returned to the client (full count still in `skipped`). */
+const MAX_SKIPPED_DETAILS = 200;
+
+function emptySkipped(): SkippedImportRow[] {
+  return [];
+}
 
 function prismaErrorCode(error: unknown): string {
   if (error && typeof error === "object" && "code" in error) {
@@ -170,6 +179,7 @@ export async function processAttendanceImportJob(
       nextRowIndex: 0,
       totalRows: 0,
       provisioningErrors: [],
+      skippedRows: emptySkipped(),
     };
   }
 
@@ -186,6 +196,7 @@ export async function processAttendanceImportJob(
       nextRowIndex: job.nextRowIndex,
       totalRows: job.totalRows,
       provisioningErrors: [],
+      skippedRows: emptySkipped(),
     };
   }
 
@@ -201,6 +212,7 @@ export async function processAttendanceImportJob(
       provisioningErrors: [],
       nextRowIndex: job.nextRowIndex,
       totalRows: job.totalRows,
+      skippedRows: emptySkipped(),
     };
   }
 
@@ -217,6 +229,7 @@ export async function processAttendanceImportJob(
       nextRowIndex: job.nextRowIndex,
       totalRows: job.totalRows,
       provisioningErrors: [],
+      skippedRows: emptySkipped(),
     };
   }
 
@@ -233,6 +246,7 @@ export async function processAttendanceImportJob(
       nextRowIndex: job.nextRowIndex,
       totalRows: job.totalRows,
       provisioningErrors: [],
+      skippedRows: emptySkipped(),
     };
   }
 
@@ -263,6 +277,7 @@ export async function processAttendanceImportJob(
       nextRowIndex: job.nextRowIndex,
       totalRows: job.totalRows,
       provisioningErrors: [],
+      skippedRows: emptySkipped(),
     };
   }
 
@@ -277,6 +292,7 @@ export async function processAttendanceImportJob(
   let usersCreated = job.usersCreated;
   let warningsCount = job.warningsCount;
   const runNewEmployees: NewEmployeeRef[] = [];
+  const runSkippedRows: SkippedImportRow[] = [];
   let uploadId: number | null = null;
 
   try {
@@ -311,6 +327,10 @@ export async function processAttendanceImportJob(
       skippedCount += batch.skipped;
       employeesCreated += batch.newEmployees.length;
       runNewEmployees.push(...batch.newEmployees);
+      if (runSkippedRows.length < MAX_SKIPPED_DETAILS) {
+        const room = MAX_SKIPPED_DETAILS - runSkippedRows.length;
+        runSkippedRows.push(...batch.skippedRows.slice(0, room));
+      }
 
       await prisma.attendanceImportJob.update({
         where: { id: jobId },
@@ -378,6 +398,7 @@ export async function processAttendanceImportJob(
       provisioningErrors: provisioned.provisioningErrors,
       nextRowIndex,
       totalRows: job.totalRows,
+      skippedRows: runSkippedRows,
     };
   } catch (error) {
     console.error("Attendance import job process error:", error);
@@ -426,6 +447,7 @@ export async function processAttendanceImportJob(
       nextRowIndex,
       totalRows: job.totalRows,
       provisioningErrors: provisioned.provisioningErrors,
+      skippedRows: runSkippedRows,
     };
   }
 }

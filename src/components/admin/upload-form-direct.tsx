@@ -116,6 +116,29 @@ function ResultSummary({ state }: { state: UploadState }) {
           {state.datesImported.length > 8 ? ` (+${state.datesImported.length - 8} more)` : ""}
         </p>
       )}
+      {state.skippedRows && state.skippedRows.length > 0 && (
+        <details className="mt-3 text-foreground">
+          <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+            Skipped duplicates ({state.skipped ?? state.skippedRows.length}
+            {state.skipped != null && state.skipped > state.skippedRows.length
+              ? `, showing ${state.skippedRows.length}`
+              : ""}
+            )
+          </summary>
+          <ul className="mt-2 max-h-48 overflow-y-auto rounded-md border border-border/60 bg-background/50 px-3 py-2 text-xs">
+            {state.skippedRows.map((row) => (
+              <li
+                key={`${row.employeeCode}-${row.attendanceDate}`}
+                className="flex flex-wrap gap-x-2 border-b border-border/40 py-1 last:border-0"
+              >
+                <span className="font-mono font-semibold">{row.employeeCode}</span>
+                <span className="text-muted-foreground">{row.employeeName}</span>
+                <span className="text-muted-foreground">· {row.attendanceDate}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {state.success && !hasWarnings && (
         <p className="mt-2 text-xs text-success/90">{state.success}</p>
       )}

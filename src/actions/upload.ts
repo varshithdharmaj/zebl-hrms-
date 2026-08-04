@@ -33,6 +33,13 @@ export type UploadState = {
   nextRowIndex?: number;
   totalRows?: number;
   employeesCreated?: number;
+  /** Duplicate rows skipped (code + name). Capped server-side. */
+  skippedRows?: Array<{
+    employeeCode: string;
+    employeeName: string;
+    reason: "duplicate";
+    attendanceDate: string;
+  }>;
 };
 
 function revalidateAttendancePaths(): void {
@@ -70,6 +77,7 @@ function mapProcessResultToState(
     nextRowIndex: result.nextRowIndex,
     totalRows: result.totalRows,
     employeesCreated: result.employeesCreated,
+    skippedRows: result.skippedRows?.length ? result.skippedRows : undefined,
   };
 
   if (result.ok) {

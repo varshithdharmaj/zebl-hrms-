@@ -3,8 +3,10 @@ import type { SessionUser } from "@/lib/session";
 import type { AttendanceImportRow } from "@/lib/attendance/import/types";
 
 const employeeFindUnique = vi.fn();
+const employeeFindMany = vi.fn();
 const employeeCreate = vi.fn();
 const attendanceRecordFindUnique = vi.fn();
+const attendanceRecordFindMany = vi.fn();
 const attendanceRecordCreate = vi.fn();
 const attendanceSessionCreate = vi.fn();
 const attendanceUploadCreate = vi.fn();
@@ -69,10 +71,12 @@ function txClient() {
   return {
     employee: {
       findUnique: (...args: unknown[]) => employeeFindUnique(...args),
+      findMany: (...args: unknown[]) => employeeFindMany(...args),
       create: (...args: unknown[]) => employeeCreate(...args),
     },
     attendanceRecord: {
       findUnique: (...args: unknown[]) => attendanceRecordFindUnique(...args),
+      findMany: (...args: unknown[]) => attendanceRecordFindMany(...args),
       create: (...args: unknown[]) => attendanceRecordCreate(...args),
     },
     attendanceSession: {
@@ -92,6 +96,8 @@ describe("importAttendanceRows (shared Excel/PDF importer)", () => {
     attendanceUploadUpdate.mockResolvedValue({});
     attendanceRecordCreate.mockResolvedValue({ id: 100 });
     attendanceSessionCreate.mockResolvedValue({});
+    employeeFindMany.mockResolvedValue([]);
+    attendanceRecordFindMany.mockResolvedValue([]);
     writeAuditLog.mockResolvedValue(undefined);
     provisionEmployeeLogin.mockResolvedValue({ userId: "user-1" });
     notificationPreferenceCreate.mockResolvedValue({});
@@ -99,8 +105,8 @@ describe("importAttendanceRows (shared Excel/PDF importer)", () => {
   });
 
   it("imports new records for known employees (PDF)", async () => {
-    employeeFindUnique.mockResolvedValue({ id: 7, employeeCode: "EMP001" });
-    attendanceRecordFindUnique.mockResolvedValue(null);
+    employeeFindMany.mockResolvedValue([{ id: 7, employeeCode: "EMP001", name: "Emp" }]);
+    attendanceRecordFindMany.mockResolvedValue([]);
 
     const result = await importAttendanceRows({
       session: hrActor,
@@ -121,8 +127,8 @@ describe("importAttendanceRows (shared Excel/PDF importer)", () => {
   });
 
   it("PDF auto-creates unknown employees then provisions after commit", async () => {
-    employeeFindUnique.mockResolvedValue(null);
-    employeeCreate.mockResolvedValue({ id: 15, employeeCode: "UNKNOWN99" });
+    employeeFindMany.mockResolvedValue([]);
+    employeeCreate.mockResolvedValue({ id: 15, employeeCode: "UNKNOWN99", name: "New Hire" });
 
     const result = await importAttendanceRows({
       session: hrActor,
@@ -149,12 +155,9 @@ describe("importAttendanceRows (shared Excel/PDF importer)", () => {
   });
 
   it("PDF creates missing employees while importing known ones", async () => {
-    employeeFindUnique.mockImplementation(async ({ where }: { where: { employeeCode: string } }) => {
-      if (where.employeeCode === "EMP001") return { id: 7, employeeCode: "EMP001" };
-      return null;
-    });
-    employeeCreate.mockResolvedValue({ id: 22, employeeCode: "GHOST1" });
-    attendanceRecordFindUnique.mockResolvedValue(null);
+    employeeFindMany.mockResolvedValue([{ id: 7, employeeCode: "EMP001", name: "Emp" }]);
+    employeeCreate.mockResolvedValue({ id: 22, employeeCode: "GHOST1", name: "Ghost" });
+    attendanceRecordFindMany.mockResolvedValue([]);
 
     const result = await importAttendanceRows({
       session: hrActor,
@@ -173,13 +176,14 @@ describe("importAttendanceRows (shared Excel/PDF importer)", () => {
   });
 
   it("skips duplicates for the same employee and date", async () => {
-    employeeFindUnique.mockResolvedValue({ id: 7, employeeCode: "EMP001" });
-    attendanceRecordFindUnique.mockResolvedValue({ id: 99 });
+    const date = new Date("2026-07-24T00:00:00.000Z");
+    employeeFindMany.mockResolvedValue([{ id: 7, employeeCode: "EMP001", name: "Emp" }]);
+    attendanceRecordFindMany.mockResolvedValue([{ employeeId: 7, attendanceDate: date }]);
 
     const result = await importAttendanceRows({
       session: hrActor,
       fileName: "att.xlsx",
-      attendanceDate: new Date("2026-07-24T00:00:00.000Z"),
+      attendanceDate: date,
       rows: [row({ employeeCode: "EMP001" })],
       source: "excel",
     });
@@ -192,8 +196,8 @@ describe("importAttendanceRows (shared Excel/PDF importer)", () => {
   });
 
   it("Excel auto-creates unknown employees then provisions after commit", async () => {
-    employeeFindUnique.mockResolvedValue(null);
-    employeeCreate.mockResolvedValue({ id: 15, employeeCode: "NEW001" });
+    employeeFindMany.mockResolvedValue([]);
+    employeeCreate.mockResolvedValue({ id: 15, employeeCode: "NEW001", name: "New Hire" });
 
     const result = await importAttendanceRows({
       session: hrActor,
@@ -212,8 +216,8 @@ describe("importAttendanceRows (shared Excel/PDF importer)", () => {
   });
 
   it("rolls back when a required DB write throws inside the transaction", async () => {
-    employeeFindUnique.mockResolvedValue({ id: 7, employeeCode: "EMP001" });
-    attendanceRecordFindUnique.mockResolvedValue(null);
+    employeeFindMany.mockResolvedValue([{ id: 7, employeeCode: "EMP001", name: "Emp" }]);
+    attendanceRecordFindMany.mockResolvedValue([]);
     attendanceRecordCreate.mockRejectedValue(new Error("db down"));
 
     const result = await importAttendanceRows({
@@ -246,8 +250,8 @@ describe("importAttendanceRows (shared Excel/PDF importer)", () => {
   });
 
   it("Excel rows without attendanceDate use the upload-form date", async () => {
-    employeeFindUnique.mockResolvedValue({ id: 7, employeeCode: "EMP001" });
-    attendanceRecordFindUnique.mockResolvedValue(null);
+    employeeFindMany.mockResolvedValue([{ id: 7, employeeCode: "EMP001", name: "Emp" }]);
+    attendanceRecordFindMany.mockResolvedValue([]);
     const formDate = new Date("2026-07-24T00:00:00.000Z");
 
     const result = await importAttendanceRows({
@@ -261,14 +265,7 @@ describe("importAttendanceRows (shared Excel/PDF importer)", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.imported).toBe(1);
-    expect(attendanceRecordFindUnique).toHaveBeenCalledWith({
-      where: {
-        employeeId_attendanceDate: {
-          employeeId: 7,
-          attendanceDate: formDate,
-        },
-      },
-    });
+    expect(attendanceRecordFindMany).toHaveBeenCalled();
     expect(attendanceRecordCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -279,8 +276,8 @@ describe("importAttendanceRows (shared Excel/PDF importer)", () => {
   });
 
   it("Daily PDF rows without attendanceDate use the upload-form date", async () => {
-    employeeFindUnique.mockResolvedValue({ id: 7, employeeCode: "EMP001" });
-    attendanceRecordFindUnique.mockResolvedValue(null);
+    employeeFindMany.mockResolvedValue([{ id: 7, employeeCode: "EMP001", name: "Emp" }]);
+    attendanceRecordFindMany.mockResolvedValue([]);
     const formDate = new Date("2026-07-24T00:00:00.000Z");
 
     const result = await importAttendanceRows({
@@ -303,8 +300,8 @@ describe("importAttendanceRows (shared Excel/PDF importer)", () => {
   });
 
   it("uses each row attendanceDate when present (form date ignored)", async () => {
-    employeeFindUnique.mockResolvedValue({ id: 7, employeeCode: "EMP-A" });
-    attendanceRecordFindUnique.mockResolvedValue(null);
+    employeeFindMany.mockResolvedValue([{ id: 7, employeeCode: "EMP-A", name: "Employee A" }]);
+    attendanceRecordFindMany.mockResolvedValue([]);
 
     const formDate = new Date("2026-01-01T00:00:00.000Z");
     const july16 = new Date("2026-07-16T00:00:00.000Z");
@@ -334,11 +331,6 @@ describe("importAttendanceRows (shared Excel/PDF importer)", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.imported).toBe(2);
-
-    const findCalls = attendanceRecordFindUnique.mock.calls.map(
-      (c) => c[0].where.employeeId_attendanceDate.attendanceDate
-    );
-    expect(findCalls).toEqual([july16, july17]);
 
     const createDates = attendanceRecordCreate.mock.calls.map(
       (c) => c[0].data.attendanceDate

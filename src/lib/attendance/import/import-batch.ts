@@ -1,6 +1,6 @@
 /**
  * Shared batch import for a slice of attendance rows inside an open transaction.
- * Preserves auto-create, duplicate skip, and saveAttendanceRecord behavior.
+ * Prefetches employees + existing attendance to cut round-trips (esp. all-duplicate runs).
  */
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -13,11 +13,32 @@ type DbClient = Prisma.TransactionClient | typeof prisma;
 
 export type NewEmployeeRef = { id: number; employeeCode: string };
 
+export type SkippedImportRow = {
+  employeeCode: string;
+  employeeName: string;
+  reason: "duplicate";
+  attendanceDate: string;
+};
+
 export type ImportBatchResult = {
   imported: number;
   skipped: number;
   newEmployees: NewEmployeeRef[];
+  skippedRows: SkippedImportRow[];
 };
+
+function toIsoDate(d: Date): string {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  const y = x.getFullYear();
+  const m = String(x.getMonth() + 1).padStart(2, "0");
+  const day = String(x.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function attendanceKey(employeeId: number, attendanceDate: Date): string {
+  return `${employeeId}|${toIsoDate(attendanceDate)}`;
+}
 
 async function saveAttendanceRecord(
   client: DbClient,
@@ -91,15 +112,52 @@ export async function importAttendanceRowBatch(
   let imported = 0;
   let skipped = 0;
   const newEmployees: NewEmployeeRef[] = [];
+  const skippedRows: SkippedImportRow[] = [];
 
-  for (const row of params.rows) {
+  if (params.rows.length === 0) {
+    return { imported, skipped, newEmployees, skippedRows };
+  }
+
+  const resolved = params.rows.map((row) => ({
+    row,
+    attendanceDate: resolveImportAttendanceDate(row, params.formAttendanceDate),
+  }));
+
+  const codes = [...new Set(resolved.map((r) => r.row.employeeCode))];
+  const existingEmployees = await tx.employee.findMany({
+    where: { employeeCode: { in: codes } },
+    select: { id: true, employeeCode: true, name: true },
+  });
+  const employeeByCode = new Map(
+    existingEmployees.map((e) => [e.employeeCode, e] as const)
+  );
+
+  const employeeIds = existingEmployees.map((e) => e.id);
+  const datesByIso = new Map<string, Date>();
+  for (const { attendanceDate } of resolved) {
+    const iso = toIsoDate(attendanceDate);
+    if (!datesByIso.has(iso)) datesByIso.set(iso, attendanceDate);
+  }
+  const dateValues = [...datesByIso.values()];
+
+  const existingKeys = new Set<string>();
+  if (employeeIds.length > 0 && dateValues.length > 0) {
+    const existingRecords = await tx.attendanceRecord.findMany({
+      where: {
+        employeeId: { in: employeeIds },
+        attendanceDate: { in: dateValues },
+      },
+      select: { employeeId: true, attendanceDate: true },
+    });
+    for (const rec of existingRecords) {
+      existingKeys.add(attendanceKey(rec.employeeId, rec.attendanceDate));
+    }
+  }
+
+  for (const { row, attendanceDate } of resolved) {
     const employeeCode = row.employeeCode;
     const employeeName = row.employeeName;
-    const attendanceDate = resolveImportAttendanceDate(row, params.formAttendanceDate);
-
-    const employee = await tx.employee.findUnique({
-      where: { employeeCode },
-    });
+    let employee = employeeByCode.get(employeeCode);
 
     if (!employee) {
       const created = await tx.employee.create({
@@ -109,6 +167,8 @@ export async function importAttendanceRowBatch(
           shift: row.shift || null,
         },
       });
+      employee = { id: created.id, employeeCode: created.employeeCode, name: created.name };
+      employeeByCode.set(employeeCode, employee);
       newEmployees.push({ id: created.id, employeeCode });
 
       await saveAttendanceRecord(tx, {
@@ -117,21 +177,20 @@ export async function importAttendanceRowBatch(
         attendanceDate,
         row,
       });
+      existingKeys.add(attendanceKey(created.id, attendanceDate));
       imported++;
       continue;
     }
 
-    const existing = await tx.attendanceRecord.findUnique({
-      where: {
-        employeeId_attendanceDate: {
-          employeeId: employee.id,
-          attendanceDate,
-        },
-      },
-    });
-
-    if (existing) {
+    const key = attendanceKey(employee.id, attendanceDate);
+    if (existingKeys.has(key)) {
       skipped++;
+      skippedRows.push({
+        employeeCode,
+        employeeName: employeeName || employee.name || employeeCode,
+        reason: "duplicate",
+        attendanceDate: toIsoDate(attendanceDate),
+      });
       continue;
     }
 
@@ -141,8 +200,9 @@ export async function importAttendanceRowBatch(
       attendanceDate,
       row,
     });
+    existingKeys.add(key);
     imported++;
   }
 
-  return { imported, skipped, newEmployees };
+  return { imported, skipped, newEmployees, skippedRows };
 }

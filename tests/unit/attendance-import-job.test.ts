@@ -57,6 +57,7 @@ vi.mock("@/lib/attendance/import/import-batch", () => ({
     imported: 1,
     skipped: 0,
     newEmployees: [],
+    skippedRows: [],
   })),
 }));
 
@@ -107,6 +108,7 @@ describe("attendance import jobs", () => {
       imported: 1,
       skipped: 0,
       newEmployees: [],
+      skippedRows: [],
     });
     transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn({}));
   });
@@ -214,6 +216,7 @@ describe("attendance import jobs", () => {
         imported: params.rows.length,
         skipped: 0,
         newEmployees: [],
+        skippedRows: [],
       })
     );
 
@@ -253,6 +256,7 @@ describe("attendance import jobs", () => {
         imported: params.rows.length,
         skipped: 0,
         newEmployees: [],
+        skippedRows: [],
       })
     );
 
