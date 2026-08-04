@@ -44,7 +44,7 @@ export type ProcessAttendanceImportJobSuccess = {
 export type ProcessAttendanceImportJobFailure = {
   ok: false;
   jobId: string;
-  status: "FAILED" | "PROCESSING" | "CANCELLED";
+  status: "UPLOADED" | "PROCESSING" | "FAILED" | "COMPLETED" | "CANCELLED";
   error: string;
   imported: number;
   skipped: number;

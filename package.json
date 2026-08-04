@@ -34,7 +34,9 @@
     "db:validate": "tsx prisma/scripts/validate-migrations.ts",
     "db:postgres:up": "docker compose up -d",
     "db:migrate-postgres-check": "tsx prisma/scripts/migrate-sqlite-to-postgres.ts",
+    "db:ensure-import-jobs": "tsx prisma/scripts/ensure-attendance-import-jobs.ts",
     "db:setup": "npx prisma migrate deploy && npm run db:seed",
+
     "db:setup:legacy": "npx prisma db push && npm run db:migrate-phase3 && npm run db:migrate-phase4 && npm run db:migrate-phase5 && npm run db:migrate-phase6 && npm run db:migrate-phase7 && npm run db:seed",
     "test": "vitest run",
     "test:watch": "vitest",
