@@ -9,5 +9,6 @@ prisma/*.db-journal
 vercel-env.import
 .vercel
 src/generated/prisma
+storage/
 
 tsconfig.tsbuildinfo

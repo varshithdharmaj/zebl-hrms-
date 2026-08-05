@@ -30,7 +30,7 @@ export default async function PublicApprovePage({
         <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-sm font-bold text-primary-foreground shadow-card">
           Z
         </div>
-        <h1 className="text-lg font-semibold text-foreground">Zebl Leave Approval</h1>
+        <h1 className="text-lg font-semibold text-foreground">HRMS Leave Approval</h1>
         <p className="mt-1 text-sm text-muted-foreground">Secure email approval — no sign-in required</p>
       </div>
 

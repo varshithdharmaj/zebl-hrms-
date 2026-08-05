@@ -51,6 +51,23 @@ function isLateRecord(record: DailyAttendanceInput, graceMinutes: number): boole
   );
 }
 
+/** Public alias for manager / reporting surfaces that need the same late rule. */
+export function isLateAttendanceRecord(
+  record: DailyAttendanceInput,
+  graceMinutes: number
+): boolean {
+  return isLateRecord(record, graceMinutes);
+}
+
+/**
+ * Early-exit signal already captured in remarks (no separate DB column).
+ * Matches the remarks-based branch of {@link isLateAttendanceRecord}.
+ */
+export function isEarlyExitAttendanceRecord(record: Pick<DailyAttendanceInput, "remarks">): boolean {
+  const remarks = record.remarks?.toLowerCase() ?? "";
+  return remarks.includes("early");
+}
+
 export function computeEmployeePeriodMetrics(
   records: DailyAttendanceInput[],
   settings: PayrollSettingsSnapshot,

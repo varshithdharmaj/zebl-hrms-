@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Zebl Attendance Manager",
-  description: "Attendance management for Zebl",
+  title: "HRMS",
+  description: "Attendance and leave management",
+  applicationName: "HRMS",
   icons: {
     icon: "/icon.svg",
     shortcut: "/icon.svg",

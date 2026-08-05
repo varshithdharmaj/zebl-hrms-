@@ -5,7 +5,7 @@ export function buildExecutiveExcel(snapshot: ExecutiveDashboardPayload): Buffer
   const wb = XLSX.utils.book_new();
 
   const summary = [
-    ["Zebl AMS — Executive Summary"],
+    ["HRMS — Executive Summary"],
     ["Generated", snapshot.generatedAt],
     ["Attendance rate %", snapshot.workforceHealth.attendanceRate],
     ["Leave utilization (days)", snapshot.workforceHealth.leaveUtilization],

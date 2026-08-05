@@ -156,7 +156,7 @@ export async function handleWorkflowNotificationEvent(
         await queueEmail(
           NotificationType.approval_required,
           teamLead,
-          `[Zebl AMS] Approval required — ${payload.employeeName}`,
+          `[HRMS] Approval required — ${payload.employeeName}`,
           withLinks,
           correlationId,
           { approvalAlert: true }
@@ -177,7 +177,7 @@ export async function handleWorkflowNotificationEvent(
             await queueEmail(
               NotificationType.leave_submitted,
               hr,
-              `[Zebl AMS] Leave submitted — ${payload.employeeName}`,
+              `[HRMS] Leave submitted — ${payload.employeeName}`,
               payload,
               `${correlationId}-hr-${hr.email}`,
               { statusAlert: true }
@@ -195,7 +195,7 @@ export async function handleWorkflowNotificationEvent(
           await queueEmail(
             NotificationType.approval_required,
             primary,
-            `[Zebl AMS] Approval required — ${payload.employeeName}`,
+            `[HRMS] Approval required — ${payload.employeeName}`,
             withLinks,
             correlationId,
             { approvalAlert: true }
@@ -226,7 +226,7 @@ export async function handleWorkflowNotificationEvent(
         await queueEmail(
           NotificationType.approval_required,
           approver,
-          `[Zebl AMS] Approval required — ${payload.employeeName}`,
+          `[HRMS] Approval required — ${payload.employeeName}`,
           withLinks,
           `${correlationId}-approver`,
           { approvalAlert: true }
@@ -250,7 +250,7 @@ export async function handleWorkflowNotificationEvent(
         await queueEmail(
           NotificationType.leave_approved,
           employee,
-          `[Zebl AMS] Leave approved`,
+          `[HRMS] Leave approved`,
           payload,
           correlationId,
           { statusAlert: true }
@@ -262,7 +262,7 @@ export async function handleWorkflowNotificationEvent(
         await queueEmail(
           NotificationType.leave_approved,
           hr,
-          `[Zebl AMS] Leave approved — ${payload.employeeName}`,
+          `[HRMS] Leave approved — ${payload.employeeName}`,
           payload,
           `${correlationId}-hr`,
           { statusAlert: true }
@@ -281,7 +281,7 @@ export async function handleWorkflowNotificationEvent(
         await queueEmail(
           NotificationType.leave_rejected,
           employee,
-          `[Zebl AMS] Leave rejected`,
+          `[HRMS] Leave rejected`,
           payload,
           correlationId,
           { statusAlert: true }
@@ -297,7 +297,7 @@ export async function handleWorkflowNotificationEvent(
         await queueEmail(
           NotificationType.leave_withdrawn,
           manager,
-          `[Zebl AMS] Leave withdrawn — ${payload.employeeName}`,
+          `[HRMS] Leave withdrawn — ${payload.employeeName}`,
           payload,
           correlationId,
           { statusAlert: true }
@@ -316,7 +316,7 @@ export async function handleWorkflowNotificationEvent(
         await queueEmail(
           NotificationType.leave_cancelled,
           employee,
-          `[Zebl AMS] Approved leave cancelled`,
+          `[HRMS] Approved leave cancelled`,
           payload,
           correlationId,
           { statusAlert: true }

@@ -14,59 +14,14 @@ import { DataTable, DataTableRow, DataTableCell } from "@/components/ui/data-tab
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/ui/section-card";
 import { LEAVE_TYPE_LABELS, formatLeaveDays, type LeaveType } from "@/lib/leave-types";
-import { formatDate } from "@/lib/utils";
-import type { LeaveWorkflowStatus } from "@/generated/prisma/enums";
-import type { LeaveBalanceSummary } from "@/lib/leave";
-import type { LeaveOverlapWarning } from "@/lib/leave/leave-overlap";
-import { cn } from "@/lib/utils";
+import { formatDate, cn } from "@/lib/utils";
 import { AlertTriangle, ArrowDown, ArrowUp } from "lucide-react";
+import type { PendingApprovalItem } from "@/lib/approvals/leave-inbox-types";
 
 const approveInitial: WorkflowActionState = {};
 const bulkInitial: BulkActionState = {};
 
-export type PendingApprovalItem = {
-  leave: {
-    id: number;
-    leaveType: string;
-    startDate: Date;
-    endDate: Date;
-    days: number;
-    reason: string;
-    workflowStatus: LeaveWorkflowStatus;
-    version: number;
-    employeeName: string;
-    employeeId: number;
-    department: string | null;
-    submittedAt: Date | null;
-    rejectionReason: string | null;
-    currentStepId: number | null;
-    steps: {
-      id: number;
-      stepOrder: number;
-      approverRole: string;
-      approverName: string | null;
-      status: string;
-      actedAt: Date | null;
-      comment: string | null;
-    }[];
-  };
-  balances: LeaveBalanceSummary[];
-  recentLeaves: {
-    id: number;
-    leaveType: string;
-    days: number;
-    workflowStatus: LeaveWorkflowStatus;
-    startDate: Date;
-    endDate: Date;
-  }[];
-  overlapWarnings: LeaveOverlapWarning[];
-  sla: {
-    label: string;
-    overdue: boolean;
-    percentElapsed: number;
-  };
-};
-
+export type { PendingApprovalItem };
 type SortKey = "submitted" | "start" | "days" | "sla";
 
 function ApproveButton({ leaveId, version }: { leaveId: number; version: number }) {
@@ -158,14 +113,14 @@ export function ManagerApprovalInbox({ items }: { items: PendingApprovalItem[] }
 
   if (items.length === 0) {
     return (
-      <SectionCard title="No pending approvals" description="Your approval queue is completely clear.">
+      <SectionCard title="No items need your attention" description="Your approval queue is clear.">
         <div className="py-8 text-center">
           <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 ring-1 ring-emerald-600/20">
             ✓
           </div>
-          <p className="text-sm font-medium text-slate-900">All caught up!</p>
+          <p className="text-sm font-medium text-slate-900">No items need your attention</p>
           <p className="mt-1 text-xs text-slate-500">
-            New leave requests submitted by your direct reports will automatically arrive here.
+            New leave requests that require your approval will appear here.
           </p>
         </div>
       </SectionCard>

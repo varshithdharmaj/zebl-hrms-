@@ -55,7 +55,7 @@ export class EmailNotificationChannel implements NotificationChannelHandler {
       const data = parseNotificationPayload(notification.payload);
       const { html, text } = await renderNotificationEmail(notification.type, data);
 
-      const from = process.env.EMAIL_FROM ?? "Zebl AMS <noreply@zebl.local>";
+      const from = process.env.EMAIL_FROM ?? "HRMS <noreply@zebl.local>";
       const result = await transport.sendMail({
         from,
         to: notification.recipient,

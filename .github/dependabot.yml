@@ -1,0 +1,63 @@
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+    groups:
+      prisma:
+        patterns:
+          - "@prisma/*"
+          - "prisma"
+      next-eslint:
+        patterns:
+          - "next"
+          - "eslint-config-next"
+          - "eslint"
+          - "@eslint/*"
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      radix:
+        patterns:
+          - "@radix-ui/*"
+      supabase:
+        patterns:
+          - "@supabase/*"
+      types:
+        patterns:
+          - "@types/*"
+      tailwind:
+        patterns:
+          - "tailwindcss"
+          - "@tailwindcss/*"
+          - "tailwind-merge"
+      testing:
+        patterns:
+          - "vitest"
+      cloudflare:
+        patterns:
+          - "@opennextjs/*"
+          - "wrangler"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - github-actions
+    groups:
+      github-actions:
+        patterns:
+          - "*"

@@ -86,7 +86,7 @@ export default async function AdminSecurityPage({
     <SecurityHub
       mode="admin"
       title="Security & Sessions"
-      description="Find sessions across ZEBL AMS and revoke active access when needed."
+      description="Find sessions across HRMS and revoke active access when needed."
       headerAction={
         <LoginHistoryExportButtons
           filters={filters}

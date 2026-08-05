@@ -1,0 +1,112 @@
+import {
+  canAccessHRAdministration,
+  canAccessPlatformAdministration,
+  PermissionError,
+  requirePermission,
+} from "@/lib/permissions";
+import type { SessionUser } from "@/lib/session";
+import type { RecruitmentActor } from "@/lib/recruitment/types/actor";
+import { RecruitmentScopeEngine } from "@/lib/recruitment/permissions/recruitment-scope-engine";
+import {
+  isRecruitmentConversionEnabled,
+  isRecruitmentModuleEnabled,
+  isRecruitmentOffersEnabled,
+} from "@/lib/recruitment/config/feature-flags";
+import { RecruitmentDomainError } from "@/lib/recruitment/shared/errors";
+
+/** Map session → recruitment actor (no extra fields). */
+export function toRecruitmentActor(session: SessionUser): RecruitmentActor {
+  return {
+    userId: session.id,
+    email: session.email,
+    role: session.role,
+    employeeId: session.employeeId,
+  };
+}
+
+/**
+ * RecruitmentPermissionService — resource capability checks.
+ * Reuses platform role helpers; does not duplicate RBAC.
+ * List visibility belongs to {@link RecruitmentScopeEngine}.
+ */
+export const RecruitmentPermissionService = {
+  requireModuleEnabled(): void {
+    if (!isRecruitmentModuleEnabled()) {
+      throw new RecruitmentDomainError(
+        "REC_FEATURE_DISABLED",
+        "Recruitment module is disabled."
+      );
+    }
+  },
+
+  requireOffersEnabled(): void {
+    this.requireModuleEnabled();
+    if (!isRecruitmentOffersEnabled()) {
+      throw new RecruitmentDomainError(
+        "REC_FEATURE_DISABLED",
+        "Recruitment offers feature is disabled."
+      );
+    }
+  },
+
+  requireConversionEnabled(): void {
+    this.requireModuleEnabled();
+    if (!isRecruitmentConversionEnabled()) {
+      throw new RecruitmentDomainError(
+        "REC_FEATURE_DISABLED",
+        "Recruitment conversion feature is disabled."
+      );
+    }
+  },
+
+  requireHrAdministration(session: SessionUser): void {
+    requirePermission(session, canAccessHRAdministration);
+  },
+
+  requireSuperAdmin(session: SessionUser): void {
+    requirePermission(session, canAccessPlatformAdministration);
+  },
+
+  canEditCompensation(session: SessionUser): boolean {
+    return canAccessHRAdministration(session.role);
+  },
+
+  /** Job compensation band — SA/HR only (architecture ownership table). */
+  canEditJobCompensation(session: SessionUser): boolean {
+    return canAccessHRAdministration(session.role);
+  },
+
+  canViewJobCompensation(session: SessionUser): boolean {
+    return canAccessHRAdministration(session.role);
+  },
+
+  canViewCompensation(session: SessionUser, isAssignedHiringManager: boolean): boolean {
+    if (canAccessHRAdministration(session.role)) return true;
+    return isAssignedHiringManager;
+  },
+
+  async assertCanManageJobs(session: SessionUser): Promise<void> {
+    this.requireModuleEnabled();
+    this.requireHrAdministration(session);
+  },
+
+  async assertCanManageCandidates(session: SessionUser): Promise<void> {
+    this.requireModuleEnabled();
+    this.requireHrAdministration(session);
+  },
+
+  async assertCanManageApplications(session: SessionUser): Promise<void> {
+    this.requireModuleEnabled();
+    this.requireHrAdministration(session);
+  },
+
+  async assertCanViewApplication(
+    session: SessionUser,
+    applicationId: string
+  ): Promise<void> {
+    this.requireModuleEnabled();
+    const actor = toRecruitmentActor(session);
+    const allowed = await RecruitmentScopeEngine.canViewApplication(actor, applicationId);
+    if (!allowed) throw new PermissionError("Application outside recruitment scope.");
+  },
+};

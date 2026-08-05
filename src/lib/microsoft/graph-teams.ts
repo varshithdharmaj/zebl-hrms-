@@ -59,7 +59,7 @@ export function buildApprovalAdaptiveCard(payload: LeaveEmailPayload): TeamsMess
     "@context": "http://schema.org/extensions",
     themeColor: "2563EB",
     summary: `Approval required: ${payload.employeeName}`,
-    title: "Zebl AMS — Leave approval required",
+    title: "HRMS — Leave approval required",
     sections: [
       {
         activityTitle: payload.approverName ?? "Approver",
@@ -82,7 +82,7 @@ export function buildStatusAdaptiveCard(
     "@context": "http://schema.org/extensions",
     themeColor: "059669",
     summary: title,
-    title: `Zebl AMS — ${title}`,
+    title: `HRMS — ${title}`,
     sections: [
       {
         facts: [

@@ -37,7 +37,7 @@ function buildGenericTeamsCard(payload: NotificationPayload): import("@/lib/micr
     "@context": "http://schema.org/extensions",
     themeColor: "0078D4",
     summary: "Notification",
-    title: "Zebl AMS — Notification",
+    title: "HRMS — Notification",
     sections: [{ facts }],
   };
 }

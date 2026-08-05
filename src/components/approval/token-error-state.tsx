@@ -28,7 +28,7 @@ export function TokenErrorState({
       <h1 className="text-xl font-semibold text-foreground">{titles[code] ?? "Unable to proceed"}</h1>
       <p className="mt-2 text-sm text-muted-foreground">{message}</p>
       <p className="mt-6 text-xs text-muted-foreground">
-        Sign in to Zebl AMS if you need to review this request in the approval inbox.
+        Sign in to HRMS if you need to review this request in the approval inbox.
       </p>
     </div>
   );

@@ -1,0 +1,713 @@
+import { Prisma } from "@/generated/prisma/client";
+import { OfferStatus } from "@/generated/prisma/enums";
+import { prisma } from "@/lib/prisma";
+import type { SessionUser } from "@/lib/session";
+import {
+  RecruitmentPermissionService,
+  toRecruitmentActor,
+} from "@/lib/recruitment/permissions/permission-service";
+import { RecruitmentScopeEngine } from "@/lib/recruitment/permissions/recruitment-scope-engine";
+import { prismaOfferRepository } from "@/lib/recruitment/repositories/prisma-offer-repository";
+import type { OfferRepository } from "@/lib/recruitment/repositories/offer-repository";
+import { prismaApplicationRepository } from "@/lib/recruitment/repositories/prisma-application-repository";
+import { RecruitmentDomainError } from "@/lib/recruitment/shared/errors";
+import { withRecruitmentTransaction } from "@/lib/recruitment/shared/transaction";
+import { createAfterCommitBuffer } from "@/lib/recruitment/shared/after-commit";
+import { RecruitmentEventFactory } from "@/lib/recruitment/events/factory";
+import { RecruitmentTimelineService } from "@/lib/recruitment/services/timeline-service";
+import {
+  createOfferSchema,
+  updateOfferSchema,
+  sendOfferSchema,
+  acceptOfferSchema,
+  declineOfferSchema,
+  withdrawOfferSchema,
+  createOfferRevisionSchema,
+} from "@/lib/validation/schemas/recruitment/offers";
+
+function generateOfferNumber(): string {
+  const year = new Date().getFullYear();
+  const rand = Math.floor(1000 + Math.random() * 9000);
+  return `OFFER-${year}-${rand}`;
+}
+
+export function createOfferService(
+  repository: OfferRepository = prismaOfferRepository
+) {
+  return {
+    async createOffer(
+      session: SessionUser,
+      input: {
+        applicationId: string;
+        hiringDecisionId?: string | null;
+        currency?: string;
+        baseSalary: number;
+        variablePay?: number | null;
+        benefitsNotes?: string | null;
+        proposedStartDate?: string | null;
+        expiresAt?: string | null;
+        employmentType: string;
+        department: string;
+        location: string;
+        grade: string;
+        reportingManagerId?: number | null;
+        joiningDate: string;
+        ctc: number;
+        salaryBreakdownJson?: Record<string, number> | null;
+        bonus?: number | null;
+        stock?: string | null;
+        probationDays?: number | null;
+        noticeBuyout?: boolean;
+        offerPdfKey?: string | null;
+        offerNotes?: string | null;
+      }
+    ): Promise<{ id: string }> {
+      RecruitmentPermissionService.requireOffersEnabled();
+      await RecruitmentPermissionService.assertCanManageCandidates(session);
+      const actor = toRecruitmentActor(session);
+
+      const parsed = createOfferSchema.parse(input);
+
+      // Verify application exists
+      const app = await prismaApplicationRepository.getApplication(parsed.applicationId);
+      if (!app) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Application not found.");
+      }
+
+      // Rule: Only ONE active offer allowed per application.
+      const hasActive = await repository.existsActiveOffer(parsed.applicationId);
+      if (hasActive) {
+        throw new RecruitmentDomainError(
+          "REC_CONFLICT",
+          "An active offer already exists for this application. Please withdraw or decline it first."
+        );
+      }
+
+      const offerNumber = generateOfferNumber();
+
+      const events = createAfterCommitBuffer();
+      const offerId = await withRecruitmentTransaction(async (tx) => {
+        const { id } = await repository.createOffer(
+          {
+            ...parsed,
+            offerNumber,
+            status: OfferStatus.draft,
+            createdByUserId: session.id,
+          },
+          tx
+        );
+
+        // Timeline Event
+        await RecruitmentTimelineService.append(
+          {
+            entityType: "application",
+            entityId: parsed.applicationId,
+            applicationId: parsed.applicationId,
+            candidateId: app.candidateId,
+            jobOpeningId: app.jobOpeningId,
+            eventType: "offer_created",
+            summary: `Created offer draft: ${offerNumber} with CTC ${parsed.ctc} ${parsed.currency}`,
+            actorUserId: session.id,
+            metadata: { offerId: id, offerNumber, ctc: parsed.ctc },
+          },
+          tx
+        );
+
+        // Publish event
+        events.enqueue(
+          RecruitmentEventFactory.offerCreated(actor, {
+            offerId: id,
+            applicationId: parsed.applicationId,
+          })
+        );
+
+        return id;
+      });
+
+      await events.flush();
+      return { id: offerId };
+    },
+
+    async updateDraft(
+      session: SessionUser,
+      input: {
+        id: string;
+        currency?: string;
+        baseSalary?: number;
+        variablePay?: number | null;
+        benefitsNotes?: string | null;
+        proposedStartDate?: string | null;
+        expiresAt?: string | null;
+        employmentType?: string;
+        department?: string;
+        location?: string;
+        grade?: string;
+        reportingManagerId?: number | null;
+        joiningDate?: string;
+        ctc?: number;
+        salaryBreakdownJson?: Record<string, number> | null;
+        bonus?: number | null;
+        stock?: string | null;
+        probationDays?: number | null;
+        noticeBuyout?: boolean;
+        offerPdfKey?: string | null;
+        offerNotes?: string | null;
+      }
+    ): Promise<void> {
+      RecruitmentPermissionService.requireModuleEnabled();
+      await RecruitmentPermissionService.assertCanManageCandidates(session);
+
+      const parsed = updateOfferSchema.parse(input);
+
+      const offer = await repository.getOffer(parsed.id);
+      if (!offer) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Offer not found.");
+      }
+
+      if (offer.status !== OfferStatus.draft) {
+        throw new RecruitmentDomainError(
+          "REC_VALIDATION",
+          "Only draft offers can be updated directly. Create a revision instead."
+        );
+      }
+
+      await withRecruitmentTransaction(async (tx) => {
+        await repository.updateOffer(parsed.id, parsed, tx);
+
+        // Timeline Event
+        await RecruitmentTimelineService.append(
+          {
+            entityType: "application",
+            entityId: offer.applicationId,
+            applicationId: offer.applicationId,
+            candidateId: offer.application.candidateId,
+            jobOpeningId: offer.application.jobOpeningId,
+            eventType: "offer_updated",
+            summary: `Updated offer draft: ${offer.offerNumber}`,
+            actorUserId: session.id,
+            metadata: { offerId: parsed.id },
+          },
+          tx
+        );
+      });
+    },
+
+    async sendOffer(
+      session: SessionUser,
+      input: { id: string; expiresAt?: string | null }
+    ): Promise<void> {
+      RecruitmentPermissionService.requireModuleEnabled();
+      await RecruitmentPermissionService.assertCanManageCandidates(session);
+      const actor = toRecruitmentActor(session);
+
+      const parsed = sendOfferSchema.parse(input);
+
+      const offer = await repository.getOffer(parsed.id);
+      if (!offer) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Offer not found.");
+      }
+
+      if (offer.status !== OfferStatus.draft) {
+        throw new RecruitmentDomainError(
+          "REC_VALIDATION",
+          "Only draft offers can be sent."
+        );
+      }
+
+      const expiresDate = parsed.expiresAt ? new Date(parsed.expiresAt) : null;
+
+      const events = createAfterCommitBuffer();
+      await withRecruitmentTransaction(async (tx) => {
+        await repository.sendOffer(parsed.id, expiresDate, tx);
+
+        // Timeline Event
+        await RecruitmentTimelineService.append(
+          {
+            entityType: "application",
+            entityId: offer.applicationId,
+            applicationId: offer.applicationId,
+            candidateId: offer.application.candidateId,
+            jobOpeningId: offer.application.jobOpeningId,
+            eventType: "offer_released", // Reusing existing timeline event type
+            summary: `Sent offer: ${offer.offerNumber}`,
+            actorUserId: session.id,
+            metadata: { offerId: parsed.id, expiresAt: parsed.expiresAt },
+          },
+          tx
+        );
+
+        // Publish event
+        events.enqueue(
+          RecruitmentEventFactory.offerSent(actor, {
+            offerId: parsed.id,
+            applicationId: offer.applicationId,
+          })
+        );
+      });
+
+      await events.flush();
+    },
+
+    async withdrawOffer(
+      session: SessionUser,
+      input: { id: string; reason?: string | null }
+    ): Promise<void> {
+      RecruitmentPermissionService.requireModuleEnabled();
+      
+      // Only HR and Super Admin may withdraw offers
+      const isHrOrAdmin = ["hr", "super_admin"].includes(session.role);
+      if (!isHrOrAdmin) {
+        throw new RecruitmentDomainError(
+          "REC_UNAUTHORIZED",
+          "Only HR and Super Admins are authorized to withdraw offers."
+        );
+      }
+
+      const parsed = withdrawOfferSchema.parse(input);
+
+      const offer = await repository.getOffer(parsed.id);
+      if (!offer) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Offer not found.");
+      }
+
+      if (offer.status !== OfferStatus.released) {
+        throw new RecruitmentDomainError(
+          "REC_VALIDATION",
+          "Only sent/released offers can be withdrawn."
+        );
+      }
+
+      const actor = toRecruitmentActor(session);
+      const events = createAfterCommitBuffer();
+      await withRecruitmentTransaction(async (tx) => {
+        await repository.withdrawOffer(parsed.id, parsed.reason, tx);
+
+        // Timeline Event
+        await RecruitmentTimelineService.append(
+          {
+            entityType: "application",
+            entityId: offer.applicationId,
+            applicationId: offer.applicationId,
+            candidateId: offer.application.candidateId,
+            jobOpeningId: offer.application.jobOpeningId,
+            eventType: "offer_withdrawn",
+            summary: `Withdrawn offer: ${offer.offerNumber}. Reason: ${parsed.reason ?? "None"}`,
+            actorUserId: session.id,
+            metadata: { offerId: parsed.id, reason: parsed.reason },
+          },
+          tx
+        );
+
+        // Publish event
+        events.enqueue(
+          RecruitmentEventFactory.offerWithdrawn(actor, {
+            offerId: parsed.id,
+            applicationId: offer.applicationId,
+            reason: parsed.reason,
+          })
+        );
+      });
+
+      await events.flush();
+    },
+
+    async expireOffer(session: SessionUser, id: string): Promise<void> {
+      RecruitmentPermissionService.requireModuleEnabled();
+      await RecruitmentPermissionService.assertCanManageCandidates(session);
+
+      const offer = await repository.getOffer(id);
+      if (!offer) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Offer not found.");
+      }
+
+      if (offer.status !== OfferStatus.released) {
+        throw new RecruitmentDomainError(
+          "REC_VALIDATION",
+          "Only sent/released offers can expire."
+        );
+      }
+
+      const actor = toRecruitmentActor(session);
+      const events = createAfterCommitBuffer();
+      await withRecruitmentTransaction(async (tx) => {
+        await repository.expireOffer(id, tx);
+
+        // Timeline Event
+        await RecruitmentTimelineService.append(
+          {
+            entityType: "application",
+            entityId: offer.applicationId,
+            applicationId: offer.applicationId,
+            candidateId: offer.application.candidateId,
+            jobOpeningId: offer.application.jobOpeningId,
+            eventType: "offer_expired",
+            summary: `Offer expired: ${offer.offerNumber}`,
+            actorUserId: session.id,
+            metadata: { offerId: id },
+          },
+          tx
+        );
+
+        // Publish event
+        events.enqueue(
+          RecruitmentEventFactory.offerExpired(actor, {
+            offerId: id,
+            applicationId: offer.applicationId,
+          })
+        );
+      });
+
+      await events.flush();
+    },
+
+    async acceptOffer(
+      session: SessionUser,
+      input: { id: string; acceptedAt?: string | null }
+    ): Promise<void> {
+      RecruitmentPermissionService.requireModuleEnabled();
+      await RecruitmentPermissionService.assertCanManageCandidates(session);
+
+      const parsed = acceptOfferSchema.parse(input);
+
+      const offer = await repository.getOffer(parsed.id);
+      if (!offer) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Offer not found.");
+      }
+
+      if (offer.status !== OfferStatus.released) {
+        throw new RecruitmentDomainError(
+          "REC_VALIDATION",
+          "Only sent/released offers can be accepted."
+        );
+      }
+
+      const acceptedDate = parsed.acceptedAt ? new Date(parsed.acceptedAt) : new Date();
+
+      const actor = toRecruitmentActor(session);
+      const events = createAfterCommitBuffer();
+      await withRecruitmentTransaction(async (tx) => {
+        await repository.acceptOffer(parsed.id, acceptedDate, tx);
+
+        // Timeline Event
+        await RecruitmentTimelineService.append(
+          {
+            entityType: "application",
+            entityId: offer.applicationId,
+            applicationId: offer.applicationId,
+            candidateId: offer.application.candidateId,
+            jobOpeningId: offer.application.jobOpeningId,
+            eventType: "offer_accepted",
+            summary: `Offer accepted: ${offer.offerNumber}`,
+            actorUserId: session.id,
+            metadata: { offerId: parsed.id, acceptedAt: parsed.acceptedAt },
+          },
+          tx
+        );
+
+        // Publish event
+        events.enqueue(
+          RecruitmentEventFactory.offerAccepted(actor, {
+            offerId: parsed.id,
+            applicationId: offer.applicationId,
+          })
+        );
+      });
+
+      await events.flush();
+    },
+
+    async declineOffer(
+      session: SessionUser,
+      input: { id: string; declinedAt?: string | null; reason?: string | null }
+    ): Promise<void> {
+      RecruitmentPermissionService.requireModuleEnabled();
+      await RecruitmentPermissionService.assertCanManageCandidates(session);
+
+      const parsed = declineOfferSchema.parse(input);
+
+      const offer = await repository.getOffer(parsed.id);
+      if (!offer) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Offer not found.");
+      }
+
+      if (offer.status !== OfferStatus.released) {
+        throw new RecruitmentDomainError(
+          "REC_VALIDATION",
+          "Only sent/released offers can be declined."
+        );
+      }
+
+      const declinedDate = parsed.declinedAt ? new Date(parsed.declinedAt) : new Date();
+
+      const actor = toRecruitmentActor(session);
+      const events = createAfterCommitBuffer();
+      await withRecruitmentTransaction(async (tx) => {
+        await repository.declineOffer(parsed.id, declinedDate, parsed.reason, tx);
+
+        // Timeline Event
+        await RecruitmentTimelineService.append(
+          {
+            entityType: "application",
+            entityId: offer.applicationId,
+            applicationId: offer.applicationId,
+            candidateId: offer.application.candidateId,
+            jobOpeningId: offer.application.jobOpeningId,
+            eventType: "offer_declined",
+            summary: `Offer declined: ${offer.offerNumber}. Reason: ${parsed.reason ?? "None"}`,
+            actorUserId: session.id,
+            metadata: { offerId: parsed.id, declinedAt: parsed.declinedAt, reason: parsed.reason },
+          },
+          tx
+        );
+
+        // Publish event
+        events.enqueue(
+          RecruitmentEventFactory.offerDeclined(actor, {
+            offerId: parsed.id,
+            applicationId: offer.applicationId,
+            reason: parsed.reason,
+          })
+        );
+      });
+
+      await events.flush();
+    },
+
+    async createRevision(
+      session: SessionUser,
+      input: {
+        id: string;
+        changeNote: string;
+        patch: any;
+      }
+    ): Promise<void> {
+      RecruitmentPermissionService.requireModuleEnabled();
+      await RecruitmentPermissionService.assertCanManageCandidates(session);
+
+      const parsed = createOfferRevisionSchema.parse(input);
+
+      const offer = await repository.getOffer(parsed.id);
+      if (!offer) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Offer not found.");
+      }
+
+      // Create snapshot of current offer fields
+      const snapshot = {
+        currency: offer.currency,
+        baseSalary: offer.baseSalary.toString(),
+        variablePay: offer.variablePay?.toString() ?? null,
+        benefitsNotes: offer.benefitsNotes,
+        proposedStartDate: offer.proposedStartDate,
+        expiresAt: offer.expiresAt,
+        employmentType: offer.employmentType,
+        department: offer.department,
+        location: offer.location,
+        grade: offer.grade,
+        reportingManagerId: offer.reportingManagerId,
+        joiningDate: offer.joiningDate,
+        ctc: offer.ctc?.toString() ?? null,
+        salaryBreakdownJson: offer.salaryBreakdownJson,
+        bonus: offer.bonus?.toString() ?? null,
+        stock: offer.stock,
+        probationDays: offer.probationDays,
+        noticeBuyout: offer.noticeBuyout,
+        offerPdfKey: offer.offerPdfKey,
+        offerNotes: offer.offerNotes,
+      };
+
+      const actor = toRecruitmentActor(session);
+      const events = createAfterCommitBuffer();
+      await withRecruitmentTransaction(async (tx) => {
+        // Save revision snapshot
+        const { id: revisionId } = await repository.createRevision(
+          parsed.id,
+          snapshot,
+          parsed.changeNote,
+          session.id,
+          tx
+        );
+
+        // Apply patch and reset status to draft for renegotiation/approval
+        await repository.updateOffer(
+          parsed.id,
+          {
+            ...parsed.patch,
+            status: OfferStatus.draft,
+          },
+          tx
+        );
+
+        // Find latest version to publish
+        const latestRev = await repository.latestRevision(parsed.id);
+        const version = latestRev?.version ?? 1;
+
+        // Timeline Event
+        await RecruitmentTimelineService.append(
+          {
+            entityType: "application",
+            entityId: offer.applicationId,
+            applicationId: offer.applicationId,
+            candidateId: offer.application.candidateId,
+            jobOpeningId: offer.application.jobOpeningId,
+            eventType: "offer_updated",
+            summary: `Created offer revision v${version}: ${offer.offerNumber}. Note: ${parsed.changeNote}`,
+            actorUserId: session.id,
+            metadata: { offerId: parsed.id, revisionId, version },
+          },
+          tx
+        );
+
+        // Publish event
+        events.enqueue(
+          RecruitmentEventFactory.offerRevisionCreated(actor, {
+            offerId: parsed.id,
+            applicationId: offer.applicationId,
+            version,
+          })
+        );
+      });
+
+      await events.flush();
+    },
+
+    async duplicateOffer(session: SessionUser, id: string): Promise<{ id: string }> {
+      RecruitmentPermissionService.requireModuleEnabled();
+      await RecruitmentPermissionService.assertCanManageCandidates(session);
+
+      const offer = await repository.getOffer(id);
+      if (!offer) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Offer not found.");
+      }
+
+      // Rule: Only ONE active offer allowed per application.
+      const hasActive = await repository.existsActiveOffer(offer.applicationId);
+      if (hasActive) {
+        throw new RecruitmentDomainError(
+          "REC_CONFLICT",
+          "An active offer already exists for this application. Please withdraw or decline it first."
+        );
+      }
+
+      const offerNumber = generateOfferNumber();
+
+      const actor = toRecruitmentActor(session);
+      const events = createAfterCommitBuffer();
+      const newOfferId = await withRecruitmentTransaction(async (tx) => {
+        const { id: createdId } = await repository.createOffer(
+          {
+            applicationId: offer.applicationId,
+            hiringDecisionId: offer.hiringDecisionId,
+            currency: offer.currency,
+            baseSalary: Number(offer.baseSalary),
+            variablePay: offer.variablePay ? Number(offer.variablePay) : null,
+            benefitsNotes: offer.benefitsNotes,
+            proposedStartDate: offer.proposedStartDate,
+            expiresAt: offer.expiresAt,
+            offerNumber,
+            status: OfferStatus.draft,
+            employmentType: offer.employmentType,
+            department: offer.department,
+            location: offer.location,
+            grade: offer.grade,
+            reportingManagerId: offer.reportingManagerId,
+            joiningDate: offer.joiningDate,
+            ctc: offer.ctc ? Number(offer.ctc) : 0,
+            salaryBreakdownJson: offer.salaryBreakdownJson,
+            bonus: offer.bonus ? Number(offer.bonus) : null,
+            stock: offer.stock,
+            probationDays: offer.probationDays,
+            noticeBuyout: offer.noticeBuyout,
+            offerPdfKey: offer.offerPdfKey,
+            offerNotes: `Duplicated from ${offer.offerNumber}`,
+            createdByUserId: session.id,
+          },
+          tx
+        );
+
+        // Timeline Event
+        await RecruitmentTimelineService.append(
+          {
+            entityType: "application",
+            entityId: offer.applicationId,
+            applicationId: offer.applicationId,
+            candidateId: offer.application.candidateId,
+            jobOpeningId: offer.application.jobOpeningId,
+            eventType: "offer_created",
+            summary: `Duplicated offer ${offer.offerNumber} to new draft ${offerNumber}`,
+            actorUserId: session.id,
+            metadata: { offerId: createdId, offerNumber },
+          },
+          tx
+        );
+
+        // Publish event
+        events.enqueue(
+          RecruitmentEventFactory.offerCreated(actor, {
+            offerId: createdId,
+            applicationId: offer.applicationId,
+          })
+        );
+
+        return createdId;
+      });
+
+      await events.flush();
+      return { id: newOfferId };
+    },
+
+    async getOffer(session: SessionUser, id: string): Promise<Record<string, any> | null> {
+      RecruitmentPermissionService.requireOffersEnabled();
+      const scope = await RecruitmentScopeEngine.getScope(session);
+      const offer = await repository.getOffer(id);
+      if (!offer) return null;
+      RecruitmentScopeEngine.assertApplicationInScope(scope, offer.applicationId);
+      return offer;
+    },
+
+    async listOffers(
+      session: SessionUser,
+      args: {
+        filters?: any;
+        pagination: { page: number; pageSize: number };
+        sort?: { field: string; direction: "asc" | "desc" };
+      }
+    ) {
+      const scope = await RecruitmentScopeEngine.getScope(session);
+      return repository.listOffers({
+        scope,
+        filters: args.filters,
+        pagination: args.pagination,
+        sort: args.sort,
+      });
+    },
+
+    async getDashboardMetrics(session: SessionUser, _filters?: unknown): Promise<Record<string, unknown>> {
+      RecruitmentPermissionService.requireOffersEnabled();
+      const scope = await RecruitmentScopeEngine.getScope(session);
+      const scopeWhere =
+        scope.mode === "unrestricted"
+          ? {}
+          : { applicationId: { in: [...scope.applicationIds] } };
+
+      const [total, sent, accepted, declined, withdrawn] = await Promise.all([
+        prisma.offer.count({ where: scopeWhere }),
+        prisma.offer.count({ where: { status: OfferStatus.released, ...scopeWhere } }),
+        prisma.offer.count({ where: { status: OfferStatus.accepted, ...scopeWhere } }),
+        prisma.offer.count({ where: { status: OfferStatus.declined, ...scopeWhere } }),
+        prisma.offer.count({ where: { status: OfferStatus.withdrawn, ...scopeWhere } }),
+      ]);
+
+      const totalClosed = accepted + declined + withdrawn;
+      const acceptanceRate = totalClosed > 0 ? parseFloat(((accepted / totalClosed) * 100).toFixed(1)) : 0;
+
+      return {
+        total,
+        sent,
+        accepted,
+        declined,
+        withdrawn,
+        acceptanceRate,
+      };
+    },
+  };
+}

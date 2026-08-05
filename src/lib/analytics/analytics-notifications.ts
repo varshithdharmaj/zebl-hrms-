@@ -14,7 +14,7 @@ export async function notifyAnalyticsAlerts(
   }
 
   const hrList = await getHrRecipients();
-  const subject = `[Zebl AMS] Operational alert — ${highAnomalies.length} high-priority item(s)`;
+  const subject = `[HRMS] Operational alert — ${highAnomalies.length} high-priority item(s)`;
   const payload = {
     leaveRequestId: 0,
     employeeName: "Analytics",

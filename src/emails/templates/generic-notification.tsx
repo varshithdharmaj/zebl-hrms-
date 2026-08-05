@@ -43,7 +43,7 @@ export function GenericNotificationEmail({ type, data }: GenericNotificationEmai
             
             <Hr style={hr} />
             <Text style={footer}>
-              ZEBL Attendance Management System
+              HRMS
             </Text>
           </Section>
         </Container>

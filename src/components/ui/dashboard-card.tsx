@@ -20,7 +20,7 @@ export function DashboardCard({
   className?: string;
   children?: ReactNode;
 }) {
-  const colors = kpiAccentStyles[accent];
+  const colors = kpiAccentStyles[accent] ?? kpiAccentStyles.blue;
 
   return (
     <article

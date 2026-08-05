@@ -16,8 +16,15 @@ export async function getLeaveCalendarEvents(params: {
   start: Date;
   end: Date;
   department?: string;
+  /** @deprecated Prefer `employeeIds` from PeopleScopeEngine for My Team. */
   teamManagerId?: number;
+  /** Restrict to these employee IDs (e.g. My Team DIRECT scope). */
+  employeeIds?: number[];
 }): Promise<CalendarLeaveEvent[]> {
+  if (params.employeeIds && params.employeeIds.length === 0) {
+    return [];
+  }
+
   const leaves = await prisma.leaveRequest.findMany({
     where: {
       workflowStatus: {
@@ -25,10 +32,13 @@ export async function getLeaveCalendarEvents(params: {
       },
       startDate: { lte: params.end },
       endDate: { gte: params.start },
+      ...(params.employeeIds
+        ? { employeeId: { in: params.employeeIds } }
+        : {}),
       ...(params.department
         ? { employee: { department: params.department } }
         : {}),
-      ...(params.teamManagerId
+      ...(!params.employeeIds && params.teamManagerId
         ? { employee: { managerId: params.teamManagerId } }
         : {}),
     },

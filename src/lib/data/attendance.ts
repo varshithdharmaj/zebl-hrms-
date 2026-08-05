@@ -161,27 +161,67 @@ export async function getEmployeeAttendanceSummary(
 export async function getAttendanceRecords(params: {
   search?: string;
   date?: string;
+  /** Inclusive ISO date range start (YYYY-MM-DD). Ignored when `period` is set. */
+  from?: string;
+  /** Inclusive ISO date range end (YYYY-MM-DD). Ignored when `period` is set. */
+  to?: string;
   period?: string;
   shift?: string;
+  status?: string;
   shortfall?: boolean;
   ot?: boolean;
+  /** Restrict to these employee IDs (e.g. My Team scope). Empty array → no rows. */
+  employeeIds?: number[];
+  /** Approximate late filter (remarks or Short Hours with check-in). */
+  late?: boolean;
+  /** Remarks-based early exit filter. */
+  earlyExit?: boolean;
+  sort?: "name" | "date" | "workedHours";
+  sortDir?: "asc" | "desc";
   page?: number;
+  pageSize?: number;
 }) {
+  const pageSize = Math.min(100, Math.max(1, params.pageSize ?? PAGE_SIZE));
   const page = Math.max(1, params.page ?? 1);
-  const skip = (page - 1) * PAGE_SIZE;
+  const skip = (page - 1) * pageSize;
+  const sortDir = params.sortDir === "asc" ? "asc" : "desc";
+
+  if (params.employeeIds && params.employeeIds.length === 0) {
+    return {
+      records: [],
+      total: 0,
+      page,
+      pageSize,
+      totalPages: 0,
+    };
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: Record<string, any> = {};
+
+  if (params.employeeIds) {
+    where.employeeId = { in: params.employeeIds };
+  }
 
   if (params.period) {
     const settings = await getPayrollSettings();
     const period = parsePayrollPeriodKey(params.period, settings.payrollStartDay);
     where.attendanceDate = { gte: period.start, lte: period.end };
+  } else if (params.from || params.to) {
+    const range = parseDateRange(params.from, params.to);
+    where.attendanceDate = {
+      gte: range.rangeStart,
+      lt: range.toExclusive,
+    };
   } else if (params.date) {
     const d = startOfDay(new Date(params.date));
     if (!Number.isNaN(d.getTime())) {
       where.attendanceDate = { gte: d, lte: endOfDay(d) };
     }
+  }
+
+  if (params.status?.trim()) {
+    where.status = { equals: params.status.trim(), mode: "insensitive" };
   }
 
   if (params.shortfall) {
@@ -191,12 +231,29 @@ export async function getAttendanceRecords(params: {
     where.overtimeMinutes = { gt: 0 };
   }
 
+  if (params.late) {
+    where.OR = [
+      { remarks: { contains: "late", mode: "insensitive" } },
+      {
+        AND: [{ status: "Short Hours" }, { checkIn: { not: null } }],
+      },
+    ];
+  }
+
+  if (params.earlyExit) {
+    where.remarks = { contains: "early", mode: "insensitive" };
+  }
+
   const shiftFilter = getOperationalShiftFilterOption(params.shift);
   const employeeWhere: Record<string, unknown> = {};
 
   if (params.search) {
     const q = params.search.trim();
-    employeeWhere.OR = [{ name: { contains: q } }, { employeeCode: { contains: q } }];
+    employeeWhere.OR = [
+      { name: { contains: q, mode: "insensitive" } },
+      { employeeCode: { contains: q, mode: "insensitive" } },
+      { department: { contains: q, mode: "insensitive" } },
+    ];
   }
 
   if (shiftFilter.value) {
@@ -207,13 +264,31 @@ export async function getAttendanceRecords(params: {
     where.employee = employeeWhere;
   }
 
+  const orderBy =
+    params.sort === "name"
+      ? [{ employee: { name: sortDir } }, { attendanceDate: "desc" as const }]
+      : params.sort === "workedHours"
+        ? [{ workedMinutes: sortDir }, { attendanceDate: "desc" as const }]
+        : [{ attendanceDate: sortDir }, { employee: { name: "asc" as const } }];
+
   const [records, total] = await Promise.all([
     prisma.attendanceRecord.findMany({
       where,
-      include: { employee: true },
-      orderBy: [{ attendanceDate: "desc" }, { employee: { name: "asc" } }],
+      include: {
+        employee: {
+          select: {
+            id: true,
+            name: true,
+            employeeCode: true,
+            department: true,
+            designation: true,
+            shift: true,
+          },
+        },
+      },
+      orderBy,
       skip,
-      take: PAGE_SIZE,
+      take: pageSize,
     }),
     prisma.attendanceRecord.count({ where }),
   ]);
@@ -222,8 +297,8 @@ export async function getAttendanceRecords(params: {
     records,
     total,
     page,
-    pageSize: PAGE_SIZE,
-    totalPages: Math.ceil(total / PAGE_SIZE),
+    pageSize,
+    totalPages: Math.ceil(total / pageSize),
   };
 }
 

@@ -1,0 +1,472 @@
+import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
+import { ApplicationStatus, RecruitmentPipelineStage, CandidateStatus, OfferStatus, JobOpeningStatus } from "@/generated/prisma/enums";
+import type { SessionUser } from "@/lib/session";
+import {
+  RecruitmentPermissionService,
+  toRecruitmentActor,
+} from "@/lib/recruitment/permissions/permission-service";
+import { RecruitmentScopeEngine } from "@/lib/recruitment/permissions/recruitment-scope-engine";
+import { prismaConversionRepository } from "@/lib/recruitment/repositories/prisma-conversion-repository";
+import type { ConversionRepository } from "@/lib/recruitment/repositories/conversion-repository";
+import { RecruitmentDomainError } from "@/lib/recruitment/shared/errors";
+import { withRecruitmentTransaction } from "@/lib/recruitment/shared/transaction";
+import { createAfterCommitBuffer } from "@/lib/recruitment/shared/after-commit";
+import { RecruitmentEventFactory } from "@/lib/recruitment/events/factory";
+import { RecruitmentTimelineService } from "@/lib/recruitment/services/timeline-service";
+import { convertEmployeeSchema } from "@/lib/validation/schemas/recruitment/conversions";
+import { initializeEmployeeLeaveBalances } from "@/lib/leave";
+import { provisionEmployeeLogin } from "@/lib/admin/user-management";
+
+function generateEmployeeCode(): string {
+  const rand = Math.floor(1000 + Math.random() * 9000);
+  return `EMP-${rand}`;
+}
+
+export function createEmployeeConversionService(
+  repository: ConversionRepository = prismaConversionRepository
+) {
+  return {
+    async previewConversion(
+      session: SessionUser,
+      offerId: string
+    ): Promise<{
+      candidate: any;
+      offer: any;
+      employeePreview: any;
+      checklist: {
+        offerAccepted: boolean;
+        candidateActive: boolean;
+        noDuplicateEmployee: boolean;
+        joiningDateValid: boolean;
+        departmentExists: boolean;
+        managerExists: boolean;
+      };
+      blockingErrors: string[];
+    }> {
+      RecruitmentPermissionService.requireConversionEnabled();
+      RecruitmentPermissionService.requireHrAdministration(session);
+
+      const offer = await prisma.offer.findUnique({
+        where: { id: offerId },
+        include: {
+          application: {
+            include: {
+              candidate: true,
+              jobOpening: true,
+            },
+          },
+        },
+      });
+
+      if (!offer) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Offer not found.");
+      }
+
+      const application = offer.application;
+      const candidate = application.candidate;
+
+      // Check if already converted
+      const existingSnapshot = await repository.findByOfferId
+        ? await (repository as any).findByOfferId(offerId)
+        : await prisma.employeeConversionSnapshot.findUnique({ where: { offerId } });
+
+      const offerAccepted = offer.status === OfferStatus.accepted;
+      const candidateActive = candidate.status === CandidateStatus.active || candidate.status === CandidateStatus.talent_pool || candidate.status === CandidateStatus.hired;
+      
+      const emailExists = candidate.email
+        ? await repository.employeeExists(candidate.email, "")
+        : false;
+      const noDuplicateEmployee = !existingSnapshot && !emailExists;
+
+      const joiningDateValid = !!offer.joiningDate;
+      const departmentExists = !!offer.department;
+      
+      const managerExists = offer.reportingManagerId
+        ? await prisma.employee.count({ where: { id: offer.reportingManagerId } }).then(c => c > 0)
+        : true;
+
+      const blockingErrors: string[] = [];
+      if (!offerAccepted) blockingErrors.push("Offer must be accepted before conversion.");
+      if (existingSnapshot) blockingErrors.push("This offer has already been converted.");
+      if (emailExists) blockingErrors.push("An employee with this email already exists.");
+
+      // Split candidate name into first and last name
+      const nameParts = candidate.fullName.trim().split(/\s+/);
+      const firstName = candidate.firstName || nameParts[0] || "";
+      const lastName = candidate.lastName || nameParts.slice(1).join(" ") || "";
+
+      const employeePreview = {
+        employeeCode: generateEmployeeCode(),
+        name: candidate.fullName,
+        firstName,
+        lastName,
+        email: candidate.email,
+        phone: candidate.phone,
+        department: offer.department || "Engineering",
+        designation: offer.employmentType || "Software Engineer",
+        managerId: offer.reportingManagerId || null,
+        employmentType: offer.employmentType || "Full-time",
+        workLocation: offer.location || "Bangalore",
+        joiningDate: offer.joiningDate ? new Date(offer.joiningDate).toISOString().slice(0, 10) : "",
+        grade: offer.grade || "L1",
+        ctc: offer.ctc ? Number(offer.ctc) : 0,
+      };
+
+      return {
+        candidate: {
+          id: candidate.id,
+          fullName: candidate.fullName,
+          email: candidate.email,
+          phone: candidate.phone,
+          status: candidate.status,
+        },
+        offer: {
+          id: offer.id,
+          offerNumber: offer.offerNumber,
+          status: offer.status,
+          ctc: offer.ctc,
+          currency: offer.currency,
+          joiningDate: offer.joiningDate,
+          department: offer.department,
+          location: offer.location,
+        },
+        employeePreview,
+        checklist: {
+          offerAccepted,
+          candidateActive,
+          noDuplicateEmployee,
+          joiningDateValid,
+          departmentExists,
+          managerExists,
+        },
+        blockingErrors,
+      };
+    },
+
+    async convertEmployee(
+      session: SessionUser,
+      input: unknown
+    ): Promise<{ employeeId: number }> {
+      RecruitmentPermissionService.requireConversionEnabled();
+      RecruitmentPermissionService.requireHrAdministration(session);
+      const actor = toRecruitmentActor(session);
+
+      const parsed = convertEmployeeSchema.parse(input);
+
+      // 1. Fetch offer and validate
+      const offer = await prisma.offer.findUnique({
+        where: { id: parsed.offerId },
+        include: {
+          application: {
+            include: {
+              candidate: true,
+              jobOpening: true,
+            },
+          },
+        },
+      });
+
+      if (!offer) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Offer not found.");
+      }
+
+      if (offer.status !== OfferStatus.accepted) {
+        throw new RecruitmentDomainError(
+          "REC_VALIDATION",
+          "Only accepted offers can be converted to employees."
+        );
+      }
+
+      // Check if already converted
+      const existingSnapshot = await prisma.employeeConversionSnapshot.findUnique({
+        where: { offerId: parsed.offerId },
+      });
+      if (existingSnapshot) {
+        throw new RecruitmentDomainError(
+          "REC_CONFLICT",
+          "This offer has already been converted."
+        );
+      }
+
+      // Check duplicate employee code or email
+      const duplicateExists = await repository.employeeExists(
+        parsed.email || "",
+        parsed.employeeCode
+      );
+      if (duplicateExists) {
+        throw new RecruitmentDomainError(
+          "REC_CONFLICT",
+          "An employee with this employee code or email already exists."
+        );
+      }
+
+      const application = offer.application;
+      const candidate = application.candidate;
+      const jobOpening = application.jobOpening;
+
+      const events = createAfterCommitBuffer();
+
+      // 2. Run database updates in transaction
+      const employeeId = await withRecruitmentTransaction(async (tx) => {
+        // Create Employee
+        const createdEmployee = await tx.employee.create({
+          data: {
+            employeeCode: parsed.employeeCode,
+            name: parsed.name,
+            firstName: parsed.name.split(/\s+/)[0] || "",
+            lastName: parsed.name.split(/\s+/).slice(1).join(" ") || "",
+            email: parsed.email || null,
+            phone: parsed.phone || null,
+            department: parsed.department,
+            designation: parsed.designation,
+            employmentType: parsed.employmentType,
+            workLocation: parsed.workLocation,
+            joiningDate: new Date(parsed.joiningDate),
+            employeeStatus: "Active",
+            isActive: true,
+            managerId: parsed.managerId || null,
+          },
+        });
+
+        // Create Snapshot
+        await repository.convert(
+          {
+            applicationId: application.id,
+            candidateId: candidate.id,
+            offerId: offer.id,
+            employeeId: createdEmployee.id,
+            fieldMapVersion: "1.0",
+            mappedFields: {
+              employeeCode: parsed.employeeCode,
+              name: parsed.name,
+              email: parsed.email,
+              department: parsed.department,
+              designation: parsed.designation,
+              ctc: parsed.ctc,
+              joiningDate: parsed.joiningDate,
+            },
+            convertedByUserId: session.id,
+          },
+          tx
+        );
+
+        // Update Application to Hired
+        await repository.updateApplication(
+          application.id,
+          ApplicationStatus.hired,
+          RecruitmentPipelineStage.hired,
+          tx
+        );
+
+        // Update Candidate to Hired
+        await repository.updateCandidate(
+          candidate.id,
+          CandidateStatus.hired,
+          createdEmployee.id,
+          tx
+        );
+
+        // Increment Job Filled count and auto-fill if reached
+        const { isFilled } = await repository.incrementJobFilled(jobOpening.id, tx);
+
+        // Append Timeline Events
+        await RecruitmentTimelineService.append(
+          {
+            entityType: "application",
+            entityId: application.id,
+            applicationId: application.id,
+            candidateId: candidate.id,
+            jobOpeningId: jobOpening.id,
+            eventType: "employee_converted",
+            summary: `Converted candidate ${candidate.fullName} to employee ${parsed.employeeCode}`,
+            actorUserId: session.id,
+            metadata: { employeeId: createdEmployee.id, employeeCode: parsed.employeeCode },
+          },
+          tx
+        );
+
+        if (isFilled) {
+          await RecruitmentTimelineService.append(
+            {
+              entityType: "job_opening",
+              entityId: jobOpening.id,
+              applicationId: application.id,
+              candidateId: candidate.id,
+              jobOpeningId: jobOpening.id,
+              eventType: "recruitment_closed",
+              summary: `Job opening ${jobOpening.title} is now filled and closed.`,
+              actorUserId: session.id,
+              metadata: { jobOpeningId: jobOpening.id },
+            },
+            tx
+          );
+        }
+
+        // Push events to buffer
+        events.enqueue(
+          RecruitmentEventFactory.employeeConverted(actor, {
+            snapshotId: offer.id, // using offerId as snapshotId or we can fetch snapshot id
+            applicationId: application.id,
+            candidateId: candidate.id,
+            offerId: offer.id,
+            employeeId: createdEmployee.id,
+          })
+        );
+
+        if (isFilled) {
+          events.enqueue(
+            RecruitmentEventFactory.recruitmentClosed(actor, {
+              applicationId: application.id,
+              candidateId: candidate.id,
+            })
+          );
+        }
+
+        return createdEmployee.id;
+      });
+
+      // 3. Post-transaction tasks
+      // Initialize leave balances
+      try {
+        await initializeEmployeeLeaveBalances(
+          employeeId,
+          { el: 15, cl: 12, sl: 12 }, // standard default balances
+          session.email
+        );
+      } catch (err) {
+        console.error("Failed to initialize leave balances:", err);
+      }
+
+      // Provision login if requested
+      if (parsed.createLogin && parsed.email && parsed.password) {
+        try {
+          await provisionEmployeeLogin(session, {
+            employeeId,
+            mode: "create",
+            email: parsed.email,
+            password: parsed.password,
+            generate: false,
+            mustChangePassword: true,
+            auditOperation: "create_with_employee",
+          });
+
+          // Timeline event for account creation
+          await RecruitmentTimelineService.append({
+            entityType: "application",
+            entityId: application.id,
+            applicationId: application.id,
+            candidateId: candidate.id,
+            jobOpeningId: jobOpening.id,
+            eventType: "employee_account_created",
+            summary: `Created system login account for ${parsed.employeeCode}`,
+            actorUserId: session.id,
+            metadata: { employeeId, employeeCode: parsed.employeeCode },
+          });
+
+          events.enqueue(
+            RecruitmentEventFactory.employeeCreated(actor, {
+              employeeId,
+              email: parsed.email,
+            })
+          );
+        } catch (err) {
+          console.error("Failed to provision employee login:", err);
+        }
+      }
+
+      await events.flush();
+
+      return { employeeId };
+    },
+
+    async listPendingConversions(session: SessionUser) {
+      RecruitmentPermissionService.requireModuleEnabled();
+      const scope = await RecruitmentScopeEngine.getScope(session);
+
+      // Find all offers with accepted status that don't have an EmployeeConversionSnapshot
+      const offers = await prisma.offer.findMany({
+        where: {
+          status: OfferStatus.accepted,
+          conversionSnapshot: null,
+          OR: [
+            { applicationId: { in: [...scope.applicationIds] } },
+            {
+              application: {
+                OR: [
+                  { jobOpeningId: { in: [...scope.jobOpeningIds] } },
+                  { candidateId: { in: [...scope.candidateIds] } },
+                ],
+              },
+            },
+          ],
+        },
+        include: {
+          application: {
+            include: {
+              candidate: true,
+              jobOpening: true,
+            },
+          },
+        },
+        orderBy: {
+          acceptedAt: "desc",
+        },
+      });
+
+      return offers;
+    },
+
+    async listConversionHistory(session: SessionUser) {
+      RecruitmentPermissionService.requireModuleEnabled();
+      
+      const snapshots = await prisma.employeeConversionSnapshot.findMany({
+        include: {
+          application: {
+            include: {
+              candidate: true,
+              jobOpening: true,
+            },
+          },
+          employee: true,
+          convertedBy: {
+            select: { id: true, email: true },
+          },
+        },
+        orderBy: {
+          convertedAt: "desc",
+        },
+      });
+
+      return snapshots;
+    },
+
+    async getConversionDashboardMetrics(session: SessionUser) {
+      RecruitmentPermissionService.requireModuleEnabled();
+      
+      const offersAccepted = await prisma.offer.count({
+        where: { status: OfferStatus.accepted },
+      });
+
+      const employeesJoined = await prisma.employeeConversionSnapshot.count();
+
+      const pendingConversions = await prisma.offer.count({
+        where: {
+          status: OfferStatus.accepted,
+          conversionSnapshot: null,
+        },
+      });
+
+      const conversionRate = offersAccepted > 0
+        ? Math.round((employeesJoined / offersAccepted) * 100)
+        : 0;
+
+      return {
+        offersAccepted,
+        employeesJoined,
+        pendingConversions,
+        conversionRate,
+      };
+    },
+  };
+}

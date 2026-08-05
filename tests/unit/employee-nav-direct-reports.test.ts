@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("@/lib/auth", () => ({
   getSession: vi.fn(),
@@ -8,9 +8,17 @@ vi.mock("@/lib/employees/direct-reports", () => ({
   employeeHasDirectReports: vi.fn(),
 }));
 
+vi.mock("@/lib/people-scope/nav-context", () => ({
+  resolveMyTeamNavContext: vi.fn(),
+}));
+
 import { getSession } from "@/lib/auth";
 import { employeeHasDirectReports } from "@/lib/employees/direct-reports";
-import { hasDirectReportsNavAction } from "@/actions/employee-nav";
+import { resolveMyTeamNavContext } from "@/lib/people-scope/nav-context";
+import {
+  getMyTeamNavContextAction,
+  hasDirectReportsNavAction,
+} from "@/actions/employee-nav";
 
 describe("hasDirectReportsNavAction", () => {
   beforeEach(() => {
@@ -70,5 +78,43 @@ describe("hasDirectReportsNavAction", () => {
 
     vi.mocked(employeeHasDirectReports).mockResolvedValue(false);
     await expect(hasDirectReportsNavAction()).resolves.toBe(false);
+  });
+});
+
+describe("getMyTeamNavContextAction", () => {
+  beforeEach(() => {
+    vi.mocked(getSession).mockReset();
+    vi.mocked(resolveMyTeamNavContext).mockReset();
+  });
+
+  it("returns null when unauthenticated", async () => {
+    vi.mocked(getSession).mockResolvedValue(null);
+    await expect(getMyTeamNavContextAction()).resolves.toBeNull();
+  });
+
+  it("returns resolved context for employees", async () => {
+    vi.mocked(getSession).mockResolvedValue({
+      id: "1",
+      email: "e@x.com",
+      role: "employee",
+      employeeId: 42,
+      employeeName: "Pat",
+      mustChangePassword: false,
+      sessionVersion: 1,
+      authProvider: "local",
+    });
+    vi.mocked(resolveMyTeamNavContext).mockResolvedValue({
+      employeeId: 42,
+      isLineManager: true,
+      showApprovalsNav: true,
+      showMyTeamGroup: true,
+    });
+    await expect(getMyTeamNavContextAction()).resolves.toEqual({
+      employeeId: 42,
+      isLineManager: true,
+      showApprovalsNav: true,
+      showMyTeamGroup: true,
+    });
+    expect(resolveMyTeamNavContext).toHaveBeenCalledWith(42);
   });
 });

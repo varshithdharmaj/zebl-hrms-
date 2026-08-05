@@ -11,7 +11,7 @@ export default function LoginPage() {
         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-sm font-bold text-primary-foreground shadow-card">
           Z
         </div>
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">Zebl Attendance</h1>
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">HRMS</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {microsoftEnabled
             ? "Enterprise sign-in for your organization"

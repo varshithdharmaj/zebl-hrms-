@@ -27,14 +27,14 @@ export function EnterpriseEmailLayout({
       <Body style={body}>
         <Container style={container}>
           <Section style={header}>
-            <Text style={brand}>Zebl AMS</Text>
+            <Text style={brand}>HRMS</Text>
             <Text style={tagline}>Attendance & Leave Management</Text>
           </Section>
           <Heading style={heading}>{title}</Heading>
           {children}
           <Hr style={hr} />
           <Text style={footer}>
-            This is an automated message from Zebl AMS. Please do not reply to this email.
+            This is an automated message from HRMS. Please do not reply to this email.
           </Text>
         </Container>
       </Body>

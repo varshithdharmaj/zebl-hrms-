@@ -5,48 +5,54 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppTopBar, AppTopBarDesktop } from "@/components/layout/app-top-bar";
 import type { SessionUser } from "@/lib/session";
 import { cn } from "@/lib/utils";
-import { hasDirectReportsNavAction } from "@/actions/employee-nav";
+import { getMyTeamNavContextAction } from "@/actions/employee-nav";
 
 export function AppShell({
   user,
   children,
   variant = "default",
-  showApprovals = false,
+  showMyTeamGroup = false,
+  showRecruitmentNav = false,
+  showPanelistInterviews = false,
   /**
-   * Employee shell: resolve Team Approvals nav after first paint so the layout
-   * does not block on a direct-reports COUNT (presentation-only).
+   * Employee shell: resolve My Team nav after first paint so the layout
+   * does not block on eligibility (presentation-only).
    */
-  deferApprovalsNav = false,
+  deferMyTeamNav = false,
 }: {
   user: SessionUser;
   children: React.ReactNode;
   variant?: "default" | "wide";
-  showApprovals?: boolean;
-  deferApprovalsNav?: boolean;
+  showMyTeamGroup?: boolean;
+  /** Admin: Recruitment sidebar entry (feature-flag gated). */
+  showRecruitmentNav?: boolean;
+  /** Employee: Interviews nav when recruitment module is enabled. */
+  showPanelistInterviews?: boolean;
+  deferMyTeamNav?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(false);
-  const [approvalsVisible, setApprovalsVisible] = useState(
-    deferApprovalsNav ? false : showApprovals
+  const [myTeamVisible, setMyTeamVisible] = useState(
+    deferMyTeamNav ? false : showMyTeamGroup
   );
   const displayName = user.employeeName ?? user.email;
 
   useEffect(() => {
-    if (!deferApprovalsNav) {
-      setApprovalsVisible(showApprovals);
+    if (!deferMyTeamNav) {
+      setMyTeamVisible(showMyTeamGroup);
       return;
     }
     let cancelled = false;
-    void hasDirectReportsNavAction()
-      .then((visible) => {
-        if (!cancelled) setApprovalsVisible(visible);
+    void getMyTeamNavContextAction()
+      .then((ctx) => {
+        if (!cancelled) setMyTeamVisible(ctx?.showMyTeamGroup ?? false);
       })
       .catch(() => {
-        if (!cancelled) setApprovalsVisible(false);
+        if (!cancelled) setMyTeamVisible(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [deferApprovalsNav, showApprovals]);
+  }, [deferMyTeamNav, showMyTeamGroup]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -55,7 +61,9 @@ export function AppShell({
         userName={displayName}
         collapsed={collapsed}
         onToggleCollapse={() => setCollapsed(!collapsed)}
-        showApprovals={approvalsVisible}
+        showMyTeamGroup={myTeamVisible}
+        showRecruitmentNav={showRecruitmentNav}
+        showPanelistInterviews={showPanelistInterviews}
       />
       <div
         className={cn(

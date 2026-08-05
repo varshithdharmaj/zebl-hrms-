@@ -15,13 +15,13 @@ export function mapLeaveToGraphEvent(ctx: LeaveCalendarContext): GraphCalendarEv
     subject: `Leave — ${ctx.leaveType} (${ctx.employeeName})`,
     body: {
       contentType: "text",
-      content: `Zebl AMS leave request #${ctx.leaveRequestId}\n${ctx.reason}`,
+      content: `HRMS leave request #${ctx.leaveRequestId}\n${ctx.reason}`,
     },
     start: { dateTime: formatGraphDateTime(ctx.startDate), timeZone: TIMEZONE },
     end: { dateTime: formatGraphDateTime(endExclusive), timeZone: TIMEZONE },
     isAllDay: true,
     showAs: "oof",
-    categories: ["Zebl AMS", "Leave"],
+    categories: ["HRMS", "Leave"],
     transactionId: `zebl-leave-${ctx.leaveRequestId}`,
   };
 }

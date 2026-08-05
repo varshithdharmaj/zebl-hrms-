@@ -1,84 +1,80 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { ManagerApprovalInbox } from "@/components/manager/manager-approval-inbox";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { getSession } from "@/lib/auth";
-import {
-  enrichPendingLeaveRows,
-  getPendingApprovalsForActor,
-} from "@/lib/workflow/pending-approvals";
-import { getLeaveWorkflowDto } from "@/lib/workflow/leave-workflow";
-import { getLeaveOverlapWarnings } from "@/lib/leave/leave-overlap";
-import { computeSlaState, getEscalationSlaHours } from "@/lib/workflow/workflow-sla";
+import { listLeaveApprovalInboxItems } from "@/lib/approvals/approval-center-service";
+import type { PendingApprovalItem } from "@/lib/approvals/leave-inbox-types";
+import { SectionCard } from "@/components/ui/section-card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
-// Team leave approvals for line-managers. Access is derived from the Employee hierarchy
-// (the signed-in user is the assigned approver on pending steps), not from an app role.
-export default async function EmployeeApprovalsPage() {
+async function ApprovalCenterContent() {
   const session = await getSession();
   if (!session?.employeeId) redirect("/employee/dashboard");
 
-  const [leaves, slaHours] = await Promise.all([
-    getPendingApprovalsForActor(session),
-    getEscalationSlaHours(),
-  ]);
-  const enriched = await enrichPendingLeaveRows(leaves);
-
-  const items = await Promise.all(
-    enriched.map(async ({ leave, balances, recentLeaves }) => {
-      const dto = await getLeaveWorkflowDto(leave.id);
-      if (!dto) return null;
-
-      const overlapWarnings = await getLeaveOverlapWarnings({
-        leaveRequestId: leave.id,
-        employeeId: leave.employeeId,
-        department: leave.employee.department,
-        startDate: leave.startDate,
-        endDate: leave.endDate,
-      });
-
-      const sla = computeSlaState(dto.submittedAt, slaHours);
-
-      return {
-        leave: {
-          id: dto.id,
-          leaveType: dto.leaveType,
-          startDate: dto.startDate,
-          endDate: dto.endDate,
-          days: dto.days,
-          reason: dto.reason,
-          workflowStatus: dto.workflowStatus,
-          version: dto.version,
-          employeeName: dto.employeeName,
-          employeeId: dto.employeeId,
-          department: leave.employee.department,
-          submittedAt: dto.submittedAt,
-          rejectionReason: dto.rejectionReason,
-          currentStepId: dto.currentStep?.id ?? null,
-          steps: dto.steps,
-        },
-        balances,
-        recentLeaves,
-        overlapWarnings,
-        sla,
-      };
-    })
-  );
-
-  const filtered = items.filter((i): i is NonNullable<typeof i> => i !== null);
+  let items: PendingApprovalItem[] = [];
+  let loadError: string | null = null;
+  try {
+    items = await listLeaveApprovalInboxItems(session);
+  } catch (err) {
+    console.error("[zebl] Approval Center load failed:", err);
+    items = [];
+    loadError = "Couldn’t load your approval queue. Try again later.";
+  }
 
   return (
     <div className="space-y-8">
       <WorkspacePageHeader
-        title="Team approvals"
-        description="Review and act on leave requests from your direct reports."
+        title="Approval Center"
+        description="Review and act on items that need your decision."
         badge={
-          filtered.length > 0 ? (
+          !loadError && items.length > 0 ? (
             <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-warning px-2 text-xs font-bold text-warning-foreground">
-              {filtered.length}
+              {items.length}
             </span>
           ) : undefined
         }
       />
-      <ManagerApprovalInbox items={filtered} />
+
+      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Approval type">
+        <span
+          role="tab"
+          aria-selected="true"
+          className={cn(
+            "inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold",
+            "border-foreground bg-foreground text-background"
+          )}
+        >
+          Leave
+        </span>
+      </div>
+
+      {loadError ? (
+        <SectionCard title="Something went wrong">
+          <p className="text-sm text-muted-foreground">{loadError}</p>
+        </SectionCard>
+      ) : (
+        <ManagerApprovalInbox items={items} />
+      )}
     </div>
+  );
+}
+
+function ApprovalCenterSkeleton() {
+  return (
+    <div className="space-y-8">
+      <Skeleton className="h-28 w-full rounded-xl" />
+      <Skeleton className="h-10 w-24 rounded-full" />
+      <Skeleton className="h-64 w-full rounded-xl" />
+    </div>
+  );
+}
+
+export default function EmployeeApprovalsPage() {
+  return (
+    <Suspense fallback={<ApprovalCenterSkeleton />}>
+      <ApprovalCenterContent />
+    </Suspense>
   );
 }

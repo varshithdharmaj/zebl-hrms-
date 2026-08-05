@@ -21,14 +21,14 @@ export async function generateExecutiveReport(
     const buffer = buildExecutiveExcel(snapshot);
     result = {
       data: buffer,
-      filename: `zebl-executive-summary-${Date.now()}.xlsx`,
+      filename: `hrms-executive-summary-${Date.now()}.xlsx`,
       mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     };
   } else {
     const html = buildExecutiveHtmlReport(snapshot);
     result = {
       data: html,
-      filename: `zebl-executive-summary-${Date.now()}.html`,
+      filename: `hrms-executive-summary-${Date.now()}.html`,
       mimeType: "text/html; charset=utf-8",
     };
   }

@@ -10,7 +10,6 @@ import {
   ClipboardList,
   Banknote,
   CalendarDays,
-  History,
   Bell,
   Plug,
   BarChart3,
@@ -20,23 +19,29 @@ import {
   LogOut,
   Menu,
   X,
-  UserCheck,
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
   CalendarClock,
   Headset,
+  Briefcase,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logoutAction } from "@/actions/auth";
 import type { AppUserRole } from "@/lib/roles";
 import { ROLE_LABELS } from "@/lib/roles";
 import { getRoleHomePath } from "@/lib/routing";
+import { buildEmployeeShellNav } from "@/lib/navigation/employee-shell-nav";
 
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
 type NavGroup = { group: string; items: NavItem[] };
 
-function groupedNavForRole(role: AppUserRole, showApprovals: boolean): NavGroup[] {
+function groupedNavForRole(
+  role: AppUserRole,
+  showMyTeamGroup: boolean,
+  showRecruitmentNav: boolean,
+  showPanelistInterviews = false
+): NavGroup[] {
   switch (role) {
     case "super_admin":
     case "hr":
@@ -54,6 +59,20 @@ function groupedNavForRole(role: AppUserRole, showApprovals: boolean): NavGroup[
             { href: "/admin/upload", label: "Upload Data", icon: Upload },
           ],
         },
+        ...(showRecruitmentNav
+          ? [
+              {
+                group: "Hiring Workspace",
+                items: [
+                  { href: "/admin/recruitment", label: "Recruitment Dashboard", icon: LayoutDashboard },
+                  { href: "/admin/recruitment/jobs", label: "Jobs", icon: Briefcase },
+                  { href: "/admin/recruitment/candidates", label: "Candidates", icon: Users },
+                  { href: "/admin/recruitment/pipeline", label: "Pipeline", icon: ClipboardList },
+                  { href: "/admin/recruitment/reports", label: "Reports", icon: ScrollText },
+                ],
+              },
+            ]
+          : []),
         {
           group: "System Operations",
           items: [
@@ -76,6 +95,15 @@ function groupedNavForRole(role: AppUserRole, showApprovals: boolean): NavGroup[
             { href: "/admin/settings", label: "System Settings", icon: Settings },
             { href: "/admin/payroll-settings", label: "Payroll Settings", icon: Settings },
             { href: "/admin/attendance-settings", label: "Attendance Settings", icon: CalendarClock },
+            ...(showRecruitmentNav
+              ? [
+                  {
+                    href: "/admin/recruitment/settings",
+                    label: "Recruitment Settings",
+                    icon: Settings,
+                  },
+                ]
+              : []),
           ],
         },
         // Platform & security administration — Super Admin only.
@@ -93,28 +121,7 @@ function groupedNavForRole(role: AppUserRole, showApprovals: boolean): NavGroup[
       ];
     case "employee":
     default:
-      return [
-        {
-          group: "Workspace",
-          items: [
-            { href: "/employee/dashboard", label: "Dashboard", icon: LayoutDashboard },
-            { href: "/employee/attendance", label: "History", icon: History },
-            { href: "/employee/leaves", label: "Leaves", icon: CalendarDays },
-            { href: "/employee/tickets", label: "My Tickets", icon: Headset },
-            // Shown only to line-managers (assigned as an approver in the org hierarchy).
-            ...(showApprovals
-              ? [{ href: "/employee/approvals", label: "Team Approvals", icon: UserCheck }]
-              : []),
-            { href: "/employee/settings", label: "Settings", icon: Settings },
-          ],
-        },
-        {
-          group: "Security",
-          items: [
-            { href: "/employee/security", label: "Security & Sessions", icon: ShieldCheck },
-          ],
-        },
-      ];
+      return buildEmployeeShellNav(showMyTeamGroup, showPanelistInterviews);
   }
 }
 
@@ -132,19 +139,31 @@ export function AppSidebar({
   userName,
   collapsed = false,
   onToggleCollapse,
-  showApprovals = false,
+  showMyTeamGroup = false,
+  showRecruitmentNav = false,
+  showPanelistInterviews = false,
 }: {
   role: AppUserRole;
   userName: string;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
-  showApprovals?: boolean;
+  /** Line-manager My Team nav group (from MyTeamNavContext.showMyTeamGroup). */
+  showMyTeamGroup?: boolean;
+  /** Admin: Recruitment nav (RECRUITMENT_MODULE_ENABLED). */
+  showRecruitmentNav?: boolean;
+  /** Employee: panelist interview workspace when recruitment module is on. */
+  showPanelistInterviews?: boolean;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const onMobileOpen = () => setMobileOpen(true);
   const onMobileClose = () => setMobileOpen(false);
   const pathname = usePathname();
-  const groups = groupedNavForRole(role, showApprovals);
+  const groups = groupedNavForRole(
+    role,
+    showMyTeamGroup,
+    showRecruitmentNav,
+    showPanelistInterviews
+  );
   const home = getRoleHomePath(role);
 
   return (
@@ -185,7 +204,7 @@ export function AppSidebar({
                 collapsed ? "lg:hidden lg:opacity-0" : "opacity-100"
               )}
             >
-              <p className="text-sm font-bold leading-tight tracking-tight text-foreground">Zebl AMS</p>
+              <p className="text-sm font-bold leading-tight tracking-tight text-foreground">HRMS</p>
               <p className="text-[0.65rem] font-medium text-muted-foreground">{ROLE_LABELS[role]}</p>
             </div>
           </Link>

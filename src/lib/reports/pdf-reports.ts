@@ -19,7 +19,7 @@ export function buildExecutiveHtmlReport(snapshot: ExecutiveDashboardPayload): s
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Zebl AMS Executive Summary</title>
+  <title>HRMS Executive Summary</title>
   <style>
     body { font-family: system-ui, sans-serif; margin: 2rem; color: #0f172a; }
     h1 { font-size: 1.5rem; }
@@ -32,7 +32,7 @@ export function buildExecutiveHtmlReport(snapshot: ExecutiveDashboardPayload): s
   </style>
 </head>
 <body>
-  <h1>Zebl AMS — Executive Operational Summary</h1>
+  <h1>HRMS — Executive Operational Summary</h1>
   <p>Generated ${escapeHtml(snapshot.generatedAt)}</p>
   <div class="metrics">
     <div class="card"><span>Attendance rate</span><strong>${snapshot.workforceHealth.attendanceRate}%</strong></div>
