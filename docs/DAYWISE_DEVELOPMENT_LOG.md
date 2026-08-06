@@ -160,6 +160,8 @@ Commit: `b94e9f6`
 - Continued service/repository/action/schema updates across candidates, applications, interviews, offers, conversions, permissions, analytics, and audit.
 - Updated progress-report PDF and package dependencies as needed for the above.
 
+Commit: `63a2bde`
+
 ## Current project state
 
 - Core HR areas: attendance, employees, leave workflows, payroll-related attendance views, notifications, helpdesk, account management, and recruitment (hiring workspace).
