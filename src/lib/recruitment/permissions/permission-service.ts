@@ -95,6 +95,38 @@ export const RecruitmentPermissionService = {
     this.requireHrAdministration(session);
   },
 
+  /**
+   * Discussion-only write access. Does not grant candidate edit / pipeline / offer rights.
+   * HR/SA, or recruiter / hiring manager who can view the candidate.
+   */
+  async canWriteCandidateDiscussion(
+    session: SessionUser,
+    candidateId: string
+  ): Promise<boolean> {
+    if (!isRecruitmentModuleEnabled()) return false;
+    const scope = await RecruitmentScopeEngine.getScope(session);
+    const inScope =
+      scope.mode === "unrestricted" || scope.candidateIds.includes(candidateId);
+    if (!inScope) return false;
+    if (canAccessHRAdministration(session.role)) return true;
+    return (
+      scope.capabilities.isRecruiterOnJob || scope.capabilities.isHiringManager
+    );
+  },
+
+  async assertCanWriteCandidateDiscussion(
+    session: SessionUser,
+    candidateId: string
+  ): Promise<void> {
+    this.requireModuleEnabled();
+    const allowed = await this.canWriteCandidateDiscussion(session, candidateId);
+    if (!allowed) {
+      throw new PermissionError(
+        "Not allowed to add discussion notes for this candidate."
+      );
+    }
+  },
+
   async assertCanManageApplications(session: SessionUser): Promise<void> {
     this.requireModuleEnabled();
     this.requireHrAdministration(session);

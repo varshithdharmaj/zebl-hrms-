@@ -25,7 +25,6 @@ import {
   Check,
   Archive,
   RotateCcw,
-  GitMerge,
   Eye,
   Edit,
   Download,
@@ -249,17 +248,6 @@ export function CandidateTable({
     });
   };
 
-  const handleMergePlaceholder = () => {
-    setAlertConfig({
-      isOpen: true,
-      title: "Candidate Merge",
-      description: "Candidate merge UI is a placeholder and will be integrated in Phase 3.5.",
-      actionLabel: "Close",
-      isDestructive: false,
-      onAction: () => {},
-    });
-  };
-
   const allSelected = candidates.length > 0 && selectedIds.size === candidates.length;
 
   return (
@@ -453,15 +441,6 @@ export function CandidateTable({
                         <RotateCcw className="h-4 w-4" />
                       </Button>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={handleMergePlaceholder}
-                      title="Merge"
-                      className="h-8 w-8 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10"
-                    >
-                      <GitMerge className="h-4 w-4" />
-                    </Button>
                   </div>
                 </DataTableCell>
               </DataTableRow>

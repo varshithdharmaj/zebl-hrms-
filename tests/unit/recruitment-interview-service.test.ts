@@ -54,6 +54,7 @@ vi.mock("@/lib/audit", () => ({
   AUDIT_ACTIONS: {
     RECRUITMENT_INTERVIEW_UPDATED: "recruitment.interview.updated",
     RECRUITMENT_INTERVIEW_CANCELLED: "recruitment.interview.cancelled",
+    RECRUITMENT_INTERVIEW_NO_SHOW: "recruitment.interview.no_show",
   },
   writeAuditLog: vi.fn(async () => undefined),
 }));
@@ -263,6 +264,36 @@ describe("InterviewService", () => {
     await expect(service.cancelInterview(employeeSession, "int-1")).rejects.toThrow(
       PermissionError
     );
+  });
+
+  it("marks scheduled interview as no-show with timeline and audit", async () => {
+    const service = createInterviewService(mockRepo);
+    const result = await service.markNoShow(hrSession, "int-1");
+
+    expect(result.applicationId).toBe("app-1");
+    expect(mockRepo.updateInterview).toHaveBeenCalledWith(
+      "int-1",
+      { status: InterviewStatus.no_show },
+      expect.anything()
+    );
+    expect(RecruitmentTimelineService.append).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "interview_no_show" }),
+      expect.anything()
+    );
+    expect(writeAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "recruitment.interview.no_show",
+        entityId: "int-1",
+      })
+    );
+  });
+
+  it("rejects no-show when interview is not scheduled", async () => {
+    mockRepo.getInterview = vi.fn(async () =>
+      baseInterview({ status: InterviewStatus.completed })
+    );
+    const service = createInterviewService(mockRepo);
+    await expect(service.markNoShow(hrSession, "int-1")).rejects.toThrow(RecruitmentDomainError);
   });
 
   it("allows assigned panelist to submit feedback", async () => {

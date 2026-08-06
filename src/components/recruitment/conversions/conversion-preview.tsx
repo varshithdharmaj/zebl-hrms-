@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { ConversionChecklist } from "./conversion-checklist";
 import { ConversionSummaryCard } from "./conversion-summary-card";
 import { EmployeePreviewCard } from "./employee-preview-card";
-import { ConversionSuccessDialog } from "./conversion-success-dialog";
 import { convertEmployeeAction } from "@/actions/recruitment-conversions";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, UserCheck, Loader2 } from "lucide-react";
@@ -14,9 +13,9 @@ import Link from "next/link";
 
 interface ConversionPreviewProps {
   previewData: {
-    candidate: any;
-    offer: any;
-    employeePreview: any;
+    candidate: { id: string; fullName: string };
+    offer: { id: string };
+    employeePreview: Record<string, unknown>;
     checklist: {
       offerAccepted: boolean;
       candidateActive: boolean;
@@ -41,19 +40,7 @@ export function ConversionPreview({ previewData, managers }: ConversionPreviewPr
     password: "",
   });
 
-  const [successData, setSuccessData] = useState<{
-    isOpen: boolean;
-    employeeId: number | null;
-    employeeCode: string;
-    employeeName: string;
-  }>({
-    isOpen: false,
-    employeeId: null,
-    employeeCode: "",
-    employeeName: "",
-  });
-
-  const handleFieldChange = (field: string, value: any) => {
+  const handleFieldChange = (field: string, value: unknown) => {
     setFormData((prev) => ({
       ...prev,
       [field]: value,
@@ -74,23 +61,26 @@ export function ConversionPreview({ previewData, managers }: ConversionPreviewPr
     }
 
     startTransition(async () => {
-      const result = await convertEmployeeAction({}, {
-        offerId: previewData.offer.id,
-        employeeCode: formData.employeeCode,
-        name: formData.name,
-        email: formData.email,
-        phone: formData.phone,
-        department: formData.department,
-        designation: formData.designation,
-        managerId: formData.managerId,
-        employmentType: formData.employmentType,
-        workLocation: formData.workLocation,
-        joiningDate: formData.joiningDate,
-        grade: formData.grade,
-        ctc: formData.ctc,
-        createLogin: formData.createLogin,
-        password: formData.password || null,
-      });
+      const result = await convertEmployeeAction(
+        {},
+        {
+          offerId: previewData.offer.id,
+          employeeCode: String(formData.employeeCode ?? ""),
+          name: String(formData.name ?? ""),
+          email: formData.email as string | null | undefined,
+          phone: formData.phone as string | null | undefined,
+          department: String(formData.department ?? ""),
+          designation: String(formData.designation ?? ""),
+          managerId: formData.managerId as number | null | undefined,
+          employmentType: String(formData.employmentType ?? ""),
+          workLocation: String(formData.workLocation ?? ""),
+          joiningDate: String(formData.joiningDate ?? ""),
+          grade: formData.grade as string | null | undefined,
+          ctc: Number(formData.ctc ?? 0),
+          createLogin: Boolean(formData.createLogin),
+          password: (formData.password as string) || null,
+        }
+      );
 
       if (result.error) {
         toast({
@@ -103,12 +93,9 @@ export function ConversionPreview({ previewData, managers }: ConversionPreviewPr
           title: "Success",
           description: "Candidate converted successfully!",
         });
-        setSuccessData({
-          isOpen: true,
-          employeeId: result.employeeId,
-          employeeCode: formData.employeeCode,
-          employeeName: formData.name,
-        });
+        router.push(
+          `/admin/recruitment/conversions/success?employeeId=${result.employeeId}&candidateId=${encodeURIComponent(previewData.candidate.id)}`
+        );
       }
     });
   };
@@ -116,7 +103,7 @@ export function ConversionPreview({ previewData, managers }: ConversionPreviewPr
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Link href="/admin/recruitment/pipeline?focus=conversions">
+        <Link href="/admin/recruitment/conversions">
           <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg">
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -132,7 +119,6 @@ export function ConversionPreview({ previewData, managers }: ConversionPreviewPr
       </div>
 
       <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left 2 Columns: Editable Setup */}
         <div className="lg:col-span-2 space-y-6">
           <EmployeePreviewCard
             formData={formData}
@@ -141,7 +127,7 @@ export function ConversionPreview({ previewData, managers }: ConversionPreviewPr
           />
 
           <div className="flex justify-end gap-3">
-            <Link href="/admin/recruitment/pipeline?focus=conversions">
+            <Link href="/admin/recruitment/conversions">
               <Button type="button" variant="outline" size="sm" className="text-xs rounded-lg">
                 Cancel
               </Button>
@@ -165,7 +151,6 @@ export function ConversionPreview({ previewData, managers }: ConversionPreviewPr
           </div>
         </div>
 
-        {/* Right 1 Column: Summary & Checklist */}
         <div className="space-y-6">
           <ConversionChecklist
             checklist={previewData.checklist}
@@ -177,14 +162,6 @@ export function ConversionPreview({ previewData, managers }: ConversionPreviewPr
           />
         </div>
       </form>
-
-      <ConversionSuccessDialog
-        isOpen={successData.isOpen}
-        onClose={() => setSuccessData((prev) => ({ ...prev, isOpen: false }))}
-        employeeId={successData.employeeId}
-        employeeCode={successData.employeeCode}
-        employeeName={successData.employeeName}
-      />
     </div>
   );
 }

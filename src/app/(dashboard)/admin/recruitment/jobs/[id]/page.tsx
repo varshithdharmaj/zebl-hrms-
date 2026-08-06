@@ -1,12 +1,10 @@
 import { notFound } from "next/navigation";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { JobOpeningDetailView } from "@/components/recruitment/jobs/job-opening-detail";
-import { EntityCommunicationTimeline } from "@/components/recruitment/communications/widgets/entity-communication-timeline";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
 import { getJobOpeningCached } from "@/lib/recruitment/job/queries";
-import { listCommunicationsCached } from "@/lib/recruitment/communication";
 import { RecruitmentPermissionService } from "@/lib/recruitment/permissions/permission-service";
 import { RecruitmentTimelineService } from "@/lib/recruitment/services/timeline-service";
 import { isRecruitmentDomainError } from "@/lib/recruitment/shared/errors";
@@ -27,17 +25,10 @@ export default async function JobOpeningDetailPage({
     throw error;
   }
 
-  const [timeline, communications] = await Promise.all([
-    RecruitmentTimelineService.buildTimeline({
-      jobOpeningId: job.id,
-      limit: 50,
-    }),
-    listCommunicationsCached(session, {
-      jobOpeningId: job.id,
-      page: 1,
-      pageSize: 8,
-    }),
-  ]);
+  const timeline = await RecruitmentTimelineService.buildTimeline({
+    jobOpeningId: job.id,
+    limit: 50,
+  });
   const showCompensation = RecruitmentPermissionService.canViewJobCompensation(session);
 
   return (
@@ -57,27 +48,6 @@ export default async function JobOpeningDetailPage({
         job={job}
         timeline={timeline}
         showCompensation={showCompensation}
-      />
-      <EntityCommunicationTimeline
-        title="Communication summary"
-        composeHref={`/admin/recruitment/communications/new?jobOpeningId=${encodeURIComponent(job.id)}`}
-        emptyDescription="No communications linked to this job opening yet."
-        items={communications.items.map((item) => ({
-          id: item.id,
-          subject: item.subject,
-          status: item.status,
-          type: item.type,
-          threadId: item.threadId,
-          occurredAt: (item.sentAt ?? item.createdAt).toISOString?.()
-            ? String(
-                item.sentAt instanceof Date
-                  ? item.sentAt.toISOString()
-                  : item.createdAt instanceof Date
-                    ? item.createdAt.toISOString()
-                    : item.sentAt ?? item.createdAt
-              )
-            : String(item.createdAt),
-        }))}
       />
     </div>
   );

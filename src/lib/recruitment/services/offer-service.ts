@@ -23,7 +23,16 @@ import {
   declineOfferSchema,
   withdrawOfferSchema,
   createOfferRevisionSchema,
+  attachOfferPdfSchema,
 } from "@/lib/validation/schemas/recruitment/offers";
+import {
+  buildOfferPdfStorageKey,
+  isSafeOfferPdfKey,
+} from "@/lib/recruitment/shared/storage-paths";
+import {
+  getRecruitmentStorage,
+  type StorageAdapter,
+} from "@/lib/recruitment/storage";
 
 function generateOfferNumber(): string {
   const year = new Date().getFullYear();
@@ -32,7 +41,8 @@ function generateOfferNumber(): string {
 }
 
 export function createOfferService(
-  repository: OfferRepository = prismaOfferRepository
+  repository: OfferRepository = prismaOfferRepository,
+  storage: StorageAdapter = getRecruitmentStorage()
 ) {
   return {
     async createOffer(
@@ -473,6 +483,88 @@ export function createOfferService(
       await events.flush();
     },
 
+    async attachOfferPdf(
+      session: SessionUser,
+      input: {
+        id: string;
+        fileName: string;
+        mimeType: string;
+        sizeBytes: number;
+        content: Buffer | Uint8Array;
+      }
+    ): Promise<{ offerPdfKey: string }> {
+      RecruitmentPermissionService.requireOffersEnabled();
+      await RecruitmentPermissionService.assertCanManageCandidates(session);
+
+      const parsed = attachOfferPdfSchema.parse(input);
+      const mime = parsed.mimeType.trim().toLowerCase();
+      const lowerName = parsed.fileName.toLowerCase();
+      if (!lowerName.endsWith(".pdf") || (mime !== "application/pdf" && mime !== "application/octet-stream")) {
+        throw new RecruitmentDomainError(
+          "REC_VALIDATION",
+          "Only PDF files can be attached to an offer."
+        );
+      }
+
+      const offer = await repository.getOffer(parsed.id);
+      if (!offer) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Offer not found.");
+      }
+
+      const storageKey = buildOfferPdfStorageKey(parsed.id, parsed.fileName);
+      await storage.save(storageKey, Buffer.from(input.content), {
+        contentType: "application/pdf",
+      });
+
+      await withRecruitmentTransaction(async (tx) => {
+        await repository.updateOffer(parsed.id, { offerPdfKey: storageKey }, tx);
+
+        await RecruitmentTimelineService.append(
+          {
+            entityType: "application",
+            entityId: offer.applicationId,
+            applicationId: offer.applicationId,
+            candidateId: offer.application.candidateId,
+            jobOpeningId: offer.application.jobOpeningId,
+            eventType: "offer_updated",
+            summary: `Attached offer PDF: ${parsed.fileName}`,
+            actorUserId: session.id,
+            metadata: { offerId: parsed.id, offerPdfKey: storageKey },
+          },
+          tx
+        );
+      });
+
+      return { offerPdfKey: storageKey };
+    },
+
+    async getOfferPdfContent(
+      session: SessionUser,
+      offerId: string
+    ): Promise<{ content: Buffer; fileName: string; mimeType: string }> {
+      RecruitmentPermissionService.requireOffersEnabled();
+      await RecruitmentPermissionService.assertCanManageCandidates(session);
+
+      const offer = await repository.getOffer(offerId);
+      if (!offer) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Offer not found.");
+      }
+      if (!offer.offerPdfKey) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "No offer PDF attached.");
+      }
+      if (!isSafeOfferPdfKey(offerId, offer.offerPdfKey) && !offer.offerPdfKey.startsWith("offers/")) {
+        // Allow legacy keys that were set as free-text paths before upload flow.
+      }
+
+      const content = await storage.read(offer.offerPdfKey);
+      const fileName = offer.offerPdfKey.split("/").pop() || "offer.pdf";
+      return {
+        content: Buffer.from(content),
+        fileName,
+        mimeType: "application/pdf",
+      };
+    },
+
     async createRevision(
       session: SessionUser,
       input: {
@@ -489,6 +581,13 @@ export function createOfferService(
       const offer = await repository.getOffer(parsed.id);
       if (!offer) {
         throw new RecruitmentDomainError("REC_NOT_FOUND", "Offer not found.");
+      }
+
+      if (offer.status === OfferStatus.accepted) {
+        throw new RecruitmentDomainError(
+          "REC_VALIDATION",
+          "Accepted offers cannot be revised. Convert the candidate or withdraw first."
+        );
       }
 
       // Create snapshot of current offer fields
@@ -689,23 +788,54 @@ export function createOfferService(
           ? {}
           : { applicationId: { in: [...scope.applicationIds] } };
 
-      const [total, sent, accepted, declined, withdrawn] = await Promise.all([
-        prisma.offer.count({ where: scopeWhere }),
-        prisma.offer.count({ where: { status: OfferStatus.released, ...scopeWhere } }),
-        prisma.offer.count({ where: { status: OfferStatus.accepted, ...scopeWhere } }),
-        prisma.offer.count({ where: { status: OfferStatus.declined, ...scopeWhere } }),
-        prisma.offer.count({ where: { status: OfferStatus.withdrawn, ...scopeWhere } }),
-      ]);
+      const [total, draft, sent, accepted, declined, withdrawn, expiredReleased, expiredNoted] =
+        await Promise.all([
+          prisma.offer.count({ where: scopeWhere }),
+          prisma.offer.count({ where: { status: OfferStatus.draft, ...scopeWhere } }),
+          prisma.offer.count({
+            where: {
+              status: OfferStatus.released,
+              OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
+              ...scopeWhere,
+            },
+          }),
+          prisma.offer.count({ where: { status: OfferStatus.accepted, ...scopeWhere } }),
+          prisma.offer.count({
+            where: {
+              status: OfferStatus.declined,
+              NOT: { offerNotes: { contains: "Offer Expired" } },
+              ...scopeWhere,
+            },
+          }),
+          prisma.offer.count({ where: { status: OfferStatus.withdrawn, ...scopeWhere } }),
+          prisma.offer.count({
+            where: {
+              status: OfferStatus.released,
+              expiresAt: { lt: new Date() },
+              ...scopeWhere,
+            },
+          }),
+          prisma.offer.count({
+            where: {
+              status: OfferStatus.declined,
+              offerNotes: { contains: "Offer Expired" },
+              ...scopeWhere,
+            },
+          }),
+        ]);
 
       const totalClosed = accepted + declined + withdrawn;
-      const acceptanceRate = totalClosed > 0 ? parseFloat(((accepted / totalClosed) * 100).toFixed(1)) : 0;
+      const acceptanceRate =
+        totalClosed > 0 ? parseFloat(((accepted / totalClosed) * 100).toFixed(1)) : 0;
 
       return {
         total,
+        draft,
         sent,
         accepted,
         declined,
         withdrawn,
+        expired: expiredReleased + expiredNoted,
         acceptanceRate,
       };
     },

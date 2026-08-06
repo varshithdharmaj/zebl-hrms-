@@ -25,8 +25,8 @@ vi.mock("@/lib/recruitment/shared/after-commit", () => ({
   createAfterCommitBuffer: () => {
     const events: unknown[] = [];
     return {
-      push: (e: unknown) => events.push(e),
-      publishAll: vi.fn(async () => undefined),
+      enqueue: (e: unknown) => events.push(e),
+      flush: vi.fn(async () => undefined),
       get size() {
         return events.length;
       },
@@ -60,13 +60,13 @@ vi.mock("@/lib/recruitment/events/publisher", () => ({
 
 vi.mock("@/lib/recruitment/repositories/prisma-job-repository", () => ({
   prismaJobRepository: {
-    getJobOpening: vi.fn(async () => ({
+    getJob: vi.fn(async () => ({
       id: "job-1",
       title: "Frontend Engineer",
       stages: [
         { stage: RecruitmentPipelineStage.resume_received, sortOrder: 1 },
         { stage: RecruitmentPipelineStage.screening, sortOrder: 2 },
-        { stage: RecruitmentPipelineStage.interview, sortOrder: 3 },
+        { stage: RecruitmentPipelineStage.hr_round, sortOrder: 3 },
       ],
     })),
   },
@@ -218,17 +218,22 @@ describe("ApplicationService", () => {
     );
   });
 
-  it("should hire candidate successfully", async () => {
+  it("should reject manual hire — conversion owns hired state", async () => {
     const service = createApplicationService(mockRepo);
-    await service.hireCandidate(hrSession, "app-1");
-
-    expect(mockRepo.updateApplication).toHaveBeenCalledWith(
-      "app-1",
-      expect.objectContaining({
-        status: ApplicationStatus.hired,
-        currentStage: RecruitmentPipelineStage.hired,
-      }),
-      expect.anything()
+    await expect(service.hireCandidate(hrSession, "app-1")).rejects.toThrow(
+      RecruitmentDomainError
     );
+    expect(mockRepo.updateApplication).not.toHaveBeenCalled();
+  });
+
+  it("should reject moving to hired stage without conversion", async () => {
+    const service = createApplicationService(mockRepo);
+    await expect(
+      service.moveToStage(hrSession, {
+        id: "app-1",
+        stage: RecruitmentPipelineStage.hired,
+      })
+    ).rejects.toThrow(RecruitmentDomainError);
+    expect(mockRepo.moveApplicationStage).not.toHaveBeenCalled();
   });
 });

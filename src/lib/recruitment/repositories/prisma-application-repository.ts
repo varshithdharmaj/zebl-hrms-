@@ -345,12 +345,6 @@ export const prismaApplicationRepository: ApplicationRepository = {
 
   async moveApplicationStage(id, stage, stageEnteredAt, status, tx) {
     const client: Client = tx ?? prisma;
-    const app = await client.application.findUnique({
-      where: { id },
-      select: { currentStage: true, createdByUserId: true },
-    });
-    if (!app) return;
-
     await client.application.update({
       where: { id },
       data: {
@@ -359,16 +353,7 @@ export const prismaApplicationRepository: ApplicationRepository = {
         status: status ?? undefined,
       },
     });
-
-    // Create stage history record
-    await client.applicationStageHistory.create({
-      data: {
-        applicationId: id,
-        fromStage: app.currentStage,
-        toStage: stage,
-        actorUserId: tx ? undefined : undefined, // filled by service
-      },
-    });
+    // Stage history is written by ApplicationService.moveToStage (with actor + note).
   },
 
   async countApplications(scope, filters) {

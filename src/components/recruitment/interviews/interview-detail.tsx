@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   cancelInterviewAction,
   completeInterviewAction,
+  markInterviewNoShowAction,
 } from "@/actions/recruitment-interviews";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +21,6 @@ import {
   ArrowLeft,
   Plus,
   Pencil,
-  Mail,
 } from "lucide-react";
 import { FeedbackForm } from "./feedback-form";
 
@@ -63,6 +63,22 @@ export function InterviewDetailView({
     setError(null);
     startTransition(async () => {
       const res = await completeInterviewAction(
+        {},
+        { id: interview.id, applicationId: interview.applicationId }
+      );
+      if (res.error) {
+        setError(res.error);
+      } else {
+        router.refresh();
+      }
+    });
+  };
+
+  const handleNoShow = () => {
+    if (!confirm("Mark this interview as no-show? The candidate did not attend.")) return;
+    setError(null);
+    startTransition(async () => {
+      const res = await markInterviewNoShowAction(
         {},
         { id: interview.id, applicationId: interview.applicationId }
       );
@@ -131,19 +147,6 @@ export function InterviewDetailView({
   const canSubmitFeedback =
     interview.status !== "cancelled" && (canManage || isAssignedPanelist);
 
-  const candidateId =
-    typeof interview.application?.candidateId === "string"
-      ? interview.application.candidateId
-      : typeof interview.application?.candidate?.id === "string"
-        ? interview.application.candidate.id
-        : "";
-
-  const invitationHref = `/admin/recruitment/communications/new?interviewId=${encodeURIComponent(
-    interview.id
-  )}&applicationId=${encodeURIComponent(interview.applicationId)}${
-    candidateId ? `&candidateId=${encodeURIComponent(candidateId)}` : ""
-  }&templateId=${encodeURIComponent("system:interview_invitation")}`;
-
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -159,26 +162,15 @@ export function InterviewDetailView({
 
         <div className="flex flex-wrap items-center gap-2">
           {canManage ? (
-            <>
-              <Link href={invitationHref}>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="font-semibold text-xs rounded-lg gap-1.5 shadow-subtle"
-                >
-                  <Mail className="h-4 w-4" /> Send Invitation
-                </Button>
-              </Link>
-              <Link href={`/admin/recruitment/interviews/${interview.id}/edit`}>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="font-semibold text-xs rounded-lg gap-1.5 shadow-subtle"
-                >
-                  <Pencil className="h-4 w-4" /> Edit Interview
-                </Button>
-              </Link>
-            </>
+            <Link href={`/admin/recruitment/interviews/${interview.id}/edit`}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="font-semibold text-xs rounded-lg gap-1.5 shadow-subtle"
+              >
+                <Pencil className="h-4 w-4" /> Edit Interview
+              </Button>
+            </Link>
           ) : null}
 
           {canManage && interview.status === "scheduled" ? (
@@ -191,6 +183,15 @@ export function InterviewDetailView({
                 className="font-semibold text-xs rounded-lg text-red-700 hover:bg-red-50 hover:text-red-800 border-red-200 shadow-subtle"
               >
                 Cancel Interview
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleNoShow}
+                disabled={isPending}
+                className="font-semibold text-xs rounded-lg text-amber-700 hover:bg-amber-50 hover:text-amber-800 border-amber-200 shadow-subtle"
+              >
+                Mark No Show
               </Button>
               <Button
                 size="sm"

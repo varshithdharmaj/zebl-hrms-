@@ -12,6 +12,37 @@ export function buildCandidateDocumentStorageKey(
   return `candidates/${candidateId}/documents/${crypto.randomUUID()}-${sanitizeStorageFileName(fileName)}`;
 }
 
+export function buildOfferPdfStorageKey(offerId: string, fileName: string): string {
+  return `offers/${offerId}/pdf/${crypto.randomUUID()}-${sanitizeStorageFileName(fileName)}`;
+}
+
+export function buildEmployeeDocumentStorageKey(
+  employeeId: number,
+  fileName: string
+): string {
+  return `employees/${employeeId}/documents/${crypto.randomUUID()}-${sanitizeStorageFileName(fileName)}`;
+}
+
+export function isSafeOfferPdfKey(offerId: string, key: string): boolean {
+  const prefix = `offers/${offerId}/pdf/`;
+  return (
+    key.startsWith(prefix) &&
+    !key.includes("..") &&
+    !key.includes("\\") &&
+    !key.includes("//", prefix.length)
+  );
+}
+
+export function isSafeEmployeeDocumentKey(employeeId: number, key: string): boolean {
+  const prefix = `employees/${employeeId}/documents/`;
+  return (
+    key.startsWith(prefix) &&
+    !key.includes("..") &&
+    !key.includes("\\") &&
+    !key.includes("//", prefix.length)
+  );
+}
+
 export function buildCommunicationAttachmentStoragePath(
   communicationId: string,
   fileName: string

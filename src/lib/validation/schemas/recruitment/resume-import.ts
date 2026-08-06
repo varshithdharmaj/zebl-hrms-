@@ -34,3 +34,22 @@ export const applyResumeImportSchema = z.object({
   scalarDecisions: z.array(scalarDecisionSchema),
   sectionDecisions: z.array(sectionDecisionSchema),
 });
+
+/** Prepare V1 profile merge after a resume document upload. */
+export const prepareCandidateResumeMergeSchema = z.object({
+  candidateId: z.string().trim().min(1, "Candidate ID is required."),
+  documentId: z.string().trim().min(1, "Document ID is required."),
+});
+
+/**
+ * Apply V1 resume merge in one transaction.
+ * Conflict selections: key → "current" | "parsed".
+ * Server re-runs the merge engine; client only supplies conflict choices.
+ */
+export const mergeCandidateResumeSchema = z.object({
+  draftId: z.string().trim().min(1, "Draft ID is required."),
+  candidateId: z.string().trim().min(1, "Candidate ID is required."),
+  conflictSelections: z
+    .record(z.string(), z.enum(["current", "parsed"]))
+    .default({}),
+});

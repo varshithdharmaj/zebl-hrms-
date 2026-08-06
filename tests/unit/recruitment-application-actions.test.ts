@@ -144,7 +144,7 @@ describe("Application Server Actions", () => {
     expect(mockReopenApplication).toHaveBeenCalled();
   });
 
-  it("should hire candidate via action", async () => {
+  it("should reject hire candidate via action", async () => {
     const res = await hireCandidateAction(
       {},
       {
@@ -152,8 +152,8 @@ describe("Application Server Actions", () => {
       }
     );
 
-    expect(res.success).toBeDefined();
-    expect(mockHireCandidate).toHaveBeenCalled();
+    expect(res.error).toMatch(/Employee Conversion/i);
+    expect(mockHireCandidate).not.toHaveBeenCalled();
   });
 
   it("should archive application via action", async () => {

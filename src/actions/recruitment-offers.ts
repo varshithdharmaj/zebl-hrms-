@@ -13,6 +13,7 @@ import {
   declineOfferSchema,
   withdrawOfferSchema,
   createOfferRevisionSchema,
+  attachOfferPdfSchema,
 } from "@/lib/validation/schemas/recruitment";
 import { createOfferService } from "@/lib/recruitment/services/offer-service";
 import { mapUnknownToActionState } from "@/lib/recruitment/shared/result";
@@ -277,6 +278,48 @@ export async function createOfferRevisionAction(
     revalidateRecruitmentDashboard();
 
     return { success: "Offer revision created successfully.", offerId: parsed.data.id };
+  } catch (error) {
+    return mapUnknownToActionState(error);
+  }
+}
+
+export async function attachOfferPdfAction(
+  _prev: RecruitmentOfferActionState,
+  formData: FormData
+): Promise<RecruitmentOfferActionState> {
+  try {
+    const id = String(formData.get("id") ?? "");
+    const file = formData.get("file");
+
+    if (!(file instanceof File)) {
+      return { error: "PDF file is required." };
+    }
+
+    const session = await requireHROrSuperAdminSession();
+    if (!isRecruitmentModuleEnabled()) {
+      return { error: "Recruitment module is disabled." };
+    }
+
+    const parsed = safeParseWithSchema(attachOfferPdfSchema, {
+      id,
+      fileName: file.name,
+      mimeType: file.type || "application/pdf",
+      sizeBytes: file.size,
+    });
+    if (!parsed.ok) return { error: parsed.error };
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const service = createOfferService();
+    await service.attachOfferPdf(session, {
+      ...parsed.data,
+      content: buffer,
+    });
+
+    revalidateOfferList();
+    revalidateOfferDetail(id);
+    revalidateRecruitmentDashboard();
+
+    return { success: "Offer PDF attached successfully.", offerId: id };
   } catch (error) {
     return mapUnknownToActionState(error);
   }

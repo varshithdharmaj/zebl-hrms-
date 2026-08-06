@@ -228,9 +228,14 @@ describe("ResumeImportService", () => {
 
   it("creates a pending_review resume_parse draft from stub content", async () => {
     const service = createResumeImportService(mockRepo);
+    const stub = buildStubResumeImportContent({
+      documentId: "doc-1",
+      candidateHint: { fullName: candidate.fullName, email: candidate.email },
+    });
     const { id } = await service.createDraft(hrSession, {
       candidateId: "cand-1",
       documentId: "doc-1",
+      content: stub,
     });
 
     expect(id).toBe("insight-1");
@@ -260,13 +265,19 @@ describe("ResumeImportService", () => {
 
   it("supersedes previous pending draft for the same document", async () => {
     const service = createResumeImportService(mockRepo);
+    const stub = buildStubResumeImportContent({
+      documentId: "doc-1",
+      candidateHint: { fullName: candidate.fullName, email: candidate.email },
+    });
     const first = await service.createDraft(hrSession, {
       candidateId: "cand-1",
       documentId: "doc-1",
+      content: stub,
     });
     const second = await service.createDraft(hrSession, {
       candidateId: "cand-1",
       documentId: "doc-1",
+      content: stub,
     });
 
     expect(first.id).toBe("insight-1");

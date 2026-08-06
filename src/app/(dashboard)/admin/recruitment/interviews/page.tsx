@@ -5,17 +5,24 @@ import { canAccessHRAdministration } from "@/lib/permissions";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { Button } from "@/components/ui/button";
 import { InterviewTable } from "@/components/recruitment/interviews/interview-table";
+import { InterviewCalendar } from "@/components/recruitment/interviews/interview-calendar";
 import { listInterviewsCached } from "@/lib/recruitment/interview/queries";
 import { InterviewStatus } from "@/generated/prisma/enums";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type InterviewView = "upcoming" | "completed" | "cancelled";
+type InterviewView = "upcoming" | "completed" | "cancelled" | "no_show";
+type LayoutView = "calendar" | "list";
 
 function resolveView(raw: string | string[] | undefined): InterviewView {
   const value = Array.isArray(raw) ? raw[0] : raw;
-  if (value === "completed" || value === "cancelled") return value;
+  if (value === "completed" || value === "cancelled" || value === "no_show") return value;
   return "upcoming";
+}
+
+function resolveLayout(raw: string | string[] | undefined): LayoutView {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return value === "list" ? "list" : "calendar";
 }
 
 function statusForView(view: InterviewView): InterviewStatus {
@@ -24,6 +31,8 @@ function statusForView(view: InterviewView): InterviewStatus {
       return InterviewStatus.completed;
     case "cancelled":
       return InterviewStatus.cancelled;
+    case "no_show":
+      return InterviewStatus.no_show;
     default:
       return InterviewStatus.scheduled;
   }
@@ -37,19 +46,34 @@ export default async function RecruitmentInterviewsPage({
   const session = await getSessionOrThrow();
   const params = await searchParams;
   const view = resolveView(params.view);
+  const layout = resolveLayout(params.layout);
   const canManage = canAccessHRAdministration(session.role);
 
-  const result = await listInterviewsCached(
-    session,
-    { status: statusForView(view) },
-    { page: 1, pageSize: 50 },
-    { field: "scheduledStart", direction: view === "upcoming" ? "asc" : "desc" }
-  );
+  const [tableResult, calendarResult] = await Promise.all([
+    listInterviewsCached(
+      session,
+      { status: statusForView(view) },
+      { page: 1, pageSize: 50 },
+      { field: "scheduledStart", direction: view === "upcoming" ? "asc" : "desc" }
+    ),
+    listInterviewsCached(
+      session,
+      {},
+      { page: 1, pageSize: 100 },
+      { field: "scheduledStart", direction: "asc" }
+    ),
+  ]);
 
   const tabs: { id: InterviewView; label: string }[] = [
     { id: "upcoming", label: "Upcoming" },
     { id: "completed", label: "Completed" },
+    { id: "no_show", label: "No Show" },
     { id: "cancelled", label: "Cancelled" },
+  ];
+
+  const layoutTabs: { id: LayoutView; label: string }[] = [
+    { id: "calendar", label: "Calendar" },
+    { id: "list", label: "List" },
   ];
 
   return (
@@ -68,24 +92,46 @@ export default async function RecruitmentInterviewsPage({
         }
       />
 
-      <div className="flex flex-wrap gap-2">
-        {tabs.map((tab) => (
-          <Link
-            key={tab.id}
-            href={`/admin/recruitment/interviews?view=${tab.id}`}
-            className={cn(
-              "rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors",
-              view === tab.id
-                ? "border-primary bg-primary/5 text-primary"
-                : "border-border bg-card text-muted-foreground hover:bg-muted/20"
-            )}
-          >
-            {tab.label}
-          </Link>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          {tabs.map((tab) => (
+            <Link
+              key={tab.id}
+              href={`/admin/recruitment/interviews?view=${tab.id}&layout=${layout}`}
+              className={cn(
+                "rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors",
+                view === tab.id
+                  ? "border-primary bg-primary/5 text-primary"
+                  : "border-border bg-card text-muted-foreground hover:bg-muted/20"
+              )}
+            >
+              {tab.label}
+            </Link>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {layoutTabs.map((tab) => (
+            <Link
+              key={tab.id}
+              href={`/admin/recruitment/interviews?view=${view}&layout=${tab.id}`}
+              className={cn(
+                "rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors",
+                layout === tab.id
+                  ? "border-primary bg-primary/5 text-primary"
+                  : "border-border bg-card text-muted-foreground hover:bg-muted/20"
+              )}
+            >
+              {tab.label}
+            </Link>
+          ))}
+        </div>
       </div>
 
-      <InterviewTable interviews={result.items as any[]} />
+      {layout === "calendar" ? (
+        <InterviewCalendar interviews={calendarResult.items as never[]} />
+      ) : (
+        <InterviewTable interviews={tableResult.items as never[]} />
+      )}
     </div>
   );
 }

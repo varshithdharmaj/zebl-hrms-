@@ -41,7 +41,7 @@ export async function buildReportBundle(
   filters: RecruitmentReportFilters
 ): Promise<ReportBundle> {
   const analyticsFilters = analyticsFilterFromReport(filters);
-  const days = filters.days ?? 30;
+  const days = filters.days ?? 7;
   const generatedAt = new Date().toISOString();
 
   if (section === "hiring") {
@@ -94,8 +94,8 @@ export async function buildReportBundle(
         ],
       },
       {
-        id: "pipeline-aging",
-        title: "Pipeline Aging (avg days)",
+        id: "pipeline-by-stage",
+        title: "Pipeline by stage (counts)",
         kind: "stacked",
         labels: pipeline.byStage.map((row) => row.stage),
         series: [
@@ -103,11 +103,6 @@ export async function buildReportBundle(
             label: "Candidates",
             values: pipeline.byStage.map((row) => row.count),
             color: "#2563eb",
-          },
-          {
-            label: "Avg days",
-            values: pipeline.byStage.map((row) => row.avgDays),
-            color: "#d97706",
           },
         ],
       },
@@ -162,7 +157,7 @@ export async function buildReportBundle(
             offers: row.offers,
             hires: row.hires,
             acceptanceRate: row.acceptanceRate,
-            avgTimeToHire: row.avgTimeToHire,
+            avgTimeToHire: row.avgTimeToHire ?? "—",
           })),
           filters.search,
           ["recruiterEmail"]
@@ -186,33 +181,36 @@ export async function buildReportBundle(
       },
       {
         id: "time-in-stage",
-        title: "Time In Stage / Time To Hire",
+        title: "Time To Hire",
         columns: [
           { key: "metric", label: "Metric" },
           { key: "days", label: "Days" },
         ],
-        rows: [
-          {
-            id: "applicationToInterview",
-            metric: "Application → Interview",
-            days: time.applicationToInterview,
-          },
-          {
-            id: "interviewToOffer",
-            metric: "Interview → Offer",
-            days: time.interviewToOffer,
-          },
-          {
-            id: "offerToHire",
-            metric: "Offer → Hire",
-            days: time.offerToHire,
-          },
-          {
-            id: "totalTimeToHire",
-            metric: "Total Time To Hire",
-            days: time.totalTimeToHire,
-          },
-        ],
+        rows:
+          time.sampleSize === 0
+            ? []
+            : [
+                {
+                  id: "applicationToInterview",
+                  metric: "Application → Interview",
+                  days: time.applicationToInterview ?? "—",
+                },
+                {
+                  id: "interviewToOffer",
+                  metric: "Interview → Offer",
+                  days: time.interviewToOffer ?? "—",
+                },
+                {
+                  id: "offerToHire",
+                  metric: "Offer Accepted → Hire",
+                  days: time.offerToHire ?? "—",
+                },
+                {
+                  id: "totalTimeToHire",
+                  metric: "Total Time To Hire",
+                  days: time.totalTimeToHire ?? "—",
+                },
+              ],
       },
       {
         id: "candidate-sources",
@@ -243,7 +241,9 @@ export async function buildReportBundle(
         { label: "Open jobs", value: kpis.totalOpenJobs },
         { label: "Active candidates", value: kpis.activeCandidates },
         { label: "Applications", value: kpis.totalApplications },
-        { label: "Avg time to hire", value: `${kpis.avgTimeToHire}d` },
+        ...(kpis.avgTimeToHire != null
+          ? [{ label: "Avg time to hire", value: `${kpis.avgTimeToHire}d` }]
+          : []),
         { label: "Stuck candidates", value: pipeline.stuckCandidates },
       ],
       charts,
@@ -458,10 +458,6 @@ export async function buildReportBundle(
       { label: "Replies", value: comm.replies },
       { label: "Drafts", value: comm.draftCount },
       { label: "Scheduled", value: comm.scheduledCount },
-      {
-        label: "Open rate",
-        value: comm.openRatePlaceholder == null ? "—" : `${comm.openRatePlaceholder}%`,
-      },
     ],
     charts: [
       {

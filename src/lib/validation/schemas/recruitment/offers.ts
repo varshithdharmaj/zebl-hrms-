@@ -61,3 +61,14 @@ export const createOfferRevisionSchema = z.object({
   changeNote: z.string().trim().min(1, "Change note is required."),
   patch: createOfferSchema.partial(),
 });
+
+export const attachOfferPdfSchema = z.object({
+  id: z.string().trim().min(1, "Offer ID is required."),
+  fileName: z.string().trim().min(1, "File name is required."),
+  mimeType: z.string().trim().min(1, "MIME type is required."),
+  sizeBytes: z.coerce.number().int().positive().max(15 * 1024 * 1024),
+});
+
+export const expireOfferSchema = z.object({
+  id: z.string().trim().min(1, "Offer ID is required."),
+});

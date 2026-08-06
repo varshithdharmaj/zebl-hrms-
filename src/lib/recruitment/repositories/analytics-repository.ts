@@ -1,6 +1,14 @@
 import { prisma } from "@/lib/prisma";
-import { ApplicationStatus, CandidateStatus, OfferStatus, InterviewStatus, JobOpeningStatus } from "@/generated/prisma/enums";
+import {
+  ApplicationStatus,
+  CandidateSource,
+  CandidateStatus,
+  OfferStatus,
+  InterviewStatus,
+  JobOpeningStatus,
+} from "@/generated/prisma/enums";
 import type { RecruitmentScope } from "@/lib/recruitment/types/scope";
+import { computeTimeToHireMetrics } from "@/lib/recruitment/analytics/compute-time-to-hire";
 
 export type AnalyticsDateFilter = {
   startDate?: Date;
@@ -28,7 +36,7 @@ export type AnalyticsRepository = {
     offersAccepted: number;
     pendingConversions: number;
     employeesJoined: number;
-    avgTimeToHire: number;
+    avgTimeToHire: number | null;
     offerAcceptanceRate: number;
     conversionRate: number;
   }>;
@@ -56,7 +64,7 @@ export type AnalyticsRepository = {
     offers: number;
     hires: number;
     acceptanceRate: number;
-    avgTimeToHire: number;
+    avgTimeToHire: number | null;
   }>>;
 
   getDepartmentAnalytics(filters: AnalyticsFilters): Promise<Array<{
@@ -76,6 +84,7 @@ export type AnalyticsRepository = {
   }>;
 
   getOfferAnalytics(filters: AnalyticsFilters): Promise<{
+    draft?: number;
     sent: number;
     accepted: number;
     declined: number;
@@ -94,10 +103,11 @@ export type AnalyticsRepository = {
   }>>;
 
   getTimeMetrics(filters: AnalyticsFilters): Promise<{
-    applicationToInterview: number;
-    interviewToOffer: number;
-    offerToHire: number;
-    totalTimeToHire: number;
+    applicationToInterview: number | null;
+    interviewToOffer: number | null;
+    offerToHire: number | null;
+    totalTimeToHire: number | null;
+    sampleSize: number;
   }>;
 
   getTrendData(filters: AnalyticsFilters & { days: number }): Promise<{
@@ -211,16 +221,18 @@ export const prismaAnalyticsRepository: AnalyticsRepository = {
       take: 100,
     });
 
-    const avgTimeToHire = conversions.length > 0
-      ? Math.round(
-          conversions.reduce((sum, c) => {
-            const days = Math.floor(
-              (c.convertedAt.getTime() - c.application.createdAt.getTime()) / (1000 * 60 * 60 * 24)
-            );
-            return sum + days;
-          }, 0) / conversions.length
-        )
-      : 0;
+    const avgTimeToHire =
+      conversions.length > 0
+        ? Math.round(
+            conversions.reduce((sum, c) => {
+              const days = Math.floor(
+                (c.convertedAt.getTime() - c.application.createdAt.getTime()) /
+                  (1000 * 60 * 60 * 24)
+              );
+              return sum + Math.max(0, days);
+            }, 0) / conversions.length
+          )
+        : null;
 
     return {
       totalOpenJobs,
@@ -300,21 +312,51 @@ export const prismaAnalyticsRepository: AnalyticsRepository = {
     const byStage = applicationsByStage.map((item) => ({
       stage: item.currentStage,
       count: item._count,
-      avgDays: 0, // Simplified for now
+      /** Current-stage dwell only (now − stageEnteredAt); not historical avg. */
+      avgDays: 0,
     }));
+
+    // Real dwell time in current stage — one query, aggregate in memory by stage
+    const activeApps = await prisma.application.findMany({
+      where: {
+        deletedAt: null,
+        status: ApplicationStatus.active,
+        ...scopeFilter,
+      },
+      select: { currentStage: true, stageEnteredAt: true },
+    });
+
+    const dwell: Record<string, { totalDays: number; count: number }> = {};
+    const now = Date.now();
+    for (const app of activeApps) {
+      if (!app.stageEnteredAt) continue;
+      const days = (now - app.stageEnteredAt.getTime()) / (1000 * 60 * 60 * 24);
+      const bucket = dwell[app.currentStage] ?? { totalDays: 0, count: 0 };
+      bucket.totalDays += days;
+      bucket.count += 1;
+      dwell[app.currentStage] = bucket;
+    }
+
+    const byStageWithDwell = byStage.map((row) => {
+      const stats = dwell[row.stage];
+      return {
+        ...row,
+        avgDays: stats && stats.count > 0 ? Math.round((stats.totalDays / stats.count) * 10) / 10 : 0,
+      };
+    });
 
     const stuckCandidates = await prisma.application.count({
       where: {
         deletedAt: null,
         status: ApplicationStatus.active,
         stageEnteredAt: {
-          lte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30+ days
+          lte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
         },
         ...scopeFilter,
       },
     });
 
-    return { byStage, stuckCandidates };
+    return { byStage: byStageWithDwell, stuckCandidates };
   },
 
   async getRecruiterPerformance(filters) {
@@ -327,54 +369,175 @@ export const prismaAnalyticsRepository: AnalyticsRepository = {
       select: { id: true, email: true },
     });
 
-    const performance = await Promise.all(
-      recruiters.map(async (recruiter) => {
-        const [openJobs, candidates, interviews, offers, hires] = await Promise.all([
-          prisma.jobOpening.count({
-            where: {
-              ownerRecruiterUserId: recruiter.id,
-              status: JobOpeningStatus.open,
-              deletedAt: null,
-            },
-          }),
-          prisma.candidate.count({
-            where: {
-              primaryRecruiterUserId: recruiter.id,
-              deletedAt: null,
-            },
-          }),
-          prisma.interview.count({
-            where: {
-              application: {
-                assignedRecruiterUserId: recruiter.id,
-              },
-            },
-          }),
-          prisma.offer.count({
-            where: {
-              application: {
-                assignedRecruiterUserId: recruiter.id,
-              },
-              status: { not: OfferStatus.draft },
-            },
-          }),
-          prisma.employeeConversionSnapshot.count({
-            where: {
-              application: {
-                assignedRecruiterUserId: recruiter.id,
-              },
-            },
-          }),
-        ]);
+    if (recruiters.length === 0) return [];
 
-        const acceptedOffers = await prisma.offer.count({
-          where: {
-            application: { assignedRecruiterUserId: recruiter.id },
-            status: OfferStatus.accepted,
+    const recruiterIds = recruiters.map((r) => r.id);
+
+    const [appsByRecruiter, interviewsByApp, offersByApp, conversions] = await Promise.all([
+      prisma.application.groupBy({
+        by: ["assignedRecruiterUserId"],
+        where: {
+          deletedAt: null,
+          assignedRecruiterUserId: { in: recruiterIds },
+          ...(dateFilter.gte || dateFilter.lte ? { createdAt: dateFilter } : {}),
+        },
+        _count: { id: true },
+      }),
+      prisma.interview.groupBy({
+        by: ["applicationId"],
+        where: {
+          deletedAt: null,
+          application: {
+            assignedRecruiterUserId: { in: recruiterIds },
+            deletedAt: null,
           },
-        });
+          ...(dateFilter.gte || dateFilter.lte ? { scheduledStart: dateFilter } : {}),
+        },
+        _count: { id: true },
+      }),
+      prisma.offer.groupBy({
+        by: ["applicationId"],
+        where: {
+          application: {
+            assignedRecruiterUserId: { in: recruiterIds },
+            deletedAt: null,
+          },
+          status: { not: OfferStatus.draft },
+          ...(dateFilter.gte || dateFilter.lte ? { sentAt: dateFilter } : {}),
+        },
+        _count: { id: true },
+        _max: { status: true },
+      }),
+      prisma.employeeConversionSnapshot.findMany({
+        where: {
+          ...(dateFilter.gte || dateFilter.lte ? { convertedAt: dateFilter } : {}),
+          application: {
+            assignedRecruiterUserId: { in: recruiterIds },
+          },
+        },
+        select: {
+          convertedAt: true,
+          application: {
+            select: {
+              createdAt: true,
+              assignedRecruiterUserId: true,
+              id: true,
+            },
+          },
+        },
+      }),
+    ]);
 
-        const acceptanceRate = offers > 0 ? Math.round((acceptedOffers / offers) * 100) : 0;
+    // Resolve application → recruiter for interview/offer counts
+    const appIds = [
+      ...new Set([
+        ...interviewsByApp.map((r) => r.applicationId),
+        ...offersByApp.map((r) => r.applicationId),
+      ]),
+    ];
+    const appRecruiters =
+      appIds.length === 0
+        ? []
+        : await prisma.application.findMany({
+            where: { id: { in: appIds } },
+            select: { id: true, assignedRecruiterUserId: true },
+          });
+    const appToRecruiter = new Map(
+      appRecruiters.map((a) => [a.id, a.assignedRecruiterUserId])
+    );
+
+    const interviewCountByRecruiter = new Map<string, number>();
+    for (const row of interviewsByApp) {
+      const rid = appToRecruiter.get(row.applicationId);
+      if (!rid) continue;
+      interviewCountByRecruiter.set(
+        rid,
+        (interviewCountByRecruiter.get(rid) ?? 0) + row._count.id
+      );
+    }
+
+    const offerCountByRecruiter = new Map<string, number>();
+    for (const row of offersByApp) {
+      const rid = appToRecruiter.get(row.applicationId);
+      if (!rid) continue;
+      offerCountByRecruiter.set(rid, (offerCountByRecruiter.get(rid) ?? 0) + row._count.id);
+    }
+
+    // Accepted offers for acceptance rate — one query
+    const acceptedOffers = await prisma.offer.findMany({
+      where: {
+        status: OfferStatus.accepted,
+        application: {
+          assignedRecruiterUserId: { in: recruiterIds },
+          deletedAt: null,
+        },
+      },
+      select: {
+        applicationId: true,
+        application: { select: { assignedRecruiterUserId: true } },
+      },
+    });
+    const acceptedByRecruiter = new Map<string, number>();
+    for (const o of acceptedOffers) {
+      const rid = o.application.assignedRecruiterUserId;
+      if (!rid) continue;
+      acceptedByRecruiter.set(rid, (acceptedByRecruiter.get(rid) ?? 0) + 1);
+    }
+
+    const tthByRecruiter = new Map<string, { totalDays: number; count: number }>();
+    for (const c of conversions) {
+      const rid = c.application.assignedRecruiterUserId;
+      if (!rid) continue;
+      const days = Math.floor(
+        (c.convertedAt.getTime() - c.application.createdAt.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      const bucket = tthByRecruiter.get(rid) ?? { totalDays: 0, count: 0 };
+      bucket.totalDays += Math.max(0, days);
+      bucket.count += 1;
+      tthByRecruiter.set(rid, bucket);
+    }
+
+    const hiresByRecruiter = new Map<string, number>();
+    for (const c of conversions) {
+      const rid = c.application.assignedRecruiterUserId;
+      if (!rid) continue;
+      hiresByRecruiter.set(rid, (hiresByRecruiter.get(rid) ?? 0) + 1);
+    }
+
+    const candidatesByRecruiter = new Map(
+      appsByRecruiter
+        .filter((r) => r.assignedRecruiterUserId)
+        .map((r) => [r.assignedRecruiterUserId!, r._count.id])
+    );
+
+    // Open jobs owned by recruiter — single groupBy
+    const openJobsGrouped = await prisma.jobOpening.groupBy({
+      by: ["ownerRecruiterUserId"],
+      where: {
+        status: JobOpeningStatus.open,
+        deletedAt: null,
+        ownerRecruiterUserId: { in: recruiterIds },
+      },
+      _count: { id: true },
+    });
+    const openJobsByUser = new Map(
+      openJobsGrouped
+        .filter((r) => r.ownerRecruiterUserId)
+        .map((r) => [r.ownerRecruiterUserId!, r._count.id])
+    );
+
+    return recruiters
+      .map((recruiter) => {
+        const candidates = candidatesByRecruiter.get(recruiter.id) ?? 0;
+        const interviews = interviewCountByRecruiter.get(recruiter.id) ?? 0;
+        const offers = offerCountByRecruiter.get(recruiter.id) ?? 0;
+        const accepted = acceptedByRecruiter.get(recruiter.id) ?? 0;
+        const hires = hiresByRecruiter.get(recruiter.id) ?? 0;
+        const tth = tthByRecruiter.get(recruiter.id);
+        const openJobs = openJobsByUser.get(recruiter.id) ?? 0;
+        const acceptanceRate = offers > 0 ? Math.round((accepted / offers) * 100) : 0;
+        const avgTimeToHire =
+          tth && tth.count > 0 ? Math.round(tth.totalDays / tth.count) : null;
 
         return {
           recruiterId: recruiter.id,
@@ -385,69 +548,81 @@ export const prismaAnalyticsRepository: AnalyticsRepository = {
           offers,
           hires,
           acceptanceRate,
-          avgTimeToHire: 0, // Simplified
+          avgTimeToHire,
         };
       })
-    );
-
-    return performance.filter((p) => p.openJobs > 0 || p.candidates > 0);
+      .filter((p) => p.openJobs > 0 || p.candidates > 0 || p.hires > 0 || p.offers > 0);
   },
 
   async getDepartmentAnalytics(filters) {
-    const departments = await prisma.jobOpening.groupBy({
-      by: ["department"],
-      where: {
-        department: { not: null },
-        deletedAt: null,
-      },
-      _count: true,
-    });
+    const dateFilter = buildDateFilter(filters.dateRange);
 
-    const analytics = await Promise.all(
-      departments.map(async (dept) => {
-        const [openPositions, filledPositions, offers] = await Promise.all([
-          prisma.jobOpening.count({
-            where: {
-              department: dept.department,
-              status: JobOpeningStatus.open,
-              deletedAt: null,
-            },
-          }),
-          prisma.jobOpening.count({
-            where: {
-              department: dept.department,
-              status: JobOpeningStatus.filled,
-              deletedAt: null,
-            },
-          }),
-          prisma.offer.count({
-            where: {
-              department: dept.department,
-              status: { not: OfferStatus.draft },
-            },
-          }),
-        ]);
+    const [openByDept, filledByDept, offersByDept, acceptedByDept] = await Promise.all([
+      prisma.jobOpening.groupBy({
+        by: ["department"],
+        where: {
+          department: { not: null },
+          deletedAt: null,
+          status: JobOpeningStatus.open,
+          ...(filters.department ? { department: filters.department } : {}),
+        },
+        _count: { id: true },
+      }),
+      prisma.jobOpening.groupBy({
+        by: ["department"],
+        where: {
+          department: { not: null },
+          deletedAt: null,
+          status: JobOpeningStatus.filled,
+          ...(filters.department ? { department: filters.department } : {}),
+        },
+        _count: { id: true },
+      }),
+      prisma.offer.groupBy({
+        by: ["department"],
+        where: {
+          department: { not: null },
+          status: { not: OfferStatus.draft },
+          ...(filters.department ? { department: filters.department } : {}),
+          ...(dateFilter.gte || dateFilter.lte ? { sentAt: dateFilter } : {}),
+        },
+        _count: { id: true },
+      }),
+      prisma.offer.groupBy({
+        by: ["department"],
+        where: {
+          department: { not: null },
+          status: OfferStatus.accepted,
+          ...(filters.department ? { department: filters.department } : {}),
+          ...(dateFilter.gte || dateFilter.lte ? { acceptedAt: dateFilter } : {}),
+        },
+        _count: { id: true },
+      }),
+    ]);
 
-        const acceptedOffers = await prisma.offer.count({
-          where: {
-            department: dept.department,
-            status: OfferStatus.accepted,
-          },
-        });
+    const deptSet = new Set<string>();
+    for (const row of [...openByDept, ...filledByDept, ...offersByDept, ...acceptedByDept]) {
+      if (row.department) deptSet.add(row.department);
+    }
 
-        const acceptanceRate = offers > 0 ? Math.round((acceptedOffers / offers) * 100) : 0;
+    const openMap = new Map(openByDept.map((r) => [r.department!, r._count.id]));
+    const filledMap = new Map(filledByDept.map((r) => [r.department!, r._count.id]));
+    const offerMap = new Map(offersByDept.map((r) => [r.department!, r._count.id]));
+    const acceptedMap = new Map(acceptedByDept.map((r) => [r.department!, r._count.id]));
 
+    return [...deptSet]
+      .sort()
+      .map((department) => {
+        const offers = offerMap.get(department) ?? 0;
+        const accepted = acceptedMap.get(department) ?? 0;
         return {
-          department: dept.department || "Unknown",
-          openPositions,
-          filledPositions,
+          department,
+          openPositions: openMap.get(department) ?? 0,
+          filledPositions: filledMap.get(department) ?? 0,
           offers,
-          acceptanceRate,
+          acceptanceRate: offers > 0 ? Math.round((accepted / offers) * 100) : 0,
         };
-      })
-    );
-
-    return analytics;
+      });
   },
 
   async getInterviewAnalytics(filters) {
@@ -499,37 +674,55 @@ export const prismaAnalyticsRepository: AnalyticsRepository = {
 
   async getOfferAnalytics(filters) {
     const dateFilter = buildDateFilter(filters.dateRange);
+    const now = new Date();
 
-    const [sent, accepted, declined, expired, withdrawn] = await Promise.all([
-      prisma.offer.count({
-        where: {
-          status: { not: OfferStatus.draft },
-          ...(dateFilter.gte || dateFilter.lte ? { sentAt: dateFilter } : {}),
-        },
-      }),
-      prisma.offer.count({
-        where: {
-          status: OfferStatus.accepted,
-          ...(dateFilter.gte || dateFilter.lte ? { acceptedAt: dateFilter } : {}),
-        },
-      }),
-      prisma.offer.count({
-        where: {
-          status: OfferStatus.declined,
-          ...(dateFilter.gte || dateFilter.lte ? { declinedAt: dateFilter } : {}),
-        },
-      }),
-      prisma.offer.count({
-        where: {
-          status: OfferStatus.expired,
-        },
-      }),
-      prisma.offer.count({
-        where: {
-          status: OfferStatus.withdrawn,
-        },
-      }),
-    ]);
+    const [draft, sent, accepted, declined, withdrawn, expiredReleased, expiredNoted] =
+      await Promise.all([
+        prisma.offer.count({
+          where: {
+            status: OfferStatus.draft,
+            ...(dateFilter.gte || dateFilter.lte ? { createdAt: dateFilter } : {}),
+          },
+        }),
+        prisma.offer.count({
+          where: {
+            status: OfferStatus.released,
+            OR: [{ expiresAt: null }, { expiresAt: { gte: now } }],
+            ...(dateFilter.gte || dateFilter.lte ? { sentAt: dateFilter } : {}),
+          },
+        }),
+        prisma.offer.count({
+          where: {
+            status: OfferStatus.accepted,
+            ...(dateFilter.gte || dateFilter.lte ? { acceptedAt: dateFilter } : {}),
+          },
+        }),
+        prisma.offer.count({
+          where: {
+            status: OfferStatus.declined,
+            NOT: { offerNotes: { contains: "Offer Expired" } },
+            ...(dateFilter.gte || dateFilter.lte ? { declinedAt: dateFilter } : {}),
+          },
+        }),
+        prisma.offer.count({
+          where: {
+            status: OfferStatus.withdrawn,
+            ...(dateFilter.gte || dateFilter.lte ? { withdrawnAt: dateFilter } : {}),
+          },
+        }),
+        prisma.offer.count({
+          where: {
+            status: OfferStatus.released,
+            expiresAt: { lt: now },
+          },
+        }),
+        prisma.offer.count({
+          where: {
+            status: OfferStatus.declined,
+            offerNotes: { contains: "Offer Expired" },
+          },
+        }),
+      ]);
 
     const revisionsData = await prisma.offerRevision.groupBy({
       by: ["offerId"],
@@ -543,7 +736,15 @@ export const prismaAnalyticsRepository: AnalyticsRepository = {
           ) / 10
         : 0;
 
-    return { sent, accepted, declined, expired, withdrawn, avgRevisionCount };
+    return {
+      draft,
+      sent,
+      accepted,
+      declined,
+      expired: expiredReleased + expiredNoted,
+      withdrawn,
+      avgRevisionCount,
+    };
   },
 
   async getSourceAnalytics(filters) {
@@ -558,61 +759,152 @@ export const prismaAnalyticsRepository: AnalyticsRepository = {
       _count: true,
     });
 
-    const analytics = await Promise.all(
-      sources.map(async (src) => {
-        const [applications, interviews, offers, hires] = await Promise.all([
-          prisma.application.count({
-            where: {
-              candidate: { source: src.source },
-              deletedAt: null,
-            },
-          }),
-          prisma.interview.count({
-            where: {
-              application: {
-                candidate: { source: src.source },
-              },
-            },
-          }),
-          prisma.offer.count({
-            where: {
-              application: {
-                candidate: { source: src.source },
-              },
-              status: { not: OfferStatus.draft },
-            },
-          }),
-          prisma.employeeConversionSnapshot.count({
-            where: {
-              candidate: { source: src.source },
-            },
-          }),
-        ]);
+    if (sources.length === 0) return [];
 
-        const conversionRate = applications > 0 ? Math.round((hires / applications) * 100) : 0;
+    const sourceValues = sources
+      .map((s) => s.source)
+      .filter((s): s is CandidateSource => s != null);
 
-        return {
-          source: src.source,
-          applications,
-          interviews,
-          offers,
-          hires,
-          conversionRate,
-        };
-      })
+    if (sourceValues.length === 0) {
+      return sources.map((src) => ({
+        source: src.source ?? "unknown",
+        applications: 0,
+        interviews: 0,
+        offers: 0,
+        hires: 0,
+        conversionRate: 0,
+      }));
+    }
+
+    const [applications, interviewApps, offerRows, hireRows] = await Promise.all([
+      prisma.application.groupBy({
+        by: ["source"],
+        where: {
+          deletedAt: null,
+          source: { in: sourceValues },
+        },
+        _count: true,
+      }),
+      prisma.application.findMany({
+        where: {
+          deletedAt: null,
+          source: { in: sourceValues },
+          interviews: { some: { deletedAt: null } },
+        },
+        select: {
+          source: true,
+          _count: { select: { interviews: true } },
+        },
+      }),
+      prisma.offer.findMany({
+        where: {
+          status: { not: OfferStatus.draft },
+          application: { source: { in: sourceValues }, deletedAt: null },
+        },
+        select: { application: { select: { source: true } } },
+      }),
+      prisma.employeeConversionSnapshot.findMany({
+        where: {
+          candidate: { source: { in: sourceValues } },
+        },
+        select: { candidate: { select: { source: true } } },
+      }),
+    ]);
+
+    const interviewCountBySource = new Map<string, number>();
+    for (const app of interviewApps) {
+      if (!app.source) continue;
+      interviewCountBySource.set(
+        app.source,
+        (interviewCountBySource.get(app.source) ?? 0) + app._count.interviews
+      );
+    }
+
+    const offerCountBySource = new Map<string, number>();
+    for (const o of offerRows) {
+      const src = o.application.source;
+      if (!src) continue;
+      offerCountBySource.set(src, (offerCountBySource.get(src) ?? 0) + 1);
+    }
+
+    const hireCountBySource = new Map<string, number>();
+    for (const h of hireRows) {
+      const src = h.candidate.source;
+      if (!src) continue;
+      hireCountBySource.set(src, (hireCountBySource.get(src) ?? 0) + 1);
+    }
+
+    const appCountBySource = new Map(
+      applications.filter((a) => a.source).map((a) => [a.source!, a._count])
     );
 
-    return analytics.sort((a, b) => b.hires - a.hires);
+    return sources
+      .map((src) => {
+        const source = src.source ?? "unknown";
+        const apps = appCountBySource.get(source) ?? 0;
+        const hireCount = hireCountBySource.get(source) ?? 0;
+        return {
+          source,
+          applications: apps,
+          interviews: interviewCountBySource.get(source) ?? 0,
+          offers: offerCountBySource.get(source) ?? 0,
+          hires: hireCount,
+          conversionRate: apps > 0 ? Math.round((hireCount / apps) * 100) : 0,
+        };
+      })
+      .sort((a, b) => b.hires - a.hires);
   },
 
   async getTimeMetrics(filters) {
-    // Simplified time metrics
-    return {
-      applicationToInterview: 7,
-      interviewToOffer: 5,
-      offerToHire: 14,
-      totalTimeToHire: 26,
-    };
+    const dateFilter = buildDateFilter(filters.dateRange);
+
+    const conversions = await prisma.employeeConversionSnapshot.findMany({
+      where: {
+        ...(dateFilter.gte || dateFilter.lte ? { convertedAt: dateFilter } : {}),
+      },
+      select: {
+        convertedAt: true,
+        applicationId: true,
+        application: {
+          select: { createdAt: true },
+        },
+        offer: {
+          select: {
+            acceptedAt: true,
+            sentAt: true,
+            releasedAt: true,
+          },
+        },
+      },
+    });
+
+    if (conversions.length === 0) {
+      return computeTimeToHireMetrics([]);
+    }
+
+    const appIds = conversions.map((c) => c.applicationId);
+    const firstInterviews = await prisma.interview.groupBy({
+      by: ["applicationId"],
+      where: {
+        applicationId: { in: appIds },
+        deletedAt: null,
+        scheduledStart: { not: null },
+      },
+      _min: { scheduledStart: true },
+    });
+    const interviewByApp = new Map(
+      firstInterviews.map((row) => [row.applicationId, row._min.scheduledStart])
+    );
+
+    return computeTimeToHireMetrics(
+      conversions.map((c) => ({
+        applicationCreatedAt: c.application.createdAt,
+        convertedAt: c.convertedAt,
+        firstInterviewAt: interviewByApp.get(c.applicationId) ?? null,
+        offerSentAt: c.offer.sentAt ?? c.offer.releasedAt ?? null,
+        offerAcceptedAt: c.offer.acceptedAt ?? null,
+      }))
+    );
   },
 
   async getTrendData(filters) {

@@ -10,6 +10,7 @@ import {
   declineOfferAction,
   withdrawOfferAction,
   duplicateOfferAction,
+  expireOfferAction,
 } from "@/actions/recruitment-offers";
 import {
   AlertDialog,
@@ -75,6 +76,15 @@ export function OfferDetailActions({ offer, userRole }: { offer: any; userRole: 
       const res = await duplicateOfferAction({}, { id: offer.id });
       if (res.error) setError(res.error);
       else if (res.offerId) router.push(`/admin/recruitment/offers/${res.offerId}`);
+    });
+  };
+
+  const handleExpire = () => {
+    setError(null);
+    startTransition(async () => {
+      const res = await expireOfferAction({}, { id: offer.id });
+      if (res.error) setError(res.error);
+      else router.refresh();
     });
   };
 
@@ -226,6 +236,44 @@ export function OfferDetailActions({ offer, userRole }: { offer: any; userRole: 
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+      )}
+
+      {offer.status === OfferStatus.released && isHrOrAdmin && (
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="font-semibold text-xs rounded-lg text-amber-700 hover:bg-amber-50"
+              disabled={isPending}
+            >
+              Mark Expired
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Expire Offer</AlertDialogTitle>
+              <AlertDialogDescription>
+                Mark this released offer as expired. The candidate will no longer be able to accept it.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleExpire}>Expire</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+
+      {offer.status === OfferStatus.accepted && isHrOrAdmin && (
+        <Button
+          size="sm"
+          className="font-semibold text-xs rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-subtle"
+          onClick={() => router.push(`/admin/recruitment/conversions/${offer.id}`)}
+          disabled={isPending}
+        >
+          Convert to Employee
+        </Button>
       )}
 
       {/* Duplicate Offer Button (always available) */}

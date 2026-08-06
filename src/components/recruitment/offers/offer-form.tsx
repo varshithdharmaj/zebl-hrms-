@@ -5,11 +5,24 @@ import { useRouter } from "next/navigation";
 import { createOfferAction, updateOfferAction } from "@/actions/recruitment-offers";
 import { Button } from "@/components/ui/button";
 
+interface OfferFormApplicationOption {
+  id: string;
+  candidate: {
+    firstName?: string | null;
+    lastName?: string | null;
+    fullName?: string | null;
+  };
+  jobOpening: {
+    title?: string | null;
+  };
+}
+
 interface OfferFormProps {
   mode: "create" | "edit";
+  // Serialized plain object from the server (no Prisma Decimals).
   offer?: any;
   applicationId?: string;
-  applications?: any[];
+  applications?: OfferFormApplicationOption[];
   employees: { id: number; name: string }[];
 }
 

@@ -5,42 +5,36 @@ import { OfferStatus } from "@/generated/prisma/enums";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-
-export type OfferListFilterState = {
-  q?: string;
-  status?: string;
-  department?: string;
-  jobOpeningId?: string;
-};
+import type { OfferListFilterState } from "@/lib/recruitment/offer/list-href";
 
 export function OfferFilters({
   filters,
-  departments,
   jobs,
+  recruiters,
 }: {
   filters: OfferListFilterState;
-  departments: readonly string[];
   jobs: readonly { id: string; title: string }[];
+  recruiters: readonly { id: string; email: string }[];
 }) {
   const [status, setStatus] = useState(filters.status ?? "all");
-  const [department, setDepartment] = useState(filters.department ?? "all");
   const [jobOpeningId, setJobOpeningId] = useState(filters.jobOpeningId ?? "all");
+  const [recruiterUserId, setRecruiterUserId] = useState(filters.recruiterUserId ?? "all");
 
   return (
     <form className="grid gap-4 rounded-xl border border-border bg-card p-5 shadow-subtle sm:grid-cols-2 md:grid-cols-5">
       <input type="hidden" name="status" value={status} />
-      <input type="hidden" name="department" value={department} />
       <input type="hidden" name="jobOpeningId" value={jobOpeningId} />
+      <input type="hidden" name="recruiterUserId" value={recruiterUserId} />
 
       <div className="space-y-1.5">
         <label htmlFor="q" className="block text-xs font-bold uppercase tracking-wider text-muted-foreground">
-          Search
+          Search Candidate
         </label>
         <Input
           id="q"
           name="q"
           defaultValue={filters.q ?? ""}
-          placeholder="Offer #, Candidate..."
+          placeholder="Name or offer #"
           className="h-10"
         />
       </div>
@@ -56,29 +50,28 @@ export function OfferFilters({
           <SelectContent>
             <SelectItem value="all">All Statuses</SelectItem>
             <SelectItem value={OfferStatus.draft}>Draft</SelectItem>
-            <SelectItem value={OfferStatus.manager_approval}>Manager Approval</SelectItem>
-            <SelectItem value={OfferStatus.hr_approval}>HR Approval</SelectItem>
             <SelectItem value={OfferStatus.released}>Sent</SelectItem>
             <SelectItem value={OfferStatus.accepted}>Accepted</SelectItem>
             <SelectItem value={OfferStatus.declined}>Declined</SelectItem>
             <SelectItem value={OfferStatus.withdrawn}>Withdrawn</SelectItem>
+            <SelectItem value="expired">Expired</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
       <div className="space-y-1.5">
         <span className="block text-xs font-bold uppercase tracking-wider text-muted-foreground">
-          Department
+          Job
         </span>
-        <Select value={department} onValueChange={setDepartment}>
-          <SelectTrigger className="h-10 bg-background" aria-label="Department filter">
-            <SelectValue placeholder="All Departments" />
+        <Select value={jobOpeningId} onValueChange={setJobOpeningId}>
+          <SelectTrigger className="h-10 bg-background" aria-label="Job filter">
+            <SelectValue placeholder="All Jobs" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Departments</SelectItem>
-            {departments.map((dept) => (
-              <SelectItem key={dept} value={dept}>
-                {dept}
+            <SelectItem value="all">All Jobs</SelectItem>
+            {jobs.map((job) => (
+              <SelectItem key={job.id} value={job.id}>
+                {job.title}
               </SelectItem>
             ))}
           </SelectContent>
@@ -87,17 +80,17 @@ export function OfferFilters({
 
       <div className="space-y-1.5">
         <span className="block text-xs font-bold uppercase tracking-wider text-muted-foreground">
-          Job Opening
+          Recruiter
         </span>
-        <Select value={jobOpeningId} onValueChange={setJobOpeningId}>
-          <SelectTrigger className="h-10 bg-background" aria-label="Job Opening filter">
-            <SelectValue placeholder="All Jobs" />
+        <Select value={recruiterUserId} onValueChange={setRecruiterUserId}>
+          <SelectTrigger className="h-10 bg-background" aria-label="Recruiter filter">
+            <SelectValue placeholder="All Recruiters" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Jobs</SelectItem>
-            {jobs.map((job) => (
-              <SelectItem key={job.id} value={job.id}>
-                {job.title}
+            <SelectItem value="all">All Recruiters</SelectItem>
+            {recruiters.map((user) => (
+              <SelectItem key={user.id} value={user.id}>
+                {user.email}
               </SelectItem>
             ))}
           </SelectContent>

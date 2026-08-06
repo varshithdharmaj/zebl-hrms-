@@ -1,13 +1,10 @@
 import Link from "next/link";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { getSessionOrThrow } from "@/lib/auth-guards";
 import { canAccessHRAdministration } from "@/lib/permissions";
 import { getCandidateCached, getEmployeeOptions } from "@/lib/recruitment/candidate";
 import { listInterviewsCached } from "@/lib/recruitment/interview/queries";
-import { listCommunicationsCached } from "@/lib/recruitment/communication";
 import { listApplicationsCached } from "@/lib/recruitment/application/queries";
-import { mergeCandidateRecruitmentTimeline } from "@/lib/recruitment/communication/candidate-timeline";
-import { toCommunicationThreadMessageView } from "@/components/recruitment/communications/mappers";
-import { RecruitmentScopeEngine } from "@/lib/recruitment/permissions/recruitment-scope-engine";
+import { RecruitmentPermissionService } from "@/lib/recruitment/permissions/permission-service";
 import { RecruitmentTimelineService } from "@/lib/recruitment/services/timeline-service";
 import { isRecruitmentDomainError } from "@/lib/recruitment/shared/errors";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
@@ -21,8 +18,9 @@ export default async function CandidateDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await requireHROrSuperAdminSession();
+  const session = await getSessionOrThrow();
   const { id } = await params;
+  const canManageCandidate = canAccessHRAdministration(session.role);
 
   let candidate;
   try {
@@ -72,7 +70,7 @@ export default async function CandidateDetailPage({
     );
   }
 
-  const [timeline, employees, interviewsResult, offers, communicationsResult, scope, applicationsResult] =
+  const [timeline, employees, interviewsResult, offers, applicationsResult, canWriteDiscussion] =
     await Promise.all([
       RecruitmentTimelineService.buildTimeline({
         candidateId: candidate.id,
@@ -101,18 +99,13 @@ export default async function CandidateDetailPage({
           createdAt: "desc",
         },
       }),
-      listCommunicationsCached(session, {
-        candidateId: candidate.id,
-        page: 1,
-        pageSize: 50,
-      }),
-      RecruitmentScopeEngine.getScope(session),
       listApplicationsCached(
         session,
         { candidateId: candidate.id },
         { page: 1, pageSize: 50 },
         { field: "createdAt", direction: "desc" }
       ),
+      RecruitmentPermissionService.canWriteCandidateDiscussion(session, candidate.id),
     ]);
 
   const interviews = interviewsResult.items;
@@ -125,21 +118,6 @@ export default async function CandidateDetailPage({
     ),
     createdAt: item.createdAt as Date | string,
   }));
-  const communications = communicationsResult.items
-    .map(toCommunicationThreadMessageView)
-    .sort((a, b) => {
-      const aTime = new Date(a.sentAt ?? a.createdAt).getTime();
-      const bTime = new Date(b.sentAt ?? b.createdAt).getTime();
-      return bTime - aTime;
-    });
-
-  const mergedTimeline = mergeCandidateRecruitmentTimeline({
-    timeline,
-    communications: communicationsResult.items,
-  });
-
-  const canWriteCommunications =
-    canAccessHRAdministration(session.role) || scope.capabilities.isRecruiterOnJob;
 
   return (
     <div className="space-y-6 lg:space-y-8">
@@ -148,14 +126,16 @@ export default async function CandidateDetailPage({
         description={
           candidate.currentTitle && candidate.currentCompany
             ? `${candidate.currentTitle} at ${candidate.currentCompany}`
-            : "Candidate workspace — profile, applications, docs, and outreach."
+            : "Candidate workspace — profile, applications, docs, and discussion."
         }
         backHref="/admin/recruitment/candidates"
         backLabel="Back to candidates"
         action={
-          <Button asChild className="shadow-subtle font-semibold">
-            <Link href={`/admin/recruitment/candidates/${candidate.id}/edit`}>Edit</Link>
-          </Button>
+          canManageCandidate ? (
+            <Button asChild className="shadow-subtle font-semibold">
+              <Link href={`/admin/recruitment/candidates/${candidate.id}/edit`}>Edit</Link>
+            </Button>
+          ) : undefined
         }
       />
 
@@ -185,9 +165,8 @@ export default async function CandidateDetailPage({
               }
             : null,
         }))}
-        communications={communications}
-        mergedTimeline={mergedTimeline}
-        canWriteCommunications={canWriteCommunications}
+        canWriteDiscussion={canWriteDiscussion}
+        canManageCandidate={canManageCandidate}
       />
     </div>
   );

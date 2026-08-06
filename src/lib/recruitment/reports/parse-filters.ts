@@ -3,6 +3,7 @@ import {
   recruitmentReportFiltersSchema,
   type RecruitmentReportFiltersInput,
 } from "./filter-schema";
+import { getLast7DaysRange } from "./default-date-range";
 
 function parseDate(value: string | undefined): Date | undefined {
   if (!value?.trim()) return undefined;
@@ -18,10 +19,14 @@ export function toReportFilters(
     normalized[key] = Array.isArray(value) ? value[0] : value;
   }
   const parsed = recruitmentReportFiltersSchema.parse(normalized);
+  const startDate = parseDate(parsed.startDate);
+  const endDate = parseDate(parsed.endDate);
+  const defaults = getLast7DaysRange();
+
   return {
     dateRange: {
-      startDate: parseDate(parsed.startDate),
-      endDate: parseDate(parsed.endDate),
+      startDate: startDate ?? defaults.startDate,
+      endDate: endDate ?? defaults.endDate,
     },
     department: parsed.department || undefined,
     recruiterUserId: parsed.recruiterUserId || undefined,
@@ -30,7 +35,7 @@ export function toReportFilters(
     employmentType: parsed.employmentType || undefined,
     status: parsed.status || undefined,
     search: parsed.search || undefined,
-    days: parsed.days ?? 30,
+    days: parsed.days ?? 7,
   };
 }
 

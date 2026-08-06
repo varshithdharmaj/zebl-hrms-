@@ -1,6 +1,6 @@
 # ZEBL AMS — day-wise development log
 
-This log summarizes repository activity from Git history and the current working tree. It describes delivered outcomes rather than every changed file.
+This log summarizes repository activity from Git history and the current working tree (through 6 August 2026). It describes delivered outcomes rather than every changed file.
 
 ## 24 May 2026 — Initial application and UI foundation
 
@@ -94,9 +94,7 @@ Commit: `a4a6d25`
 
 Commits: `0c8b168`, `ea60b47`
 
-## 29 July 2026 — Multi-format attendance import and CI automation
-
-### Committed foundation
+## 29 July 2026 — Multi-format attendance import foundation
 
 - Extended attendance upload support for Excel and PDF reports.
 - Added report/date detection so single-day and multi-day uploads can resolve attendance dates correctly.
@@ -106,31 +104,72 @@ Commits: `0c8b168`, `ea60b47`
 
 Commit: `b9e751f`
 
-### Current working-tree work
+## 31 July 2026 — Leave workflow, heatmap, and approval refinements
 
-- Added conservative report classification for `EXCEL_DAILY`, `PDF_DAILY`, `PDF_SUMMARY`, and unknown reports.
-- Added single-pass structured PDF extraction while preserving the existing daily-PDF text path.
-- Added an eSSL Summary PDF state-machine parser with per-row dates, repeated-header handling, employee sections, and totals skipping.
-- Added parse-once preview/validation with batched employee and duplicate checks, confirm/cancel actions, and a 30-minute user-scoped cache.
-- Made the preview workflow optional through `ENABLE_ATTENDANCE_IMPORT_PREVIEW`; direct import remains the default.
-- Added upload metadata/date-detection panels and React hooks/actions for detection and preview.
-- Added unit tests and anonymized fixtures for report detection, PDF extraction, Summary parsing, preview actions, feature flags, row dates, and upload UX.
-- Added GitHub Actions CI for Prisma validation, typecheck, lint, tests, and production builds.
-- Added CodeQL security scanning and weekly Dependabot updates.
-- Added architecture, contribution, CI, and phase-by-phase attendance-import documentation.
+- Strengthened leave-workflow routing, step authorization, approver role labels, and pending-approval handling.
+- Improved notification service behavior and approval-token consumption versioning.
+- Refined the employee attendance heatmap UI/logic and day-label handling.
+- Tightened manager assignment, account lifecycle, org helpers, and related unit tests.
+- Updated workflow and architecture documentation.
 
-Current status: these CI, attendance-import phase, test, and documentation files are present in the working tree but are not yet committed.
+Commits: `2310481`, `f37f61d`
+
+## 1–2 August 2026 — No repository commits
+
+- No Git commits recorded for these dates.
+
+## 3 August 2026 — Attendance import productionization (PDF Daily, jobs, deploy fixes)
+
+- Merged the previously in-progress attendance-import phases into `main`: report detection, structured PDF extraction, eSSL Summary parser, optional preview (`ENABLE_ATTENDANCE_IMPORT_PREVIEW`), upload UX panels, fixtures, and phase docs.
+- Added GitHub Actions CI, CodeQL, Dependabot, and `docs/github-actions.md`.
+- Added eSSL Daily Basic Report PDF import; auto-create employees on PDF import (parity with Excel); auto-detect attendance date from Daily PDF when present.
+- Aligned local Upload Attendance UI with the production experience.
+- Fixed large-PDF import transaction timeouts; added resumable chunked attendance-import jobs with runtime schema ensure.
+- Targeted Supabase Postgres for the import-jobs schema path; run `prisma migrate deploy` on Vercel builds.
+- Fixed Vercel 500s from missing Prisma query engine; Cloudflare next-build enums shim / upload-form restore; skip `DATABASE_URL` prebuild check on Cloudflare CI.
+- Fixed `compressPayload` Buffer vs `Uint8Array` (ArrayBuffer-backed) for Prisma `Bytes`, with matching tests.
+- Restored missing attendance-import modules required by `main`; accepted optional `previewEnabled` on `UploadForm` for deploy typecheck.
+
+Commits: `bce30ae`, `b407546`, `aa7758c`, `7a9775a`, `731ae39`, `74ce967`, `013672d`, `5bf243b`, `b09b9d2`, `d9b08ff`, `73f75e9`, `833796b`, `2ec6e70`, `85ec57a`, `015473e`, `5d7a45c`
+
+## 4 August 2026 — Import-job schema targeting and duplicate-skip UX
+
+- Pointed attendance import jobs schema work at Supabase Postgres.
+- Speed up duplicate skips during import and surface skipped employee codes in results/UX.
+
+Commits: `02f1d6e`, `ccc3d36`
+
+## 5 August 2026 — Recruitment module foundation
+
+- Authored recruitment product/engineering docs: PRD, architecture, schema design, technical spec, and implementation blueprint.
+- Added Prisma recruitment schema/migrations and demo seed/reset tooling for jobs, candidates, applications, interviews, offers, conversions, communications, documents, and analytics.
+- Shipped admin recruitment routes and server actions for candidates, jobs, applications, interviews, offers, communications, documents, conversions, reports, and resume import.
+- Added resume storage and import-review flow as the initial intake path.
+- Bundled CI/CodeQL/Dependabot and attendance-import phase docs into this checkpoint where still outstanding.
+- Added progress-report baseline PDF and day-wise development log.
+
+Commit: `b94e9f6`
+
+## 6 August 2026 — Recruitment UX deepening
+
+- Expanded candidate intake UX: new-candidate flow, method chooser, resume upload panel, resume conflict dialog, parsing placeholder, and addable custom fields.
+- Extended offer flows: revision panel, list filters/forms/PDF viewer refinements, offer PDF API route work, and revision/PDF tests.
+- Advanced conversion handoff: preview/success dialogs, document transfer service, and conversion success route.
+- Built dashboard/report surfaces: funnel counts, recruiter performance, time-to-hire metrics, report hub/filters, and sprint-3 smoke/dashboard tests.
+- Hardened resume-import pipeline: file validation, merge engine, parser modules, and matching unit tests.
+- Continued service/repository/action/schema updates across candidates, applications, interviews, offers, conversions, permissions, analytics, and audit.
+- Updated progress-report PDF and package dependencies as needed for the above.
 
 ## Current project state
 
-- Core HR areas: attendance, employees, leave workflows, payroll-related attendance views, notifications, helpdesk, and account management.
+- Core HR areas: attendance, employees, leave workflows, payroll-related attendance views, notifications, helpdesk, account management, and recruitment (hiring workspace).
 - Security: role-based access, login history, active sessions, revocation, password changes, audit-oriented workflows, and security dashboards.
-- Infrastructure: PostgreSQL/Supabase via Prisma, Vercel and Cloudflare/OpenNext deployment support, CI, CodeQL, and Dependabot.
-- Attendance ingestion: daily Excel, daily PDF, and known-layout eSSL Summary PDF support, including multi-date rows and optional preview.
-- Documentation: architecture, development setup, deployment, database/migrations, authentication, integrations, notifications, workflows, CI, and attendance-import phases.
+- Infrastructure: PostgreSQL/Supabase via Prisma, Vercel and Cloudflare/OpenNext deployment support, CI, CodeQL, Dependabot, and resumable attendance-import jobs.
+- Attendance ingestion: daily Excel, daily PDF (including eSSL Daily Basic), eSSL Summary PDF, multi-date rows, optional preview, chunked jobs, and duplicate-skip reporting.
+- Recruitment: jobs → candidates/resume import → applications/pipeline → interviews → offers → employee conversion, plus communications, documents, analytics/reports, and deepened intake/offer/conversion/dashboard UX.
+- Documentation: architecture, development setup, deployment, database/migrations, authentication, integrations, notifications, workflows, CI, attendance-import phases, and recruitment PRD/architecture/schema/tech/blueprint.
 
 ## Source notes
 
-- Dates and committed outcomes were derived from repository commits through 29 July 2026.
-- The 29 July “Current working-tree work” section was derived from uncommitted files currently visible to Git.
-- This log should be updated when major work is merged; move working-tree items into the committed section after commit.
+- Dates and committed outcomes were derived from repository commits through 6 August 2026.
+- This log should be updated when major work is merged.

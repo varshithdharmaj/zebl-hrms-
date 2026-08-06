@@ -85,7 +85,7 @@ export default async function RecruitmentCandidatesPage({
         description="Track and manage candidate profiles, resumes, and recruitment history."
         action={
           <Button asChild>
-            <Link href="/admin/recruitment/candidates/new">New candidate</Link>
+            <Link href="/admin/recruitment/candidates/new">Add Candidate</Link>
           </Button>
         }
       />

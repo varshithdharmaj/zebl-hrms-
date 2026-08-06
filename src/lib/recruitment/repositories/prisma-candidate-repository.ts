@@ -161,7 +161,40 @@ function mapDocument(row: any): CandidateDocumentView {
   };
 }
 
-function mapNote(row: any): CandidateNoteView {
+type NoteAuthorRow = {
+  email: string;
+  role: string;
+  profilePhotoUrl: string | null;
+  employee: { name: string } | null;
+};
+
+type NoteRow = {
+  id: string;
+  candidateId: string;
+  body: string;
+  visibility: NoteVisibility;
+  isPinned: boolean;
+  isResolved: boolean;
+  authorUserId: string;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+  content: string | null;
+  author?: NoteAuthorRow | null;
+};
+
+function noteRoleLabel(role: string | null | undefined): string | null {
+  if (role === "hr") return "HR";
+  if (role === "super_admin") return "Super Admin";
+  return null;
+}
+
+function mapNote(row: NoteRow): CandidateNoteView {
+  const authorEmail = row.author?.email ?? "";
+  const authorName =
+    row.author?.employee?.name?.trim() ||
+    authorEmail ||
+    "Unknown";
   return {
     id: row.id,
     candidateId: row.candidateId,
@@ -170,6 +203,10 @@ function mapNote(row: any): CandidateNoteView {
     isPinned: row.isPinned,
     isResolved: row.isResolved,
     authorUserId: row.authorUserId,
+    authorName,
+    authorEmail,
+    avatarUrl: row.author?.profilePhotoUrl ?? null,
+    roleLabel: noteRoleLabel(row.author?.role),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     deletedAt: row.deletedAt,
@@ -261,7 +298,31 @@ const detailInclude = {
   projects: { orderBy: { sortOrder: "asc" } },
   certifications: true,
   documents: { where: { deletedAt: null } },
-  notes: { where: { deletedAt: null }, orderBy: { createdAt: "desc" } },
+  notes: {
+    where: { deletedAt: null },
+    orderBy: { createdAt: "desc" },
+    include: {
+      author: {
+        select: {
+          email: true,
+          role: true,
+          profilePhotoUrl: true,
+          employee: { select: { name: true } },
+        },
+      },
+    },
+  },
+} as const;
+
+const noteAuthorInclude = {
+  author: {
+    select: {
+      email: true,
+      role: true,
+      profilePhotoUrl: true,
+      employee: { select: { name: true } },
+    },
+  },
 } as const;
 
 function scopeWhere(scope: RecruitmentScope): Prisma.CandidateWhereInput {
@@ -1184,6 +1245,7 @@ export const prismaCandidateRepository: CandidateRepository = {
         isPinned: data.isPinned ?? false,
         isResolved: data.isResolved ?? false,
       },
+      include: noteAuthorInclude,
     });
     return mapNote(row);
   },

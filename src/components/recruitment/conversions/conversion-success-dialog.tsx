@@ -54,15 +54,15 @@ export function ConversionSuccessDialog({
         </div>
 
         <DialogFooter className="sm:justify-between gap-2">
-          <Link href="/admin/recruitment/pipeline?focus=conversions" className="w-full sm:w-auto">
+          <Link href="/admin/recruitment/conversions" className="w-full sm:w-auto">
             <Button variant="outline" size="sm" className="w-full text-xs rounded-lg">
-              Back to Workspace
+              Back to Conversions
             </Button>
           </Link>
           {employeeId && (
-            <Link href={`/admin/employees`} className="w-full sm:w-auto">
+            <Link href={`/admin/employees/${employeeId}`} className="w-full sm:w-auto">
               <Button size="sm" className="w-full text-xs rounded-lg gap-1.5 font-semibold">
-                <User className="h-4 w-4" /> View Employee Directory <ArrowRight className="h-3.5 w-3.5" />
+                <User className="h-4 w-4" /> Open Employee Profile <ArrowRight className="h-3.5 w-3.5" />
               </Button>
             </Link>
           )}

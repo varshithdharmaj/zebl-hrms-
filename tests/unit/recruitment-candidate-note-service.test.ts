@@ -14,6 +14,8 @@ import type { CandidateDetail, CandidateNoteView } from "@/lib/recruitment/candi
 import { RecruitmentTimelineService } from "@/lib/recruitment/services/timeline-service";
 import { writeAuditLog } from "@/lib/audit";
 import { RecruitmentScopeEngine } from "@/lib/recruitment/permissions/recruitment-scope-engine";
+import { unrestrictedRecruitmentScope } from "@/lib/recruitment/types/scope";
+import type { RecruitmentScope } from "@/lib/recruitment/types/scope";
 
 vi.mock("@/lib/recruitment/config/feature-flags", () => ({
   isRecruitmentModuleEnabled: () => true,
@@ -64,13 +66,62 @@ const hrSession: SessionUser = {
   authProvider: "local",
 };
 
+const superAdminSession: SessionUser = {
+  ...hrSession,
+  id: "user-sa",
+  email: "sa@example.com",
+  role: "super_admin",
+  employeeId: 9,
+  employeeName: "Super Admin",
+};
+
 const employeeSession: SessionUser = {
   ...hrSession,
   id: "user-emp",
   email: "emp@example.com",
   role: "employee",
   employeeId: 2,
+  employeeName: "Employee User",
 };
+
+const recruiterSession: SessionUser = {
+  ...employeeSession,
+  id: "user-recruiter",
+  email: "recruiter@example.com",
+  employeeId: 3,
+  employeeName: "Recruiter User",
+};
+
+const hiringManagerSession: SessionUser = {
+  ...employeeSession,
+  id: "user-hm",
+  email: "hm@example.com",
+  employeeId: 4,
+  employeeName: "Hiring Manager",
+};
+
+function assignedScope(
+  overrides: {
+    jobOpeningIds?: readonly string[];
+    applicationIds?: readonly string[];
+    candidateIds?: readonly string[];
+    capabilities?: Partial<RecruitmentScope["capabilities"]>;
+  } = {}
+): RecruitmentScope {
+  return {
+    mode: "assigned",
+    jobOpeningIds: overrides.jobOpeningIds ?? ["job-1"],
+    applicationIds: overrides.applicationIds ?? ["app-1"],
+    candidateIds: overrides.candidateIds ?? ["cand-1"],
+    capabilities: {
+      isRecruiterOnJob: false,
+      isHiringManager: false,
+      isTeamLead: false,
+      isInterviewer: false,
+      ...overrides.capabilities,
+    },
+  };
+}
 
 function baseCandidate(overrides: Partial<CandidateDetail> = {}): CandidateDetail {
   return {
@@ -136,6 +187,10 @@ const sampleNote: CandidateNoteView = {
   isPinned: false,
   isResolved: false,
   authorUserId: "user-hr",
+  authorName: "HR User",
+  authorEmail: "hr@example.com",
+  avatarUrl: null,
+  roleLabel: "HR",
   createdAt: new Date(),
   updatedAt: new Date(),
   deletedAt: null,
@@ -151,10 +206,12 @@ describe("CandidateService.addCandidateNote", () => {
       addNote: vi.fn(async () => sampleNote),
     } as unknown as CandidateRepository;
 
-    vi.spyOn(RecruitmentScopeEngine, "canManageCandidate").mockResolvedValue(true);
+    vi.spyOn(RecruitmentScopeEngine, "getScope").mockResolvedValue(
+      unrestrictedRecruitmentScope()
+    );
   });
 
-  it("successfully adds a note with timeline and audit", async () => {
+  it("allows HR to add discussion", async () => {
     const service = createCandidateService(mockRepo);
     const note = await service.addCandidateNote(hrSession, {
       candidateId: "cand-1",
@@ -162,6 +219,7 @@ describe("CandidateService.addCandidateNote", () => {
     });
 
     expect(note.id).toBe("note-1");
+    expect(note.authorName).toBe("HR User");
     expect(mockRepo.addNote).toHaveBeenCalledWith(
       "cand-1",
       expect.objectContaining({
@@ -186,7 +244,71 @@ describe("CandidateService.addCandidateNote", () => {
     );
   });
 
-  it("denies permission for non-HR sessions", async () => {
+  it("allows Super Admin to add discussion", async () => {
+    const service = createCandidateService(mockRepo);
+    await expect(
+      service.addCandidateNote(superAdminSession, {
+        candidateId: "cand-1",
+        body: "SA note",
+      })
+    ).resolves.toMatchObject({ id: "note-1" });
+    expect(mockRepo.addNote).toHaveBeenCalled();
+  });
+
+  it("allows assigned recruiter to add discussion", async () => {
+    vi.spyOn(RecruitmentScopeEngine, "getScope").mockResolvedValue(
+      assignedScope({
+        capabilities: { isRecruiterOnJob: true },
+      })
+    );
+    const service = createCandidateService(mockRepo);
+    await expect(
+      service.addCandidateNote(recruiterSession, {
+        candidateId: "cand-1",
+        body: "Recruiter note",
+      })
+    ).resolves.toMatchObject({ id: "note-1" });
+  });
+
+  it("allows hiring manager in scope to add discussion", async () => {
+    vi.spyOn(RecruitmentScopeEngine, "getScope").mockResolvedValue(
+      assignedScope({
+        capabilities: { isHiringManager: true },
+      })
+    );
+    const service = createCandidateService(mockRepo);
+    await expect(
+      service.addCandidateNote(hiringManagerSession, {
+        candidateId: "cand-1",
+        body: "HM feedback",
+      })
+    ).resolves.toMatchObject({ id: "note-1" });
+  });
+
+  it("denies hiring manager outside candidate scope", async () => {
+    vi.spyOn(RecruitmentScopeEngine, "getScope").mockResolvedValue(
+      assignedScope({
+        candidateIds: ["other-cand"],
+        capabilities: { isHiringManager: true },
+      })
+    );
+    const service = createCandidateService(mockRepo);
+    await expect(
+      service.addCandidateNote(hiringManagerSession, {
+        candidateId: "cand-1",
+        body: "Out of scope",
+      })
+    ).rejects.toThrow(PermissionError);
+    expect(mockRepo.addNote).not.toHaveBeenCalled();
+  });
+
+  it("denies unauthorized employee", async () => {
+    vi.spyOn(RecruitmentScopeEngine, "getScope").mockResolvedValue(
+      assignedScope({
+        candidateIds: [],
+        capabilities: {},
+      })
+    );
     const service = createCandidateService(mockRepo);
     await expect(
       service.addCandidateNote(employeeSession, {
@@ -195,6 +317,17 @@ describe("CandidateService.addCandidateNote", () => {
       })
     ).rejects.toThrow(PermissionError);
     expect(mockRepo.addNote).not.toHaveBeenCalled();
+  });
+
+  it("returns author name from repository note view", async () => {
+    const service = createCandidateService(mockRepo);
+    const note = await service.addCandidateNote(hrSession, {
+      candidateId: "cand-1",
+      body: "Author check",
+    });
+    expect(note.authorName).toBe("HR User");
+    expect(note.authorEmail).toBe("hr@example.com");
+    expect(note.roleLabel).toBe("HR");
   });
 
   it("fails validation when body is empty", async () => {
@@ -220,19 +353,6 @@ describe("CandidateService.addCandidateNote", () => {
         body: "Will fail in repo",
       })
     ).rejects.toThrow("db write failed");
-  });
-
-  it("throws when candidate is outside scope", async () => {
-    vi.spyOn(RecruitmentScopeEngine, "canManageCandidate").mockResolvedValue(false);
-    const service = createCandidateService(mockRepo);
-
-    await expect(
-      service.addCandidateNote(hrSession, {
-        candidateId: "cand-1",
-        body: "Out of scope",
-      })
-    ).rejects.toThrow(PermissionError);
-    expect(mockRepo.addNote).not.toHaveBeenCalled();
   });
 
   it("throws when candidate is not found", async () => {

@@ -91,6 +91,8 @@ export const createCandidateSchema = z.object({
   dateOfBirth: dateSchema,
   location: optionalTrimmed,
   preferredLocation: optionalTrimmed,
+  /** Form convenience — mapped to CandidatePersonal.nationality in service */
+  nationality: optionalTrimmed,
   currentCompany: optionalTrimmed,
   currentTitle: optionalTrimmed,
   linkedinUrl: optionalTrimmed,
@@ -160,6 +162,6 @@ export const addCandidateNoteSchema = z.object({
   visibility: z.nativeEnum(NoteVisibility).optional().default(NoteVisibility.team),
 });
 
-export type AddCandidateNoteInput = z.infer<typeof addCandidateNoteSchema>;
+export type AddCandidateNoteInput = z.input<typeof addCandidateNoteSchema>;
 export type CreateCandidateInput = z.infer<typeof createCandidateSchema>;
 export type UpdateCandidateInput = z.infer<typeof updateCandidateSchema>;

@@ -11,7 +11,11 @@ import { getEmployeeOptions } from "@/lib/recruitment/candidate";
 import { listInterviewsCached } from "@/lib/recruitment/interview/queries";
 import { prisma } from "@/lib/prisma";
 import { ApplicationStatus, RecruitmentPipelineStage } from "@/generated/prisma/enums";
-import { MAX_PAGE_SIZE } from "@/lib/recruitment/shared/pagination";
+import {
+  MAX_PAGE_SIZE,
+  PIPELINE_BOARD_MAX_ITEMS,
+  normalizePipelineBoardTake,
+} from "@/lib/recruitment/shared/pagination";
 import type { PipelineDrawerApplication } from "@/components/recruitment/applications/application-pipeline-drawer";
 
 export default async function RecruitmentPipelinePage({
@@ -24,6 +28,8 @@ export default async function RecruitmentPipelinePage({
 
   const view = raw.view === "list" ? "list" : "board";
   const applicationId = typeof raw.applicationId === "string" ? raw.applicationId : undefined;
+  const boardPage = Math.max(1, Number(typeof raw.page === "string" ? raw.page : "1") || 1);
+  const boardTake = normalizePipelineBoardTake(boardPage);
 
   const filters = {
     q: typeof raw.q === "string" ? raw.q : undefined,
@@ -40,6 +46,11 @@ export default async function RecruitmentPipelinePage({
       : (filters.currentStage as RecruitmentPipelineStage);
   const jobFilter = filters.jobOpeningId === "all" ? undefined : filters.jobOpeningId;
 
+  const listPagination =
+    view === "board"
+      ? { page: 1, pageSize: boardTake.take }
+      : { page: 1, pageSize: MAX_PAGE_SIZE };
+
   const [result, employeeOptions, jobs, selectedDetail, selectedInterviews] = await Promise.all([
     listApplicationsCached(
       session,
@@ -49,8 +60,9 @@ export default async function RecruitmentPipelinePage({
         currentStage: stageFilter,
         jobOpeningId: jobFilter,
       },
-      { page: 1, pageSize: MAX_PAGE_SIZE },
-      { field: "createdAt", direction: "desc" }
+      listPagination,
+      { field: "createdAt", direction: "desc" },
+      view === "board" ? { maxPageSize: PIPELINE_BOARD_MAX_ITEMS } : undefined
     ),
     getEmployeeOptions(),
     prisma.jobOpening.findMany({
@@ -132,7 +144,7 @@ export default async function RecruitmentPipelinePage({
     <div className="space-y-6 lg:space-y-8">
       <WorkspacePageHeader
         title="Pipeline"
-        description="Move candidates from applied to joined. Interviews, offers, and conversions live on each card."
+        description="Move candidates through hiring stages. Interviews, offers, and Convert to Employee live on each card. Joined is for converted hires only."
         action={
           <Button asChild className="font-semibold shadow-subtle">
             <Link href="/admin/recruitment/applications/new">New Application</Link>
@@ -149,6 +161,32 @@ export default async function RecruitmentPipelinePage({
             employeeOptions={employeeOptions}
             selectedApplication={selectedApplication}
           />
+          <div className="flex flex-col items-center gap-2 pt-2">
+            <p className="text-xs text-muted-foreground">
+              Showing {result.items.length} of {result.total} applications
+            </p>
+            {boardTake.hasMoreCapacity && result.total > result.items.length ? (
+              <Button asChild variant="outline" size="sm" className="font-semibold text-xs">
+                <Link
+                  href={`/admin/recruitment/pipeline?${new URLSearchParams({
+                    ...(filters.q ? { q: filters.q } : {}),
+                    ...(filters.status !== "all" ? { status: filters.status } : {}),
+                    ...(filters.currentStage !== "all"
+                      ? { currentStage: filters.currentStage }
+                      : {}),
+                    ...(filters.jobOpeningId !== "all"
+                      ? { jobOpeningId: filters.jobOpeningId }
+                      : {}),
+                    view: "board",
+                    page: String(boardPage + 1),
+                    ...(applicationId ? { applicationId } : {}),
+                  }).toString()}`}
+                >
+                  Load more
+                </Link>
+              </Button>
+            ) : null}
+          </div>
         </Suspense>
       ) : (
         <ApplicationTable applications={result.items} employeeOptions={employeeOptions} />

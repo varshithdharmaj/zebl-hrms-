@@ -27,8 +27,10 @@ vi.mock("@/lib/prisma", () => ({
         reportingManagerId: 10,
         employmentType: "Full-time",
         grade: "L1",
+        offerPdfKey: "offers/off-1/pdf/offer.pdf",
         application: {
           id: "app-1",
+          currentStage: RecruitmentPipelineStage.offer,
           candidate: {
             id: "cand-1",
             fullName: "John Doe",
@@ -44,10 +46,12 @@ vi.mock("@/lib/prisma", () => ({
         },
       })),
       count: vi.fn(async () => 0),
+      findMany: vi.fn(async () => []),
     },
     employeeConversionSnapshot: {
       findUnique: vi.fn(async () => null),
       count: vi.fn(async () => 0),
+      findMany: vi.fn(async () => []),
     },
     employee: {
       count: vi.fn(async () => 1), // Reporting manager exists
@@ -59,8 +63,8 @@ vi.mock("@/lib/recruitment/shared/after-commit", () => ({
   createAfterCommitBuffer: () => {
     const events: unknown[] = [];
     return {
-      push: (e: unknown) => events.push(e),
-      publishAll: vi.fn(async () => undefined),
+      enqueue: (e: unknown) => events.push(e),
+      flush: vi.fn(async () => undefined),
       get size() {
         return events.length;
       },
@@ -69,13 +73,35 @@ vi.mock("@/lib/recruitment/shared/after-commit", () => ({
 }));
 
 vi.mock("@/lib/recruitment/shared/transaction", () => ({
-  withRecruitmentTransaction: async <T>(work: (tx: any) => Promise<T>) => {
+  withRecruitmentTransaction: async <T>(work: (tx: unknown) => Promise<T>) => {
     return work({
       employee: {
         create: vi.fn(async () => ({ id: 101 })),
       },
+      applicationStageHistory: {
+        create: vi.fn(async () => ({ id: "hist-1" })),
+      },
+      candidateDocument: {
+        findFirst: vi.fn(async () => ({
+          id: "doc-1",
+          fileName: "resume.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 10,
+          storageKey: "candidates/cand-1/documents/resume.pdf",
+        })),
+      },
     });
   },
+}));
+
+vi.mock("@/lib/recruitment/storage", () => ({
+  getRecruitmentStorage: () => ({
+    save: vi.fn(async () => undefined),
+    read: vi.fn(async () => Buffer.from("resume")),
+    delete: vi.fn(async () => undefined),
+    exists: vi.fn(async () => true),
+    getMetadata: vi.fn(async () => null),
+  }),
 }));
 
 vi.mock("@/lib/recruitment/services/timeline-service", () => ({
@@ -179,9 +205,43 @@ describe("EmployeeConversionService", () => {
     });
 
     expect(result.employeeId).toBe(101);
-    expect(mockRepo.convert).toHaveBeenCalled();
+    expect(mockRepo.convert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mappedFields: expect.objectContaining({
+          employeeDocuments: expect.arrayContaining([
+            expect.objectContaining({ kind: "resume" }),
+            expect.objectContaining({ kind: "offer_letter" }),
+          ]),
+        }),
+      }),
+      expect.anything()
+    );
     expect(mockRepo.updateApplication).toHaveBeenCalledWith("app-1", ApplicationStatus.hired, RecruitmentPipelineStage.hired, expect.any(Object));
     expect(mockRepo.updateCandidate).toHaveBeenCalledWith("cand-1", CandidateStatus.hired, 101, expect.any(Object));
+  });
+
+  it("rolls back before employee create when duplicate code/email exists", async () => {
+    mockRepo.employeeExists = vi.fn(async () => true);
+    const service = createEmployeeConversionService(mockRepo);
+    await expect(
+      service.convertEmployee(hrSession, {
+        offerId: "off-1",
+        employeeCode: "EMP-1024",
+        name: "John Doe",
+        email: "john.doe@example.com",
+        phone: "1234567890",
+        department: "Engineering",
+        designation: "Software Engineer",
+        managerId: 10,
+        employmentType: "Full-time",
+        workLocation: "Bangalore",
+        joiningDate: "2026-09-01",
+        grade: "L1",
+        ctc: 1200000,
+      })
+    ).rejects.toThrow(RecruitmentDomainError);
+    expect(mockRepo.convert).not.toHaveBeenCalled();
+    expect(mockRepo.updateApplication).not.toHaveBeenCalled();
   });
 
   it("prevents duplicate conversion if snapshot already exists", async () => {

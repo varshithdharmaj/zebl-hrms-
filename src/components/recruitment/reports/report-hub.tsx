@@ -4,7 +4,6 @@ import {
   Briefcase,
   CalendarDays,
   FileCheck,
-  Mail,
   UserCheck,
 } from "lucide-react";
 
@@ -32,12 +31,6 @@ const SECTIONS = [
     title: "Conversion Reports",
     description: "Offer-to-employee conversion and pending joins.",
     icon: UserCheck,
-  },
-  {
-    href: "/admin/recruitment/reports/communications",
-    title: "Communication Reports",
-    description: "Email volume, drafts, templates, and recruiter messaging.",
-    icon: Mail,
   },
 ] as const;
 

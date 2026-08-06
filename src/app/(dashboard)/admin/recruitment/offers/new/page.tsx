@@ -10,27 +10,43 @@ export default async function NewOfferPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const session = await requireHROrSuperAdminSession();
+  await requireHROrSuperAdminSession();
   const rawParams = await searchParams;
 
-  const applicationId = typeof rawParams.applicationId === "string" ? rawParams.applicationId : undefined;
+  const applicationId =
+    typeof rawParams.applicationId === "string" ? rawParams.applicationId : undefined;
 
-  // Fetch employees for Reporting Manager select
   const employees = await getEmployeeOptions();
 
-  // Fetch applications that don't have an active offer, or fetch all applications
-  const applications = await prisma.application.findMany({
-    where: {
-      deletedAt: null,
+  const applicationRows = await prisma.application.findMany({
+    where: { deletedAt: null },
+    select: {
+      id: true,
+      candidate: {
+        select: {
+          firstName: true,
+          lastName: true,
+          fullName: true,
+        },
+      },
+      jobOpening: {
+        select: { title: true },
+      },
     },
-    include: {
-      candidate: true,
-      jobOpening: true,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
+    orderBy: { createdAt: "desc" },
   });
+
+  const applications = applicationRows.map((app) => ({
+    id: app.id,
+    candidate: {
+      firstName: app.candidate.firstName,
+      lastName: app.candidate.lastName,
+      fullName: app.candidate.fullName,
+    },
+    jobOpening: {
+      title: app.jobOpening.title,
+    },
+  }));
 
   return (
     <div className="space-y-6 lg:space-y-8">

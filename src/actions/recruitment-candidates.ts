@@ -64,6 +64,7 @@ function getPayload(input: unknown) {
       dateOfBirth: formString(input, "dateOfBirth"),
       location: formString(input, "location"),
       preferredLocation: formString(input, "preferredLocation"),
+      nationality: formString(input, "nationality"),
       currentCompany: formString(input, "currentCompany"),
       currentTitle: formString(input, "currentTitle"),
       linkedinUrl: formString(input, "linkedinUrl"),

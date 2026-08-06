@@ -23,7 +23,6 @@ const STAGE_OPTIONS: RecruitmentPipelineStage[] = [
   RecruitmentPipelineStage.client_round,
   RecruitmentPipelineStage.offer,
   RecruitmentPipelineStage.decision,
-  RecruitmentPipelineStage.hired,
 ];
 
 export type PipelineDrawerApplication = {
@@ -150,26 +149,10 @@ export function ApplicationPipelineDrawer({
               </Link>
             </Button>
             {acceptedOffer ? (
-              <Button asChild variant="outline" size="sm" className="text-xs font-semibold">
+              <Button asChild size="sm" className="text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white">
                 <Link href={`/admin/recruitment/conversions/${acceptedOffer.id}`}>Convert to employee</Link>
               </Button>
             ) : null}
-            <Button
-              asChild
-              variant="outline"
-              size="sm"
-              className="text-xs font-semibold"
-            >
-              <Link
-                href={`/admin/recruitment/communications/new?candidateId=${encodeURIComponent(application.candidate.id)}${
-                  application.candidate.email
-                    ? `&recipientEmail=${encodeURIComponent(application.candidate.email)}`
-                    : ""
-                }`}
-              >
-                Message
-              </Link>
-            </Button>
           </div>
           <label className="block space-y-1.5">
             <span className="text-xs font-semibold text-muted-foreground">Move stage</span>

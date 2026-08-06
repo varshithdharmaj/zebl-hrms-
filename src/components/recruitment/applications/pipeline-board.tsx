@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ApplicationStatus, RecruitmentPipelineStage } from "@/generated/prisma/enums";
+import { RecruitmentPipelineStage } from "@/generated/prisma/enums";
 import { CandidateAvatar } from "../candidates/candidate-avatar";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { moveApplicationStageAction } from "@/actions/recruitment-applications";
@@ -134,6 +134,14 @@ export function PipelineBoard({
     if (column.stages.includes(app.currentStage as RecruitmentPipelineStage)) return;
 
     const targetStage = column.defaultStage;
+    if (targetStage === RecruitmentPipelineStage.hired || column.id === "joined") {
+      setError(
+        "Joined is for converted hires only. Accept an offer, then use Convert to Employee."
+      );
+      setDraggedId(null);
+      return;
+    }
+
     const previousApplications = [...applications];
     setApplications((prev) =>
       prev.map((a) =>
@@ -141,10 +149,6 @@ export function PipelineBoard({
           ? {
               ...a,
               currentStage: targetStage,
-              status:
-                targetStage === RecruitmentPipelineStage.hired
-                  ? ApplicationStatus.hired
-                  : a.status,
             }
           : a
       )

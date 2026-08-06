@@ -44,6 +44,8 @@ export {
   createResumeImportDraftSchema,
   resumeImportDraftIdSchema,
   applyResumeImportSchema,
+  prepareCandidateResumeMergeSchema,
+  mergeCandidateResumeSchema,
 } from "@/lib/validation/schemas/recruitment/resume-import";
 export {
   createApplicationSchema,
@@ -69,7 +71,10 @@ export {
   declineOfferSchema,
   withdrawOfferSchema,
   createOfferRevisionSchema,
+  attachOfferPdfSchema,
+  expireOfferSchema,
 } from "@/lib/validation/schemas/recruitment/offers";
+export { offerListFiltersSchema } from "@/lib/validation/schemas/recruitment/offer-list";
 export {
   convertEmployeeSchema,
   employeeAccountSchema,

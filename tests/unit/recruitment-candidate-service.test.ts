@@ -168,6 +168,10 @@ describe("Candidate Service Layer", () => {
         isPinned: false,
         isResolved: false,
         authorUserId: "user-hr",
+        authorName: "HR User",
+        authorEmail: "hr@example.com",
+        avatarUrl: null,
+        roleLabel: "HR",
         createdAt: new Date(),
         updatedAt: new Date(),
         deletedAt: null,
@@ -324,6 +328,39 @@ describe("Candidate Service Layer", () => {
             nationality: "IN",
             preferredLocation: "Hyderabad",
             portfolioUrl: "https://portfolio.example",
+          }),
+        }),
+        expect.anything()
+      );
+    });
+
+    it("updates nationality via form convenience field", async () => {
+      mockRepo.getCandidate = vi.fn(async () =>
+        baseCandidate({
+          personal: {
+            candidateId: "cand-1",
+            nationality: null,
+            currentLocation: null,
+            preferredLocation: "Delhi",
+            noticePeriod: null,
+            availabilityDate: null,
+            linkedinUrl: null,
+            portfolioUrl: null,
+          },
+        })
+      );
+
+      const service = createCandidateService(mockRepo);
+      await service.updateCandidate(hrSession, "cand-1", {
+        nationality: "Indian",
+      });
+
+      expect(mockRepo.updateCandidate).toHaveBeenCalledWith(
+        "cand-1",
+        expect.objectContaining({
+          personal: expect.objectContaining({
+            nationality: "Indian",
+            preferredLocation: "Delhi",
           }),
         }),
         expect.anything()

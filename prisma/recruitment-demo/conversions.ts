@@ -1,6 +1,5 @@
 import { OfferStatus } from "@/generated/prisma/enums";
 import { createEmployeeConversionService } from "@/lib/recruitment/services/employee-conversion-service";
-import { createApplicationService } from "@/lib/recruitment/services/application-service";
 import { DEMO_PASSWORD, MIN_EMAIL_DOMAIN, MIN_PREFIX } from "./catalog";
 import { iso, log, type DemoCtx } from "./helpers";
 
@@ -8,7 +7,6 @@ import { iso, log, type DemoCtx } from "./helpers";
 export async function seedConversions(ctx: DemoCtx): Promise<void> {
   log("Conversions (2) via EmployeeConversionService…");
   const conv = createEmployeeConversionService();
-  const apps = createApplicationService();
 
   const targets = ["hired", "offer_accepted"] as const;
   let n = 0;
@@ -61,11 +59,6 @@ export async function seedConversions(ctx: DemoCtx): Promise<void> {
         createLogin: n === 0,
         password: DEMO_PASSWORD,
       });
-      try {
-        await apps.hireCandidate(ctx.session, offer.applicationId);
-      } catch {
-        /* ok */
-      }
       n += 1;
     } catch (err) {
       log(`  skip ${purpose}: ${err instanceof Error ? err.message : err}`);

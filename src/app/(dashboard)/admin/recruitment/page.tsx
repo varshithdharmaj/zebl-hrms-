@@ -2,11 +2,15 @@ import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
 import { getJobDashboardCountsCached } from "@/lib/recruitment/job/queries";
 import { getInterviewDashboardMetricsCached, listInterviewsCached } from "@/lib/recruitment/interview/queries";
 import { getOfferDashboardMetricsCached } from "@/lib/recruitment/offer/queries";
-import { getConversionDashboardMetricsCached } from "@/lib/recruitment/conversion/queries";
+import {
+  getConversionDashboardMetricsCached,
+  listPendingConversionsCached,
+} from "@/lib/recruitment/conversion/queries";
 import { getDashboardMetricsCached } from "@/lib/recruitment/application/queries";
 import { listCandidatesCached } from "@/lib/recruitment/candidate/queries";
 import { RecruitmentTimelineService } from "@/lib/recruitment/services/timeline-service";
 import { RecruitmentDashboardView } from "@/components/recruitment/recruitment-dashboard";
+import { buildHiringFunnelCounts } from "@/lib/recruitment/dashboard/build-funnel-counts";
 
 export default async function RecruitmentDashboardPage() {
   const session = await requireHROrSuperAdminSession();
@@ -16,6 +20,7 @@ export default async function RecruitmentDashboardPage() {
     offerMetrics,
     conversionMetrics,
     applicationMetrics,
+    pendingOffers,
     candidatesResult,
     interviewsResult,
     timeline,
@@ -25,6 +30,7 @@ export default async function RecruitmentDashboardPage() {
     getOfferDashboardMetricsCached(session),
     getConversionDashboardMetricsCached(session),
     getDashboardMetricsCached(session),
+    listPendingConversionsCached(session),
     listCandidatesCached(session, {}, { page: 1, pageSize: 8 }, { field: "createdAt", direction: "desc" }),
     listInterviewsCached(session, {}, { page: 1, pageSize: 8 }, {
       field: "scheduledStart",
@@ -52,10 +58,46 @@ export default async function RecruitmentDashboardPage() {
           ?.title ?? null,
     }));
 
+  const countsRecord =
+    (applicationMetrics.counts as Record<string, number> | undefined) ??
+    (applicationMetrics as Record<string, number>);
+
   const applicationTotal =
-    typeof applicationMetrics.total === "number"
-      ? applicationMetrics.total
-      : Number(applicationMetrics.total ?? 0);
+    typeof countsRecord.total === "number"
+      ? countsRecord.total
+      : Number(countsRecord.total ?? 0);
+
+  const offerSent = Number((offerMetrics as Record<string, unknown>).sent ?? 0);
+  const offerAccepted = Number((offerMetrics as Record<string, unknown>).accepted ?? 0);
+  const pendingConversionCount = Number(
+    (conversionMetrics as Record<string, unknown>).pendingConversions ?? 0
+  );
+
+  const funnel = buildHiringFunnelCounts({
+    stageCounts: countsRecord,
+    offerSent,
+    offerAccepted,
+    pendingConversion: pendingConversionCount,
+  });
+
+  const pendingConversions = (pendingOffers as Array<Record<string, unknown>>)
+    .slice(0, 5)
+    .map((offer) => {
+      const application = offer.application as {
+        candidate?: { id?: string; fullName?: string };
+        jobOpening?: { title?: string };
+      };
+      return {
+        id: String(offer.id),
+        offerNumber: (offer.offerNumber as string | null) ?? null,
+        acceptedAt: (offer.acceptedAt as Date | string | null) ?? null,
+        candidate: {
+          id: String(application?.candidate?.id ?? ""),
+          fullName: String(application?.candidate?.fullName ?? "Candidate"),
+        },
+        jobTitle: String(application?.jobOpening?.title ?? "Job"),
+      };
+    });
 
   return (
     <RecruitmentDashboardView
@@ -65,11 +107,14 @@ export default async function RecruitmentDashboardPage() {
         upcomingInterviews: Number(interviewMetrics.upcomingInterviews ?? 0),
       }}
       applicationTotal={applicationTotal}
+      funnel={funnel}
       offerMetrics={{
-        sent: Number((offerMetrics as Record<string, unknown>).sent ?? 0),
-        accepted: Number((offerMetrics as Record<string, unknown>).accepted ?? 0),
+        draft: Number((offerMetrics as Record<string, unknown>).draft ?? 0),
+        sent: offerSent,
+        accepted: offerAccepted,
         declined: Number((offerMetrics as Record<string, unknown>).declined ?? 0),
         withdrawn: Number((offerMetrics as Record<string, unknown>).withdrawn ?? 0),
+        expired: Number((offerMetrics as Record<string, unknown>).expired ?? 0),
         acceptanceRate: Number((offerMetrics as Record<string, unknown>).acceptanceRate ?? 0),
       }}
       conversionMetrics={{
@@ -79,13 +124,12 @@ export default async function RecruitmentDashboardPage() {
         employeesJoined: Number(
           (conversionMetrics as Record<string, unknown>).employeesJoined ?? 0
         ),
-        pendingConversions: Number(
-          (conversionMetrics as Record<string, unknown>).pendingConversions ?? 0
-        ),
+        pendingConversions: pendingConversionCount,
         conversionRate: Number(
           (conversionMetrics as Record<string, unknown>).conversionRate ?? 0
         ),
       }}
+      pendingConversions={pendingConversions}
       recentCandidates={candidatesResult.items.map((c) => ({
         id: String(c.id),
         fullName: String(c.fullName ?? "Candidate"),

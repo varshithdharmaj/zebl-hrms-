@@ -13,13 +13,17 @@ export type RecruitmentConversionActionState = ActionState & {
   employeeId?: number;
 };
 
-function revalidateAll() {
+function revalidateAll(employeeId?: number) {
   revalidatePath("/admin/recruitment/conversions");
   revalidatePath("/admin/recruitment/offers");
   revalidatePath("/admin/recruitment/candidates");
   revalidatePath("/admin/recruitment/applications");
+  revalidatePath("/admin/recruitment/pipeline");
   revalidatePath("/admin/recruitment");
   revalidatePath("/admin/employees");
+  if (employeeId) {
+    revalidatePath(`/admin/employees/${employeeId}`);
+  }
 }
 
 export async function convertEmployeeAction(
@@ -39,7 +43,7 @@ export async function convertEmployeeAction(
     const service = createEmployeeConversionService();
     const { employeeId } = await service.convertEmployee(session, parsed.data);
 
-    revalidateAll();
+    revalidateAll(employeeId);
 
     return {
       success: "Candidate converted to employee successfully.",

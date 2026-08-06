@@ -241,37 +241,15 @@ export async function reopenApplicationAction(
   }
 }
 
+/** @deprecated Manual hire removed — conversion owns hired state. */
 export async function hireCandidateAction(
   _prev: RecruitmentApplicationActionState,
-  input: unknown
+  _input: unknown
 ): Promise<RecruitmentApplicationActionState> {
-  try {
-    // 1. Validation
-    const parsed = safeParseWithSchema(applicationIdSchema, input);
-    if (!parsed.ok) return { error: parsed.error };
-
-    // 2. Permission Check
-    const session = await requireHROrSuperAdminSession();
-
-    // 3. Feature Flag Check
-    if (!isRecruitmentModuleEnabled()) {
-      return { error: "Recruitment module is disabled." };
-    }
-
-    // 4. Service Call
-    const service = createApplicationService();
-    await service.hireCandidate(session, parsed.data.id);
-
-    // 5. Cache Invalidation
-    revalidateApplicationList();
-    revalidateApplicationDetail(parsed.data.id);
-    revalidateRecruitmentDashboard();
-
-    // 6. Return ActionState
-    return { success: "Candidate hired successfully." };
-  } catch (error) {
-    return mapUnknownToActionState(error);
-  }
+  return {
+    error:
+      "Hiring is only allowed through Employee Conversion after an offer is accepted.",
+  };
 }
 
 export async function archiveApplicationAction(

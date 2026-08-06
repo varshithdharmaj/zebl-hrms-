@@ -8,6 +8,7 @@ import {
   updateInterviewAction,
   cancelInterviewAction,
   completeInterviewAction,
+  markInterviewNoShowAction,
   submitInterviewFeedbackAction,
   archiveInterviewAction,
   restoreInterviewAction,
@@ -48,19 +49,21 @@ const mockCreateInterview = vi.fn(async () => ({ id: "int-1" }));
 const mockUpdateInterview = vi.fn(async () => ({ applicationId: "app-1" }));
 const mockCancelInterview = vi.fn(async () => ({ applicationId: "app-1" }));
 const mockCompleteInterview = vi.fn(async () => undefined);
+const mockMarkNoShow = vi.fn(async () => ({ applicationId: "app-1" }));
 const mockSubmitFeedback = vi.fn(async () => ({ id: "feed-1" }));
 const mockArchiveInterview = vi.fn(async () => undefined);
 const mockRestoreInterview = vi.fn(async () => undefined);
 
 vi.mock("@/lib/recruitment/services/interview-service", () => ({
   createInterviewService: () => ({
-    createInterview: (...args: any[]) => (mockCreateInterview as any)(...args),
-    updateInterview: (...args: any[]) => (mockUpdateInterview as any)(...args),
-    cancelInterview: (...args: any[]) => (mockCancelInterview as any)(...args),
-    completeInterview: (...args: any[]) => (mockCompleteInterview as any)(...args),
-    submitFeedback: (...args: any[]) => (mockSubmitFeedback as any)(...args),
-    archiveInterview: (...args: any[]) => (mockArchiveInterview as any)(...args),
-    restoreInterview: (...args: any[]) => (mockRestoreInterview as any)(...args),
+    createInterview: (...args: unknown[]) => mockCreateInterview(...args),
+    updateInterview: (...args: unknown[]) => mockUpdateInterview(...args),
+    cancelInterview: (...args: unknown[]) => mockCancelInterview(...args),
+    completeInterview: (...args: unknown[]) => mockCompleteInterview(...args),
+    markNoShow: (...args: unknown[]) => mockMarkNoShow(...args),
+    submitFeedback: (...args: unknown[]) => mockSubmitFeedback(...args),
+    archiveInterview: (...args: unknown[]) => mockArchiveInterview(...args),
+    restoreInterview: (...args: unknown[]) => mockRestoreInterview(...args),
   }),
 }));
 
@@ -121,6 +124,18 @@ describe("Interview Server Actions", () => {
 
     expect(res.success).toBeDefined();
     expect(mockCompleteInterview).toHaveBeenCalled();
+  });
+
+  it("should mark interview no-show via action", async () => {
+    const res = await markInterviewNoShowAction(
+      {},
+      {
+        id: "int-1",
+      }
+    );
+
+    expect(res.success).toBeDefined();
+    expect(mockMarkNoShow).toHaveBeenCalled();
   });
 
   it("should submit feedback via action", async () => {

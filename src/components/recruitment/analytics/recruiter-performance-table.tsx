@@ -13,7 +13,7 @@ interface RecruiterPerformanceTableProps {
     offers: number;
     hires: number;
     acceptanceRate: number;
-    avgTimeToHire: number;
+    avgTimeToHire: number | null;
   }>;
 }
 

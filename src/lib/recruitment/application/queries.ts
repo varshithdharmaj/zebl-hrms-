@@ -11,14 +11,15 @@ export const getApplicationCached = cache(async (session: SessionUser, applicati
 export const listApplicationsCached = cache(
   async (
     session: SessionUser,
-    filters: any,
+    filters: unknown,
     pagination: { page: number; pageSize: number },
-    sort?: { field: string; direction: "asc" | "desc" }
+    sort?: { field: string; direction: "asc" | "desc" },
+    options?: { maxPageSize?: number }
   ) => {
     const service = createApplicationService();
     return service.listApplications(session, {
       filters,
-      pagination: normalizePagination(pagination),
+      pagination: normalizePagination(pagination, { maxPageSize: options?.maxPageSize }),
       sort,
     });
   }

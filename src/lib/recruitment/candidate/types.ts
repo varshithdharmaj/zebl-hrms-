@@ -135,6 +135,8 @@ export type CandidateCreateData = {
   preferredLocation?: string | null;
   /** Form convenience — mapped to CandidatePersonal in service */
   portfolioUrl?: string | null;
+  /** Form convenience — mapped to CandidatePersonal in service */
+  nationality?: string | null;
   source?: CandidateSource;
   status?: CandidateStatus;
   doNotHireReason?: string | null;
@@ -277,6 +279,10 @@ export type CandidateNoteView = {
   isPinned: boolean;
   isResolved: boolean;
   authorUserId: string;
+  authorName: string;
+  authorEmail: string;
+  avatarUrl: string | null;
+  roleLabel: string | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;

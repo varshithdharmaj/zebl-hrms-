@@ -24,8 +24,17 @@ export function ReportFilters({
   const [isPending, startTransition] = useTransition();
   const [status, setStatus] = useState<string | null>(null);
 
-  const [startDate, setStartDate] = useState(searchParams.get("startDate") ?? "");
-  const [endDate, setEndDate] = useState(searchParams.get("endDate") ?? "");
+  const [startDate, setStartDate] = useState(
+    searchParams.get("startDate") ??
+      (() => {
+        const d = new Date();
+        d.setDate(d.getDate() - 6);
+        return d.toISOString().slice(0, 10);
+      })()
+  );
+  const [endDate, setEndDate] = useState(
+    searchParams.get("endDate") ?? new Date().toISOString().slice(0, 10)
+  );
   const [department, setDepartment] = useState(searchParams.get("department") ?? "");
   const [recruiterUserId, setRecruiterUserId] = useState(
     searchParams.get("recruiterUserId") ?? ""

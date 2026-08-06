@@ -115,6 +115,7 @@ describe("AnalyticsService", () => {
         interviewToOffer: 5,
         offerToHire: 14,
         totalTimeToHire: 26,
+        sampleSize: 10,
       }),
       getTrendData: vi.fn().mockResolvedValue({
         dates: ["2024-01-01", "2024-01-02"],

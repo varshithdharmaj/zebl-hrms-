@@ -227,6 +227,16 @@ export function createInterviewService(
         throw new RecruitmentDomainError("REC_VALIDATION", "Interview is already completed.");
       }
 
+      if (
+        interview.status === InterviewStatus.cancelled ||
+        interview.status === InterviewStatus.no_show
+      ) {
+        throw new RecruitmentDomainError(
+          "REC_VALIDATION",
+          "Cannot complete a cancelled or no-show interview."
+        );
+      }
+
       const events = createAfterCommitBuffer();
       await withRecruitmentTransaction(async (tx) => {
         await repository.updateInterview(id, { status: InterviewStatus.completed }, tx);
@@ -257,6 +267,59 @@ export function createInterviewService(
       });
 
       await events.flush();
+    },
+
+    async markNoShow(session: SessionUser, id: string): Promise<{ applicationId: string }> {
+      RecruitmentPermissionService.requireModuleEnabled();
+      await RecruitmentPermissionService.assertCanManageCandidates(session);
+
+      const interview = await repository.getInterview(id);
+      if (!interview) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Interview not found.");
+      }
+
+      if (interview.status !== InterviewStatus.scheduled) {
+        throw new RecruitmentDomainError(
+          "REC_VALIDATION",
+          "Only scheduled interviews can be marked as no-show."
+        );
+      }
+
+      await withRecruitmentTransaction(async (tx) => {
+        await repository.updateInterview(id, { status: InterviewStatus.no_show }, tx);
+
+        await RecruitmentTimelineService.append(
+          {
+            entityType: "application",
+            entityId: interview.applicationId,
+            applicationId: interview.applicationId,
+            candidateId: interview.application.candidateId,
+            jobOpeningId: interview.application.jobOpeningId,
+            eventType: "interview_no_show",
+            summary: `No-show for interview: ${interview.title}`,
+            actorUserId: session.id,
+            metadata: { interviewId: id },
+          },
+          tx
+        );
+      });
+
+      await writeAuditLog({
+        entityType: "interview",
+        entityId: id,
+        action: AUDIT_ACTIONS.RECRUITMENT_INTERVIEW_NO_SHOW,
+        actorUserId: session.id,
+        actorEmail: session.email,
+        employeeId: session.employeeId,
+        module: "recruitment",
+        description: "Interview marked as no-show",
+        metadata: {
+          applicationId: interview.applicationId,
+          title: interview.title,
+        },
+      });
+
+      return { applicationId: interview.applicationId };
     },
 
     async submitFeedback(

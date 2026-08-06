@@ -11,12 +11,16 @@ import {
   ArrowRight,
 } from "lucide-react";
 import type { JobStatusCounts } from "@/lib/recruitment/job/types";
+import type { HiringFunnelCounts } from "@/lib/recruitment/dashboard/build-funnel-counts";
 import { StatsGrid } from "@/components/ui/stats-grid";
 import { DashboardCard } from "@/components/ui/dashboard-card";
 import { Button } from "@/components/ui/button";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { SectionCard } from "@/components/ui/section-card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { DashboardFunnelWidget } from "@/components/recruitment/dashboard/dashboard-funnel-widget";
+import { DashboardPendingConversionsWidget } from "@/components/recruitment/dashboard/dashboard-pending-conversions-widget";
+import { DashboardOfferSummaryWidget } from "@/components/recruitment/dashboard/dashboard-offer-summary-widget";
 
 type RecentCandidate = {
   id: string;
@@ -40,12 +44,35 @@ type ActivityItem = {
   createdAt: Date | string;
 };
 
+type PendingConversionItem = {
+  id: string;
+  offerNumber?: string | null;
+  acceptedAt?: Date | string | null;
+  candidate: { id: string; fullName: string };
+  jobTitle: string;
+};
+
 export function RecruitmentDashboardView({
   counts,
   interviewMetrics,
   applicationTotal,
-  offerMetrics = { sent: 0, accepted: 0, declined: 0, withdrawn: 0, acceptanceRate: 0 },
-  conversionMetrics = { offersAccepted: 0, employeesJoined: 0, pendingConversions: 0, conversionRate: 0 },
+  funnel,
+  offerMetrics = {
+    draft: 0,
+    sent: 0,
+    accepted: 0,
+    declined: 0,
+    withdrawn: 0,
+    expired: 0,
+    acceptanceRate: 0,
+  },
+  conversionMetrics = {
+    offersAccepted: 0,
+    employeesJoined: 0,
+    pendingConversions: 0,
+    conversionRate: 0,
+  },
+  pendingConversions = [],
   recentCandidates = [],
   upcomingInterviews = [],
   activityFeed = [],
@@ -56,11 +83,14 @@ export function RecruitmentDashboardView({
     upcomingInterviews: number;
   };
   applicationTotal: number;
+  funnel: HiringFunnelCounts;
   offerMetrics?: {
+    draft: number;
     sent: number;
     accepted: number;
     declined: number;
     withdrawn: number;
+    expired: number;
     acceptanceRate: number;
   };
   conversionMetrics?: {
@@ -69,6 +99,7 @@ export function RecruitmentDashboardView({
     pendingConversions: number;
     conversionRate: number;
   };
+  pendingConversions?: PendingConversionItem[];
   recentCandidates?: RecentCandidate[];
   upcomingInterviews?: UpcomingInterview[];
   activityFeed?: ActivityItem[];
@@ -104,19 +135,40 @@ export function RecruitmentDashboardView({
           icon={ClipboardList}
           accent="blue"
         />
-        <DashboardCard
-          label="Offers Awaiting Response"
-          value={offerMetrics.sent}
-          icon={FileCheck}
-          accent="teal"
-        />
-        <DashboardCard
-          label="Pending Conversions"
-          value={conversionMetrics.pendingConversions}
-          icon={UserCheck}
-          accent="amber"
-        />
+        <Link href="/admin/recruitment/offers?status=released" className="block h-full">
+          <DashboardCard
+            label="Offers Awaiting Response"
+            value={offerMetrics.sent}
+            icon={FileCheck}
+            accent="teal"
+          />
+        </Link>
+        <Link href="/admin/recruitment/conversions" className="block h-full">
+          <DashboardCard
+            label="Pending Conversions"
+            value={conversionMetrics.pendingConversions}
+            icon={UserCheck}
+            accent="amber"
+            hint="Open queue"
+          />
+        </Link>
       </StatsGrid>
+
+      <DashboardFunnelWidget funnel={funnel} />
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <DashboardOfferSummaryWidget
+          summary={{
+            draft: offerMetrics.draft,
+            sent: offerMetrics.sent,
+            accepted: offerMetrics.accepted,
+            declined: offerMetrics.declined,
+            withdrawn: offerMetrics.withdrawn,
+            expired: offerMetrics.expired,
+          }}
+        />
+        <DashboardPendingConversionsWidget items={pendingConversions} />
+      </div>
 
       <SectionCard title="Quick Actions" description="Common hiring tasks in one place.">
         <div className="flex flex-wrap gap-2">
@@ -139,6 +191,12 @@ export function RecruitmentDashboardView({
             </Link>
           </Button>
           <Button asChild variant="outline" className="font-semibold shadow-subtle">
+            <Link href="/admin/recruitment/conversions">
+              <UserCheck className="mr-1.5 h-4 w-4" />
+              Pending Conversions
+            </Link>
+          </Button>
+          <Button asChild variant="outline" className="font-semibold shadow-subtle">
             <Link href="/admin/recruitment/offers/new">
               <FileCheck className="mr-1.5 h-4 w-4" />
               Create Offer
@@ -153,23 +211,30 @@ export function RecruitmentDashboardView({
           description={`${interviewMetrics.upcomingInterviews} scheduled ahead.`}
           action={
             <Button asChild variant="ghost" size="sm">
-              <Link href="/admin/recruitment/pipeline?focus=interviews">
-                Pipeline
+              <Link href="/admin/recruitment/interviews">
+                Interviews
                 <ArrowRight className="ml-1 h-3.5 w-3.5" />
               </Link>
             </Button>
           }
         >
           {upcomingInterviews.length === 0 ? (
-            <EmptyState title="No upcoming interviews" description="Schedule from an application in Pipeline." />
+            <EmptyState
+              title="No upcoming interviews"
+              description="Schedule from an application in Pipeline."
+            />
           ) : (
             <ul className="divide-y divide-border">
               {upcomingInterviews.map((item) => (
-                <li key={item.id} className="flex items-center justify-between gap-3 py-3 text-sm">
+                <li
+                  key={item.id}
+                  className="flex items-center justify-between gap-3 py-3 text-sm"
+                >
                   <div className="min-w-0">
                     <p className="truncate font-medium">{item.title}</p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {[item.candidateName, item.jobTitle].filter(Boolean).join(" · ") || "Interview"}
+                      {[item.candidateName, item.jobTitle].filter(Boolean).join(" · ") ||
+                        "Interview"}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
@@ -194,7 +259,7 @@ export function RecruitmentDashboardView({
 
         <SectionCard
           title="Recent Candidates"
-          description="Latest profiles added to the talent pool."
+          description="Latest profiles added."
           action={
             <Button asChild variant="ghost" size="sm">
               <Link href="/admin/recruitment/candidates">
@@ -209,17 +274,21 @@ export function RecruitmentDashboardView({
           ) : (
             <ul className="divide-y divide-border">
               {recentCandidates.map((c) => (
-                <li key={c.id} className="flex items-center justify-between gap-3 py-3 text-sm">
+                <li
+                  key={c.id}
+                  className="flex items-center justify-between gap-3 py-3 text-sm"
+                >
                   <div className="min-w-0">
                     <p className="truncate font-medium">{c.fullName}</p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {[c.currentTitle, c.currentCompany].filter(Boolean).join(" at ") || "New candidate"}
+                      {[c.currentTitle, c.currentCompany].filter(Boolean).join(" · ") ||
+                        "Candidate"}
                     </p>
                   </div>
-                  <Button asChild variant="outline" size="sm" className="h-7 shrink-0 text-xs">
+                  <Button asChild variant="outline" size="sm" className="h-7 text-xs shrink-0">
                     <Link href={`/admin/recruitment/candidates/${c.id}`}>
                       <Users className="mr-1 h-3 w-3" />
-                      View
+                      Open
                     </Link>
                   </Button>
                 </li>
@@ -229,22 +298,23 @@ export function RecruitmentDashboardView({
         </SectionCard>
       </div>
 
-      <SectionCard title="Activity Feed" description="Recent recruitment events.">
+      <SectionCard title="Recent Activity" description="Latest recruitment events.">
         {activityFeed.length === 0 ? (
-          <EmptyState title="No recent activity" description="Pipeline moves and offers will appear here." />
+          <EmptyState
+            title="No activity yet"
+            description="Pipeline moves and hires will show here."
+          />
         ) : (
-          <ul className="space-y-3">
+          <ul className="divide-y divide-border">
             {activityFeed.map((item) => (
-              <li key={item.id} className="border-l-2 border-border pl-3">
-                <p className="text-sm font-medium">{item.summary}</p>
-                <p className="text-xs text-muted-foreground">
-                  {new Date(item.createdAt).toLocaleString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </p>
+              <li
+                key={item.id}
+                className="flex items-start justify-between gap-3 py-2.5 text-sm"
+              >
+                <p className="text-muted-foreground">{item.summary}</p>
+                <span className="shrink-0 text-[11px] text-muted-foreground">
+                  {new Date(item.createdAt).toLocaleDateString()}
+                </span>
               </li>
             ))}
           </ul>

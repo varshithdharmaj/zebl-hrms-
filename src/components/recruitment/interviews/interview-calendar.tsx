@@ -141,6 +141,8 @@ export function InterviewCalendar({ interviews }: { interviews: CalendarIntervie
                         ? "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/20"
                         : item.status === "cancelled"
                         ? "bg-red-50 border-red-200 text-red-700 dark:bg-red-500/10 dark:border-red-500/20"
+                        : item.status === "no_show"
+                        ? "bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-500/10 dark:border-amber-500/20"
                         : "bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-500/10 dark:border-blue-500/20"
                     }`}
                   >

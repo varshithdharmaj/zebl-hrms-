@@ -40,6 +40,7 @@ import type { PageResult } from "@/lib/recruitment/types/pagination";
 function resolvePersonalInput(args: {
   preferredLocation?: string | null;
   portfolioUrl?: string | null;
+  nationality?: string | null;
   inputPersonal?: CandidatePersonalInput;
   existingPersonal?: CandidatePersonalView | null;
   force?: boolean;
@@ -47,6 +48,7 @@ function resolvePersonalInput(args: {
   const {
     preferredLocation,
     portfolioUrl,
+    nationality,
     inputPersonal,
     existingPersonal,
     force = false,
@@ -56,12 +58,16 @@ function resolvePersonalInput(args: {
     force ||
     preferredLocation !== undefined ||
     portfolioUrl !== undefined ||
+    nationality !== undefined ||
     inputPersonal !== undefined;
 
   if (!touched) return undefined;
 
   return {
-    nationality: inputPersonal?.nationality ?? existingPersonal?.nationality ?? null,
+    nationality:
+      nationality !== undefined
+        ? nationality
+        : (inputPersonal?.nationality ?? existingPersonal?.nationality ?? null),
     currentLocation:
       inputPersonal?.currentLocation ?? existingPersonal?.currentLocation ?? null,
     preferredLocation:
@@ -140,8 +146,14 @@ export function createCandidateService(repository: CandidateRepository = prismaC
       const personal = resolvePersonalInput({
         preferredLocation: parsed.preferredLocation,
         portfolioUrl: parsed.portfolioUrl,
+        nationality: parsed.nationality,
         inputPersonal: input.personal,
-        force: Boolean(parsed.preferredLocation || parsed.portfolioUrl || input.personal),
+        force: Boolean(
+          parsed.preferredLocation ||
+            parsed.portfolioUrl ||
+            parsed.nationality ||
+            input.personal
+        ),
       });
 
       const candidateId = await withRecruitmentTransaction(async (tx) => {
@@ -249,11 +261,13 @@ export function createCandidateService(repository: CandidateRepository = prismaC
       const personal = resolvePersonalInput({
         preferredLocation: parsed.preferredLocation,
         portfolioUrl: parsed.portfolioUrl,
+        nationality: parsed.nationality,
         inputPersonal: input.personal,
         existingPersonal: existing.personal,
         force:
           parsed.preferredLocation !== undefined ||
           parsed.portfolioUrl !== undefined ||
+          parsed.nationality !== undefined ||
           input.personal !== undefined,
       });
 
@@ -518,19 +532,12 @@ export function createCandidateService(repository: CandidateRepository = prismaC
       session: SessionUser,
       input: AddCandidateNoteInput
     ): Promise<CandidateNoteView> {
-      RecruitmentPermissionService.requireModuleEnabled();
-      await RecruitmentPermissionService.assertCanManageCandidates(session);
-      const actor = toRecruitmentActor(session);
-
       const parsed = addCandidateNoteSchema.parse(input);
 
-      const allowed = await RecruitmentScopeEngine.canManageCandidate(
-        actor,
+      await RecruitmentPermissionService.assertCanWriteCandidateDiscussion(
+        session,
         parsed.candidateId
       );
-      if (!allowed) {
-        throw new PermissionError("Candidate outside recruitment scope.");
-      }
 
       const existing = await repository.getCandidate(parsed.candidateId);
       if (!existing || existing.deletedAt) {

@@ -17,13 +17,19 @@ import {
   buildResumeImportDiffs,
   buildStubResumeImportContent,
   parseResumeImportDraftContent,
+  buildResumeMergeResult,
+  resolveConflictSelections,
+  resumeMergeHasWork,
   RESUME_IMPORT_DENIED_SCALAR_KEYS,
   type ResumeImportApplyInput,
   type ResumeImportDraftContent,
   type ResumeImportMappedDraft,
+  type ResumeMergeResult,
   type ScalarFieldDiff,
   type SectionDiff,
 } from "@/lib/recruitment/resume-import";
+import { parseResumeDocument } from "@/lib/recruitment/resume-import/parser";
+import { getRecruitmentStorage } from "@/lib/recruitment/storage/recruitment-storage";
 import {
   normalizeEmail,
   normalizePhone,
@@ -115,6 +121,14 @@ export type ResumeImportReviewView = {
   candidate: CandidateDetail;
 };
 
+export type ResumeMergePreview = {
+  draftId: string;
+  candidateId: string;
+  documentId: string;
+  merge: ResumeMergeResult;
+  hasWork: boolean;
+};
+
 /**
  * Resume import review buffer + apply.
  * Future parsers: build ResumeImportDraftContent and call createDraft().
@@ -155,15 +169,44 @@ export function createResumeImportService(
         }
       }
 
-      const content =
-        input.content ??
-        buildStubResumeImportContent({
-          documentId: input.documentId ?? null,
+      let content: ResumeImportDraftContent;
+      if (input.content) {
+        content = input.content;
+      } else if (input.documentId) {
+        // Real parser path — Document → extract → parse → normalize → draft
+        const doc = await repository.getCandidateDocument(input.documentId);
+        if (!doc) {
+          throw new RecruitmentDomainError(
+            "REC_NOT_FOUND",
+            "Resume document not found for this candidate."
+          );
+        }
+        const storage = getRecruitmentStorage();
+        const storageKey = String(doc.storageKey ?? "");
+        if (!storageKey || !(await storage.exists(storageKey))) {
+          throw new RecruitmentDomainError(
+            "REC_NOT_FOUND",
+            "Resume file not found in storage."
+          );
+        }
+        const fileBytes = await storage.read(storageKey);
+        const { draftContent } = await parseResumeDocument({
+          content: fileBytes,
+          fileName: String(doc.fileName ?? "resume.pdf"),
+          mimeType: String(doc.mimeType ?? "application/octet-stream"),
+          documentId: input.documentId,
+        });
+        content = draftContent;
+      } else {
+        // No document: keep stub for backward-compatible draft-only flows / tests.
+        content = buildStubResumeImportContent({
+          documentId: null,
           candidateHint: {
             fullName: candidate.fullName,
             email: candidate.email,
           },
         });
+      }
 
       if (input.documentId && !content.documentId) {
         content.documentId = input.documentId;
@@ -196,9 +239,12 @@ export function createResumeImportService(
           {
             insightType: AiInsightType.resume_parse,
             status: AiInsightStatus.pending_review,
-            title: content.documentId
-              ? "Resume import draft"
-              : "Resume import draft (stub)",
+            title:
+              content.source === "parser"
+                ? "Resume import draft"
+                : content.documentId
+                  ? "Resume import draft"
+                  : "Resume import draft (stub)",
             contentJson: content,
             confidence: averageConfidence(content),
             modelId: content.metadata.parserVersion ?? content.source,
@@ -237,6 +283,271 @@ export function createResumeImportService(
 
       await events.flush();
       return { id: draftId };
+    },
+
+    /**
+     * V1 profile enrich: upload → stub/parser draft → merge plan (no profile write yet).
+     */
+    async prepareMerge(
+      session: SessionUser,
+      input: { candidateId: string; documentId: string }
+    ): Promise<ResumeMergePreview> {
+      const { id: draftId } = await this.createDraft(session, {
+        candidateId: input.candidateId,
+        documentId: input.documentId,
+      });
+
+      const candidate = await repository.getCandidate(input.candidateId);
+      if (!candidate) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Candidate not found.");
+      }
+
+      const insight = await repository.getInsight(draftId);
+      if (!insight) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Import draft not found.");
+      }
+
+      const content = parseResumeImportDraftContent(insight.contentJson);
+      const merge = buildResumeMergeResult(candidate, content.mapped);
+
+      return {
+        draftId,
+        candidateId: input.candidateId,
+        documentId: input.documentId,
+        merge,
+        hasWork: resumeMergeHasWork(merge),
+      };
+    },
+
+    /**
+     * V1 apply: auto-fill empty fields + HR conflict choices + append-only lists.
+     * Never replaces or deletes existing profile rows.
+     */
+    async applyMerge(
+      session: SessionUser,
+      input: {
+        draftId: string;
+        candidateId: string;
+        conflictSelections: Record<string, "current" | "parsed">;
+      }
+    ): Promise<{ appliedFields: string[]; appended: string[] }> {
+      RecruitmentPermissionService.requireModuleEnabled();
+      await RecruitmentPermissionService.assertCanManageCandidates(session);
+      const actor = toRecruitmentActor(session);
+
+      const insight = await repository.getInsight(input.draftId);
+      if (!insight) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Import draft not found.");
+      }
+      if (insight.insightType !== AiInsightType.resume_parse) {
+        throw new RecruitmentDomainError(
+          "REC_VALIDATION",
+          "Insight is not a resume import draft."
+        );
+      }
+      if (insight.status !== AiInsightStatus.pending_review) {
+        throw new RecruitmentDomainError(
+          "REC_VALIDATION",
+          "Only pending import drafts can be applied."
+        );
+      }
+
+      const candidateId = String(insight.candidateId);
+      if (candidateId !== input.candidateId) {
+        throw new RecruitmentDomainError(
+          "REC_VALIDATION",
+          "Draft does not belong to this candidate."
+        );
+      }
+      await assertCandidateManageScope(session, candidateId);
+
+      const candidate = await repository.getCandidate(candidateId);
+      if (!candidate) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Candidate not found.");
+      }
+
+      const content = parseResumeImportDraftContent(insight.contentJson);
+      const merge = buildResumeMergeResult(candidate, content.mapped);
+
+      for (const conflict of merge.conflicts) {
+        const choice = input.conflictSelections[conflict.key];
+        if (choice !== "current" && choice !== "parsed") {
+          throw new RecruitmentDomainError(
+            "REC_VALIDATION",
+            `Resolve conflict for "${conflict.label}" before applying.`
+          );
+        }
+      }
+
+      const resolvedConflicts = resolveConflictSelections(
+        merge.conflicts,
+        input.conflictSelections
+      );
+      const scalarPatch: Record<string, unknown> = {
+        ...merge.autoFill,
+        ...resolvedConflicts,
+      };
+
+      for (const key of Object.keys(scalarPatch)) {
+        if (DENIED.has(key)) {
+          throw new RecruitmentDomainError(
+            "REC_VALIDATION",
+            `Field "${key}" cannot be imported.`
+          );
+        }
+      }
+
+      let portfolioUrl: string | null | undefined;
+      if (Object.prototype.hasOwnProperty.call(scalarPatch, PORTFOLIO_KEY)) {
+        const value = scalarPatch[PORTFOLIO_KEY];
+        portfolioUrl =
+          value === null || value === undefined ? null : String(value);
+        delete scalarPatch[PORTFOLIO_KEY];
+      }
+
+      if (scalarPatch.email !== undefined) {
+        const normalizedEmail = normalizeEmail(
+          scalarPatch.email as string | null | undefined
+        );
+        if (normalizedEmail && normalizedEmail !== candidate.normalizedEmail) {
+          const clash = await repository.findByNormalizedEmail(normalizedEmail);
+          if (clash && clash.id !== candidateId) {
+            throw new RecruitmentDomainError(
+              "REC_CONFLICT",
+              "Imported email belongs to another candidate.",
+              { duplicateCandidateId: clash.id }
+            );
+          }
+        }
+        scalarPatch.normalizedEmail = normalizedEmail;
+      }
+
+      if (scalarPatch.phone !== undefined) {
+        const normalizedPhone = normalizePhone(
+          scalarPatch.phone as string | null | undefined
+        );
+        if (normalizedPhone && normalizedPhone !== candidate.normalizedPhone) {
+          const clash = await repository.findByNormalizedPhone(normalizedPhone);
+          if (clash && clash.id !== candidateId) {
+            throw new RecruitmentDomainError(
+              "REC_CONFLICT",
+              "Imported phone belongs to another candidate.",
+              { duplicateCandidateId: clash.id }
+            );
+          }
+        }
+        scalarPatch.normalizedPhone = normalizedPhone;
+      }
+
+      if (portfolioUrl !== undefined) {
+        scalarPatch.personal = {
+          nationality: candidate.personal?.nationality ?? null,
+          currentLocation: candidate.personal?.currentLocation ?? null,
+          preferredLocation: candidate.personal?.preferredLocation ?? null,
+          noticePeriod: candidate.personal?.noticePeriod ?? null,
+          availabilityDate: candidate.personal?.availabilityDate ?? null,
+          linkedinUrl: candidate.personal?.linkedinUrl ?? null,
+          portfolioUrl,
+        };
+      }
+
+      const appliedFields = Object.keys(scalarPatch).filter(
+        (k) => k !== "normalizedEmail" && k !== "normalizedPhone" && k !== "personal"
+      );
+      if (portfolioUrl !== undefined) appliedFields.push(PORTFOLIO_KEY);
+
+      const appended: string[] = [];
+      const hasScalarWork = Object.keys(scalarPatch).length > 0;
+      const hasAppendWork =
+        merge.experiencesToAppend.length > 0 ||
+        merge.educationsToAppend.length > 0 ||
+        merge.skillsToAppend.length > 0;
+
+      if (!hasScalarWork && !hasAppendWork) {
+        // Mark draft accepted with no profile changes (nothing useful to merge).
+        await withRecruitmentTransaction(async (tx) => {
+          await repository.updateInsightStatus(
+            input.draftId,
+            AiInsightStatus.accepted,
+            tx,
+            { reviewedByUserId: session.id, reviewedAt: new Date() }
+          );
+        });
+        return { appliedFields: [], appended: [] };
+      }
+
+      const events = createAfterCommitBuffer();
+      await withRecruitmentTransaction(async (tx) => {
+        if (hasScalarWork) {
+          await repository.updateCandidate(candidateId, scalarPatch as never, tx);
+        }
+
+        for (const row of merge.experiencesToAppend) {
+          await repository.upsertExperience(
+            candidateId,
+            row as unknown as Record<string, unknown>,
+            tx
+          );
+          appended.push("experience");
+        }
+        for (const row of merge.educationsToAppend) {
+          await repository.upsertEducation(
+            candidateId,
+            row as unknown as Record<string, unknown>,
+            tx
+          );
+          appended.push("education");
+        }
+        for (const row of merge.skillsToAppend) {
+          await repository.upsertSkill(
+            candidateId,
+            row as unknown as Record<string, unknown>,
+            tx
+          );
+          appended.push("skill");
+        }
+
+        await repository.updateInsightStatus(
+          input.draftId,
+          AiInsightStatus.accepted,
+          tx,
+          { reviewedByUserId: session.id, reviewedAt: new Date() }
+        );
+
+        await RecruitmentTimelineService.append(
+          {
+            entityType: "candidate",
+            entityId: candidateId,
+            candidateId,
+            eventType: "resume_import_merged",
+            summary: "Resume merged into candidate profile",
+            actorUserId: session.id,
+            metadata: {
+              draftId: input.draftId,
+              appliedFields,
+              appendedExperiences: merge.experiencesToAppend.length,
+              appendedEducations: merge.educationsToAppend.length,
+              appendedSkills: merge.skillsToAppend.length,
+            },
+          },
+          tx
+        );
+
+        events.enqueue(
+          RecruitmentEventFactory.candidateUpdated(actor, {
+            candidateId,
+            changedFields: [
+              ...appliedFields,
+              ...(merge.experiencesToAppend.length > 0 ? ["section:experiences"] : []),
+              ...(merge.educationsToAppend.length > 0 ? ["section:educations"] : []),
+              ...(merge.skillsToAppend.length > 0 ? ["section:skills"] : []),
+            ],
+          })
+        );
+      });
+
+      await events.flush();
+      return { appliedFields, appended };
     },
 
     async getReview(

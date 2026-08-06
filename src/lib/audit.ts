@@ -109,6 +109,7 @@ export const AUDIT_ACTIONS = {
   RECRUITMENT_INTERVIEW_UPDATED: "recruitment.interview.updated",
   RECRUITMENT_INTERVIEW_CANCELLED: "recruitment.interview.cancelled",
   RECRUITMENT_INTERVIEW_COMPLETED: "recruitment.interview.completed",
+  RECRUITMENT_INTERVIEW_NO_SHOW: "recruitment.interview.no_show",
   RECRUITMENT_DECISION_SUBMITTED: "recruitment.decision.submitted",
   RECRUITMENT_OFFER_RELEASED: "recruitment.offer.released",
   RECRUITMENT_CANDIDATE_MERGED: "recruitment.candidate.merged",

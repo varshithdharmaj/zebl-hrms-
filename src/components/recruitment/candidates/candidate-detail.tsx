@@ -5,8 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { CandidateDetail } from "@/lib/recruitment/candidate/types";
 import type { TimelineItem } from "@/lib/recruitment/types/timeline";
-import type { MergedCandidateTimelineItem } from "@/lib/recruitment/communication/candidate-timeline";
-import type { CommunicationThreadMessageView } from "@/components/recruitment/communications/types";
 import { AppTabs } from "@/components/ui/app-tabs";
 import { CandidateStatusBadge } from "./candidate-status-badge";
 import { CandidateSourceBadge } from "./candidate-source-badge";
@@ -15,7 +13,7 @@ import { CandidateInfoItem } from "./candidate-info-item";
 import { CandidateMetaRow } from "./candidate-meta-row";
 import { CandidateEmptyState } from "./candidate-empty-state";
 import { CandidateDocumentsCard } from "./candidate-documents-card";
-import { CandidateCommunicationPanel } from "./communication/candidate-communication-panel";
+import { CandidateAvatar } from "./candidate-avatar";
 import { Button } from "@/components/ui/button";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { AlertDialog } from "@/components/ui/alert-dialog";
@@ -38,12 +36,15 @@ import {
   Clock,
   MapPin,
   Globe,
-  DollarSign,
+  IndianRupee,
   Archive,
   RotateCcw,
   Edit,
   ClipboardList,
+  MessagesSquare,
 } from "lucide-react";
+import { AddCandidateFieldButton } from "./add-candidate-field-dialog";
+import { hasMissingAddableFields } from "@/lib/recruitment/candidate/addable-fields";
 
 const NOTE_MAX_LENGTH = 5000;
 function formatDate(value: Date | string | null | undefined): string {
@@ -57,7 +58,20 @@ function formatDate(value: Date | string | null | undefined): string {
   });
 }
 
-type WorkspaceTab = "overview" | "applications" | "documents" | "communication" | "activity";
+function formatDateTime(value: Date | string | null | undefined): string {
+  if (!value) return "—";
+  const d = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+type WorkspaceTab = "overview" | "applications" | "documents" | "activity";
 
 type CandidateApplicationRow = {
   id: string;
@@ -74,9 +88,8 @@ export function CandidateDetailView({
   interviews = [],
   offers = [],
   applications = [],
-  communications = [],
-  mergedTimeline = [],
-  canWriteCommunications = false,
+  canWriteDiscussion = false,
+  canManageCandidate = false,
 }: {
   candidate: CandidateDetail;
   timeline: readonly TimelineItem[];
@@ -99,9 +112,8 @@ export function CandidateDetailView({
     } | null;
   }>;
   applications?: CandidateApplicationRow[];
-  communications?: CommunicationThreadMessageView[];
-  mergedTimeline?: MergedCandidateTimelineItem[];
-  canWriteCommunications?: boolean;
+  canWriteDiscussion?: boolean;
+  canManageCandidate?: boolean;
 }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("overview");
@@ -132,16 +144,13 @@ export function CandidateDetailView({
     ? employeeMap.get(candidate.primaryRecruiterUserId) ?? "—"
     : "—";
 
-  const activityTimeline =
-    mergedTimeline.length > 0
-      ? mergedTimeline
-      : timeline.map((item) => ({
-          id: `timeline:${item.id}`,
-          occurredAt: item.createdAt instanceof Date ? item.createdAt : new Date(item.createdAt),
-          source: "other" as const,
-          eventType: item.eventType,
-          summary: item.summary,
-        }));
+  const activityTimeline = timeline.map((item) => ({
+    id: `timeline:${item.id}`,
+    occurredAt: item.createdAt instanceof Date ? item.createdAt : new Date(item.createdAt),
+    source: "other" as const,
+    eventType: item.eventType,
+    summary: item.summary,
+  }));
 
   const runArchive = () => {
     setAlertConfig({
@@ -225,22 +234,11 @@ export function CandidateDetailView({
           { id: "overview", label: "Overview" },
           { id: "applications", label: "Applications", count: applications.length },
           { id: "documents", label: "Documents", count: candidate.documents.length },
-          { id: "communication", label: "Communication", count: communications.length },
           { id: "activity", label: "Activity" },
         ]}
         active={activeTab}
         onChange={(id) => setActiveTab(id as WorkspaceTab)}
       />
-
-      {activeTab === "communication" && (
-        <CandidateCommunicationPanel
-          candidateId={candidate.id}
-          candidateEmail={candidate.email}
-          messages={communications}
-          mergedTimeline={activityTimeline}
-          canWrite={canWriteCommunications}
-        />
-      )}
 
       {activeTab === "documents" && (
         <CandidateDocumentsCard candidateId={candidate.id} documents={candidate.documents} />
@@ -373,6 +371,24 @@ export function CandidateDetailView({
       {activeTab === "overview" && (
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">
+            {canManageCandidate && hasMissingAddableFields(candidate) ? (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-card px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-foreground">Complete profile</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Add missing single-value details without opening the full edit form.
+                  </p>
+                </div>
+                <AddCandidateFieldButton
+                  candidate={candidate}
+                  onSuccess={(message) => {
+                    setSuccess(message);
+                    router.refresh();
+                  }}
+                />
+              </div>
+            ) : null}
+
             <CandidateSection title="Personal" description="Identity, contact, and location.">
               <dl className="grid gap-4 sm:grid-cols-2">
                 <CandidateInfoItem label="Full Name" value={candidate.fullName} icon={User} />
@@ -462,12 +478,12 @@ export function CandidateDetailView({
                 <CandidateInfoItem
                   label="Current CTC"
                   value={candidate.currentCtc ? `${candidate.currentCtc} ${candidate.currency}` : null}
-                  icon={DollarSign}
+                  icon={IndianRupee}
                 />
                 <CandidateInfoItem
                   label="Expected CTC"
                   value={candidate.expectedCtc ? `${candidate.expectedCtc} ${candidate.currency}` : null}
-                  icon={DollarSign}
+                  icon={IndianRupee}
                 />
               </dl>
             </CandidateSection>
@@ -643,51 +659,93 @@ export function CandidateDetailView({
               )}
             </CandidateSection>
 
-            <CandidateSection title="Internal Notes" description="HR and recruiter feedback.">
-              <div className="mb-4 space-y-2">
-                <Textarea
-                  value={noteBody}
-                  onChange={(e) => {
-                    setNoteBody(e.target.value);
-                    if (noteError) setNoteError(null);
-                  }}
-                  rows={3}
-                  maxLength={NOTE_MAX_LENGTH}
-                  placeholder="Add an internal recruiting note…"
-                  disabled={isNotePending}
-                  className="resize-y"
-                />
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-[11px] font-medium text-muted-foreground tabular-nums">
-                    {noteBody.trim().length}/{NOTE_MAX_LENGTH}
-                  </p>
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="font-semibold shadow-subtle"
-                    disabled={isNotePending || !noteBody.trim()}
-                    onClick={submitNote}
-                  >
-                    {isNotePending ? "Saving…" : "Save note"}
-                  </Button>
+            <CandidateSection
+              title="Discussion"
+              description="Recruiters and hiring managers can collaborate on this candidate."
+            >
+              {canWriteDiscussion ? (
+                <div className="mb-4 space-y-2">
+                  <label htmlFor="candidate-discussion-note" className="sr-only">
+                    Discussion note
+                  </label>
+                  <Textarea
+                    id="candidate-discussion-note"
+                    value={noteBody}
+                    onChange={(e) => {
+                      setNoteBody(e.target.value);
+                      if (noteError) setNoteError(null);
+                    }}
+                    rows={3}
+                    maxLength={NOTE_MAX_LENGTH}
+                    placeholder="Add a discussion note..."
+                    disabled={isNotePending}
+                    className="resize-y"
+                  />
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[11px] font-medium text-muted-foreground tabular-nums">
+                      {noteBody.trim().length}/{NOTE_MAX_LENGTH}
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="font-semibold shadow-subtle"
+                      disabled={isNotePending || !noteBody.trim()}
+                      onClick={submitNote}
+                    >
+                      {isNotePending ? "Saving…" : "Add note"}
+                    </Button>
+                  </div>
+                  {noteError && <ErrorAlert message={noteError} />}
                 </div>
-                {noteError && <ErrorAlert message={noteError} />}
-              </div>
+              ) : null}
 
               {candidate.notes.length === 0 ? (
                 <CandidateEmptyState
-                  icon={FileText}
-                  title="No notes yet. Add an internal recruiting note."
-                  description=""
+                  icon={MessagesSquare}
+                  title="No discussion yet"
+                  description={
+                    canWriteDiscussion
+                      ? "Add a note to start collaborating on this candidate."
+                      : "Discussion notes will appear here when the hiring team posts."
+                  }
                 />
               ) : (
-                <ul className="space-y-3">
+                <ul className="space-y-3" aria-label="Candidate discussion">
                   {candidate.notes.map((note) => (
-                    <li key={note.id} className="rounded-lg border border-border/80 bg-card p-4 text-sm">
-                      <p className="whitespace-pre-wrap">{note.content || note.body}</p>
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        {note.visibility} · {formatDate(note.createdAt)}
-                      </p>
+                    <li
+                      key={note.id}
+                      className="flex gap-3 rounded-lg border border-border/80 bg-card p-4 text-sm"
+                    >
+                      <CandidateAvatar
+                        fullName={note.authorName}
+                        imageUrl={note.avatarUrl}
+                        className="mt-0.5"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                          <span className="font-semibold text-foreground">
+                            {note.authorName}
+                          </span>
+                          {note.roleLabel ? (
+                            <span className="text-[11px] font-medium text-muted-foreground">
+                              {note.roleLabel}
+                            </span>
+                          ) : null}
+                          <time
+                            className="text-[11px] text-muted-foreground"
+                            dateTime={
+                              note.createdAt instanceof Date
+                                ? note.createdAt.toISOString()
+                                : String(note.createdAt)
+                            }
+                          >
+                            {formatDateTime(note.createdAt)}
+                          </time>
+                        </div>
+                        <p className="mt-1.5 whitespace-pre-wrap text-foreground">
+                          {note.content || note.body}
+                        </p>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -711,35 +769,39 @@ export function CandidateDetailView({
                 <CandidateMetaRow label="Last Updated" value={formatDate(candidate.updatedAt)} />
               </div>
               <div className="mt-6 flex flex-col gap-2 border-t border-border pt-5">
-                <Button variant="outline" size="sm" asChild className="w-full justify-center font-semibold shadow-subtle">
-                  <Link href={`/admin/recruitment/candidates/${candidate.id}/edit`}>
-                    <Edit className="mr-1.5 h-4 w-4" />
-                    Edit Profile
-                  </Link>
-                </Button>
-                {candidate.status !== "archived" ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={runArchive}
-                    disabled={isPending}
-                    className="w-full justify-center font-semibold text-muted-foreground hover:border-danger/30 hover:text-danger"
-                  >
-                    <Archive className="mr-1.5 h-4 w-4" />
-                    Archive Profile
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={runRestore}
-                    disabled={isPending}
-                    className="w-full justify-center font-semibold"
-                  >
-                    <RotateCcw className="mr-1.5 h-4 w-4" />
-                    Restore Profile
-                  </Button>
-                )}
+                {canManageCandidate ? (
+                  <>
+                    <Button variant="outline" size="sm" asChild className="w-full justify-center font-semibold shadow-subtle">
+                      <Link href={`/admin/recruitment/candidates/${candidate.id}/edit`}>
+                        <Edit className="mr-1.5 h-4 w-4" />
+                        Edit Profile
+                      </Link>
+                    </Button>
+                    {candidate.status !== "archived" ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={runArchive}
+                        disabled={isPending}
+                        className="w-full justify-center font-semibold text-muted-foreground hover:border-danger/30 hover:text-danger"
+                      >
+                        <Archive className="mr-1.5 h-4 w-4" />
+                        Archive Profile
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={runRestore}
+                        disabled={isPending}
+                        className="w-full justify-center font-semibold"
+                      >
+                        <RotateCcw className="mr-1.5 h-4 w-4" />
+                        Restore Profile
+                      </Button>
+                    )}
+                  </>
+                ) : null}
               </div>
             </CandidateSection>
           </div>

@@ -160,13 +160,46 @@ export async function completeInterviewAction(
     // 5. Cache Invalidation
     revalidateInterviewList();
     revalidateInterviewDetail(parsed.data.id);
-    if ((input as any).applicationId) {
-      revalidateApplicationDetail((input as any).applicationId);
+    if (
+      typeof input === "object" &&
+      input !== null &&
+      "applicationId" in input &&
+      typeof (input as { applicationId?: unknown }).applicationId === "string"
+    ) {
+      revalidateApplicationDetail((input as { applicationId: string }).applicationId);
     }
     revalidateRecruitmentDashboard();
 
     // 6. Return ActionState
     return { success: "Interview marked as completed." };
+  } catch (error) {
+    return mapUnknownToActionState(error);
+  }
+}
+
+export async function markInterviewNoShowAction(
+  _prev: RecruitmentInterviewActionState,
+  input: unknown
+): Promise<RecruitmentInterviewActionState> {
+  try {
+    const parsed = safeParseWithSchema(interviewIdSchema, input);
+    if (!parsed.ok) return { error: parsed.error };
+
+    const session = await requireHROrSuperAdminSession();
+
+    if (!isRecruitmentModuleEnabled()) {
+      return { error: "Recruitment module is disabled." };
+    }
+
+    const service = createInterviewService();
+    const { applicationId } = await service.markNoShow(session, parsed.data.id);
+
+    revalidateInterviewList();
+    revalidateInterviewDetail(parsed.data.id);
+    revalidateApplicationDetail(applicationId);
+    revalidateRecruitmentDashboard();
+
+    return { success: "Interview marked as no-show." };
   } catch (error) {
     return mapUnknownToActionState(error);
   }

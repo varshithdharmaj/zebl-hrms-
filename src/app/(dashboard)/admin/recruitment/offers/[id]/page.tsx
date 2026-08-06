@@ -12,8 +12,8 @@ import { OfferPDFViewer } from "@/components/recruitment/offers/offer-pdf-viewer
 import { OfferActivityCard } from "@/components/recruitment/offers/offer-activity-card";
 import { OfferDetailActions } from "@/components/recruitment/offers/offer-detail-actions";
 import { OfferStatusBadge } from "@/components/recruitment/offers/offer-status-badge";
-import { EntityCommunicationTimeline } from "@/components/recruitment/communications/widgets/entity-communication-timeline";
-import { listCommunicationsCached } from "@/lib/recruitment/communication";
+import { OfferRevisionPanel } from "@/components/recruitment/offers/offer-revision-panel";
+import { OfferStatus } from "@/generated/prisma/enums";
 
 export default async function OfferDetailPage({
   params,
@@ -28,20 +28,14 @@ export default async function OfferDetailPage({
     notFound();
   }
 
-  const [timeline, communications] = await Promise.all([
-    prismaTimelineProjectionRepository.listByApplication(offer.applicationId),
-    listCommunicationsCached(session, {
-      offerId: offer.id,
-      page: 1,
-      pageSize: 10,
-    }),
-  ]);
+  const timeline = await prismaTimelineProjectionRepository.listByApplication(
+    offer.applicationId
+  );
 
   const candidate = offer.application?.candidate;
   const candidateName = candidate
     ? `${candidate.firstName} ${candidate.lastName}`
     : "Candidate";
-  const candidateId = candidate?.id ?? offer.application?.candidateId ?? "";
 
   const revisionCount = offer.revisions?.length ?? 0;
 
@@ -81,6 +75,14 @@ export default async function OfferDetailPage({
           <OfferSummaryCard offer={offer} />
           <SalaryBreakdownCard offer={offer} />
           <OfferApprovalCard offer={offer} />
+          <OfferRevisionPanel
+            offerId={offer.id}
+            revisions={(offer.revisions ?? []) as never[]}
+            canRevise={
+              offer.status !== OfferStatus.accepted &&
+              ["hr", "super_admin"].includes(session.role)
+            }
+          />
         </div>
 
         {/* Right 1 Column */}
@@ -88,26 +90,6 @@ export default async function OfferDetailPage({
           <OfferPDFViewer offer={offer} />
           <OfferActivityCard offer={offer} />
           <OfferTimelineCard timeline={timeline} />
-          <EntityCommunicationTimeline
-            title="Communication timeline"
-            composeHref={`/admin/recruitment/communications/new?offerId=${encodeURIComponent(offer.id)}${
-              candidateId ? `&candidateId=${encodeURIComponent(candidateId)}` : ""
-            }`}
-            emptyDescription="No offer-related communications yet."
-            items={communications.items.map((item) => ({
-              id: item.id,
-              subject: item.subject,
-              status: item.status,
-              type: item.type,
-              threadId: item.threadId,
-              occurredAt:
-                item.sentAt instanceof Date
-                  ? item.sentAt.toISOString()
-                  : item.createdAt instanceof Date
-                    ? item.createdAt.toISOString()
-                    : String(item.sentAt ?? item.createdAt),
-            }))}
-          />
         </div>
       </div>
     </div>

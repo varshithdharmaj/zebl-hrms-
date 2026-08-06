@@ -17,6 +17,8 @@ import { RecruitmentTimelineService } from "@/lib/recruitment/services/timeline-
 import { convertEmployeeSchema } from "@/lib/validation/schemas/recruitment/conversions";
 import { initializeEmployeeLeaveBalances } from "@/lib/leave";
 import { provisionEmployeeLogin } from "@/lib/admin/user-management";
+import { copyRecruitmentDocsToEmployee } from "@/lib/recruitment/services/conversion-document-transfer";
+import { getRecruitmentStorage, type StorageAdapter } from "@/lib/recruitment/storage";
 
 function generateEmployeeCode(): string {
   const rand = Math.floor(1000 + Math.random() * 9000);
@@ -24,7 +26,8 @@ function generateEmployeeCode(): string {
 }
 
 export function createEmployeeConversionService(
-  repository: ConversionRepository = prismaConversionRepository
+  repository: ConversionRepository = prismaConversionRepository,
+  storage: StorageAdapter = getRecruitmentStorage()
 ) {
   return {
     async previewConversion(
@@ -229,6 +232,15 @@ export function createEmployeeConversionService(
           },
         });
 
+        // Copy primary resume (+ offer PDF) into employee storage (candidate docs untouched)
+        const employeeDocuments = await copyRecruitmentDocsToEmployee({
+          tx: tx as never,
+          storage,
+          candidateId: candidate.id,
+          employeeId: createdEmployee.id,
+          offerPdfKey: offer.offerPdfKey,
+        });
+
         // Create Snapshot
         await repository.convert(
           {
@@ -245,6 +257,7 @@ export function createEmployeeConversionService(
               designation: parsed.designation,
               ctc: parsed.ctc,
               joiningDate: parsed.joiningDate,
+              employeeDocuments,
             },
             convertedByUserId: session.id,
           },
@@ -252,12 +265,23 @@ export function createEmployeeConversionService(
         );
 
         // Update Application to Hired
+        const fromStage = application.currentStage;
         await repository.updateApplication(
           application.id,
           ApplicationStatus.hired,
           RecruitmentPipelineStage.hired,
           tx
         );
+
+        await tx.applicationStageHistory.create({
+          data: {
+            applicationId: application.id,
+            fromStage,
+            toStage: RecruitmentPipelineStage.hired,
+            note: "Converted to employee",
+            actorUserId: session.id,
+          },
+        });
 
         // Update Candidate to Hired
         await repository.updateCandidate(
@@ -281,7 +305,11 @@ export function createEmployeeConversionService(
             eventType: "employee_converted",
             summary: `Converted candidate ${candidate.fullName} to employee ${parsed.employeeCode}`,
             actorUserId: session.id,
-            metadata: { employeeId: createdEmployee.id, employeeCode: parsed.employeeCode },
+            metadata: {
+              employeeId: createdEmployee.id,
+              employeeCode: parsed.employeeCode,
+              documentsCopied: employeeDocuments.map((d) => d.kind),
+            },
           },
           tx
         );
@@ -384,29 +412,39 @@ export function createEmployeeConversionService(
       RecruitmentPermissionService.requireModuleEnabled();
       const scope = await RecruitmentScopeEngine.getScope(session);
 
-      // Find all offers with accepted status that don't have an EmployeeConversionSnapshot
+      const where =
+        scope.mode === "unrestricted"
+          ? {
+              status: OfferStatus.accepted,
+              conversionSnapshot: null,
+            }
+          : {
+              status: OfferStatus.accepted,
+              conversionSnapshot: null,
+              OR: [
+                { applicationId: { in: [...scope.applicationIds] } },
+                {
+                  application: {
+                    OR: [
+                      { jobOpeningId: { in: [...scope.jobOpeningIds] } },
+                      { candidateId: { in: [...scope.candidateIds] } },
+                    ],
+                  },
+                },
+              ],
+            };
+
       const offers = await prisma.offer.findMany({
-        where: {
-          status: OfferStatus.accepted,
-          conversionSnapshot: null,
-          OR: [
-            { applicationId: { in: [...scope.applicationIds] } },
-            {
-              application: {
-                OR: [
-                  { jobOpeningId: { in: [...scope.jobOpeningIds] } },
-                  { candidateId: { in: [...scope.candidateIds] } },
-                ],
-              },
-            },
-          ],
-        },
+        where,
         include: {
           application: {
             include: {
               candidate: true,
               jobOpening: true,
             },
+          },
+          createdBy: {
+            select: { id: true, email: true },
           },
         },
         orderBy: {

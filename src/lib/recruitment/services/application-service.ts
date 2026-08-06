@@ -182,6 +182,13 @@ export function createApplicationService(
         );
       }
 
+      if (parsed.stage === RecruitmentPipelineStage.hired) {
+        throw new RecruitmentDomainError(
+          "REC_VALIDATION",
+          "Candidates become Hired only after Employee Conversion. Accept an offer, then Convert to Employee."
+        );
+      }
+
       // Fetch Job Opening stages to validate stage exists
       const job = await prismaJobRepository.getJob(app.jobOpeningId);
       if (!job) {
@@ -189,7 +196,6 @@ export function createApplicationService(
       }
 
       const isTerminal = [
-        RecruitmentPipelineStage.hired,
         RecruitmentPipelineStage.rejected,
         RecruitmentPipelineStage.withdrawn,
       ].includes(parsed.stage);
@@ -474,74 +480,16 @@ export function createApplicationService(
       await events.flush();
     },
 
-    async hireCandidate(session: SessionUser, id: string): Promise<void> {
+    /**
+     * @deprecated Manual hire is removed. Hired state is owned by Employee Conversion only.
+     * Kept so callers receive a clear domain error instead of silently succeeding.
+     */
+    async hireCandidate(_session: SessionUser, _id: string): Promise<void> {
       RecruitmentPermissionService.requireModuleEnabled();
-      await RecruitmentPermissionService.assertCanManageCandidates(session);
-      const actor = toRecruitmentActor(session);
-
-      const app = await repository.getApplication(id);
-      if (!app) {
-        throw new RecruitmentDomainError("REC_NOT_FOUND", "Application not found.");
-      }
-
-      const events = createAfterCommitBuffer();
-      await withRecruitmentTransaction(async (tx) => {
-        const fromStage = app.currentStage;
-        await repository.updateApplication(
-          id,
-          {
-            status: ApplicationStatus.hired,
-            currentStage: RecruitmentPipelineStage.hired,
-            stageEnteredAt: new Date(),
-          },
-          tx
-        );
-
-        // Also update candidate status to hired
-        await tx.candidate.update({
-          where: { id: app.candidateId },
-          data: { status: "hired" as any },
-        });
-
-        await tx.applicationStageHistory.create({
-          data: {
-            applicationId: id,
-            fromStage,
-            toStage: RecruitmentPipelineStage.hired,
-            note: "Hired candidate",
-            actorUserId: session.id,
-          },
-        });
-
-        // Timeline Event
-        await RecruitmentTimelineService.append(
-          {
-            entityType: "application",
-            entityId: id,
-            applicationId: id,
-            candidateId: app.candidateId,
-            jobOpeningId: app.jobOpeningId,
-            eventType: "candidate_hired",
-            summary: "Candidate hired successfully!",
-            actorUserId: session.id,
-          },
-          tx
-        );
-
-        // Publish event
-        events.enqueue(
-          RecruitmentEventFactory.applicationStageChanged(actor, {
-            applicationId: id,
-            candidateId: app.candidateId,
-            jobOpeningId: app.jobOpeningId,
-            fromStage,
-            toStage: RecruitmentPipelineStage.hired,
-            isOverride: true,
-          })
-        );
-      });
-
-      await events.flush();
+      throw new RecruitmentDomainError(
+        "REC_VALIDATION",
+        "Hiring is only allowed through Employee Conversion after an offer is accepted."
+      );
     },
 
     async archiveApplication(session: SessionUser, id: string): Promise<void> {

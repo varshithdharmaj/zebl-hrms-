@@ -3,7 +3,7 @@
 import React, { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ApplicationStatus, RecruitmentPipelineStage } from "@/generated/prisma/enums";
+import { ApplicationStatus, OfferStatus, RecruitmentPipelineStage } from "@/generated/prisma/enums";
 import { CandidateAvatar } from "../candidates/candidate-avatar";
 import { CandidateSection } from "../candidates/candidate-section";
 import { CandidateInfoItem } from "../candidates/candidate-info-item";
@@ -20,7 +20,6 @@ import {
   rejectApplicationAction,
   withdrawApplicationAction,
   reopenApplicationAction,
-  hireCandidateAction,
 } from "@/actions/recruitment-applications";
 import {
   User,
@@ -31,11 +30,7 @@ import {
   MapPin,
   Clock,
   ArrowRight,
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
   ChevronRight,
-  FileText,
 } from "lucide-react";
 
 function formatDate(value: Date | string | null): string {
@@ -165,27 +160,9 @@ export function ApplicationDetailView({
     });
   };
 
-  const handleHire = () => {
-    setAlertConfig({
-      isOpen: true,
-      title: "Hire Candidate",
-      description: "Are you sure you want to hire this candidate? This will set the application status to HIRED and candidate status to HIRED.",
-      actionLabel: "Hire Candidate",
-      onAction: () => {
-        setError(null);
-        setSuccess(null);
-        startTransition(async () => {
-          const res = await hireCandidateAction({}, { id: application.id });
-          if (res.error) {
-            setError(res.error);
-          } else {
-            setSuccess("Candidate hired successfully!");
-            router.refresh();
-          }
-        });
-      },
-    });
-  };
+  const acceptedOffer = offers.find(
+    (o: { status?: string }) => o.status === OfferStatus.accepted
+  ) as { id: string } | undefined;
 
   return (
     <div className="space-y-6">
@@ -441,15 +418,22 @@ export function ApplicationDetailView({
                   </div>
 
                   <div className="flex flex-col gap-2 pt-2">
-                    <Button
-                      variant="default"
-                      size="sm"
-                      onClick={handleHire}
-                      disabled={isPending}
-                      className="w-full font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
-                    >
-                      Hire Candidate
-                    </Button>
+                    {acceptedOffer ? (
+                      <Button
+                        asChild
+                        variant="default"
+                        size="sm"
+                        className="w-full font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+                      >
+                        <Link href={`/admin/recruitment/conversions/${acceptedOffer.id}`}>
+                          Convert to Employee
+                        </Link>
+                      </Button>
+                    ) : (
+                      <p className="rounded-md border border-border/60 bg-muted/20 px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
+                        Hired status is set only after Convert to Employee (requires an accepted offer).
+                      </p>
+                    )}
                     <div className="grid grid-cols-2 gap-2">
                       <Button
                         variant="outline"

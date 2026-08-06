@@ -42,6 +42,55 @@ const detailInclude = {
   },
 } as const;
 
+function decimalToNumber(
+  value: Prisma.Decimal | number | string | null | undefined
+): number | null {
+  if (value == null) return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string") {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  return Number(value.toString());
+}
+
+/** Strip Prisma.Decimal so RSC → client props stay plain JSON-safe. */
+function mapInterviewRow<T extends Record<string, unknown>>(row: T): T {
+  const application = (row as { application?: Record<string, unknown> | null }).application;
+  if (!application) return row;
+
+  const candidate = application.candidate as Record<string, unknown> | null | undefined;
+  const jobOpening = application.jobOpening as Record<string, unknown> | null | undefined;
+
+  return {
+    ...row,
+    application: {
+      ...application,
+      candidate: candidate
+        ? {
+            ...candidate,
+            currentCtc: decimalToNumber(candidate.currentCtc as Prisma.Decimal | null),
+            expectedCtc: decimalToNumber(candidate.expectedCtc as Prisma.Decimal | null),
+            totalExperienceYears: decimalToNumber(
+              candidate.totalExperienceYears as Prisma.Decimal | null
+            ),
+          }
+        : candidate,
+      jobOpening: jobOpening
+        ? {
+            ...jobOpening,
+            compensationMin: decimalToNumber(
+              jobOpening.compensationMin as Prisma.Decimal | null
+            ),
+            compensationMax: decimalToNumber(
+              jobOpening.compensationMax as Prisma.Decimal | null
+            ),
+          }
+        : jobOpening,
+    },
+  };
+}
+
 function scopeWhere(scope: RecruitmentScope): Prisma.InterviewWhereInput {
   if (scope.mode === "unrestricted") return {};
   return {
@@ -174,7 +223,7 @@ export const prismaInterviewRepository: InterviewRepository = {
       where: { id },
       include: detailInclude,
     });
-    return row ? (row as any) : null;
+    return row ? mapInterviewRow(row as Record<string, unknown>) : null;
   },
 
   async listInterviews(args) {
@@ -195,7 +244,11 @@ export const prismaInterviewRepository: InterviewRepository = {
       }),
     ]);
 
-    return toPageResult(rows as any[], total, pagination);
+    return toPageResult(
+      rows.map((row) => mapInterviewRow(row as Record<string, unknown>)),
+      total,
+      pagination
+    );
   },
 
   async searchInterviews(args) {
@@ -213,7 +266,11 @@ export const prismaInterviewRepository: InterviewRepository = {
       }),
     ]);
 
-    return toPageResult(rows as any[], total, pagination);
+    return toPageResult(
+      rows.map((row) => mapInterviewRow(row as Record<string, unknown>)),
+      total,
+      pagination
+    );
   },
 
   async listByApplication(applicationId) {
@@ -222,7 +279,7 @@ export const prismaInterviewRepository: InterviewRepository = {
       include: detailInclude,
       orderBy: { scheduledStart: "asc" },
     });
-    return rows as any[];
+    return rows.map((row) => mapInterviewRow(row as Record<string, unknown>));
   },
 
   async listByScheduleRange(args) {
@@ -246,7 +303,11 @@ export const prismaInterviewRepository: InterviewRepository = {
       }),
     ]);
 
-    return toPageResult(rows as any[], total, pagination);
+    return toPageResult(
+      rows.map((row) => mapInterviewRow(row as Record<string, unknown>)),
+      total,
+      pagination
+    );
   },
 
   async replacePanelists(interviewId, employeeIds, tx) {

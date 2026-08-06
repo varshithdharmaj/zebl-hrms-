@@ -95,13 +95,31 @@ function scopeWhere(scope: RecruitmentScope): Prisma.OfferWhereInput {
   };
 }
 
-function filtersWhere(filters?: any): Prisma.OfferWhereInput {
+function filtersWhere(filters?: {
+  status?: string;
+  department?: string;
+  jobOpeningId?: string;
+  applicationId?: string;
+  recruiterUserId?: string;
+  q?: string;
+  includeArchived?: boolean;
+}): Prisma.OfferWhereInput {
   const where: Prisma.OfferWhereInput = {};
-  if (!filters?.includeArchived) {
-    // Offers don't have soft delete in schema, but we can filter by deletedAt if it existed.
-  }
   if (filters?.status && filters.status !== "all") {
-    where.status = filters.status;
+    if (filters.status === "expired") {
+      where.OR = [
+        {
+          status: OfferStatus.released,
+          expiresAt: { lt: new Date() },
+        },
+        {
+          status: OfferStatus.declined,
+          offerNotes: { contains: "Offer Expired" },
+        },
+      ];
+    } else {
+      where.status = filters.status as OfferStatus;
+    }
   }
   if (filters?.department && filters.department !== "all") {
     where.department = filters.department;
@@ -112,18 +130,26 @@ function filtersWhere(filters?: any): Prisma.OfferWhereInput {
   if (filters?.applicationId) {
     where.applicationId = filters.applicationId;
   }
+  if (filters?.recruiterUserId && filters.recruiterUserId !== "all") {
+    where.createdByUserId = filters.recruiterUserId;
+  }
   if (filters?.q?.trim()) {
     const q = filters.q.trim();
-    where.OR = [
+    where.AND = [
+      ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
       {
-        application: {
-          candidate: {
-            fullName: { contains: q, mode: "insensitive" },
+        OR: [
+          {
+            application: {
+              candidate: {
+                fullName: { contains: q, mode: "insensitive" },
+              },
+            },
           },
-        },
-      },
-      {
-        offerNumber: { contains: q, mode: "insensitive" },
+          {
+            offerNumber: { contains: q, mode: "insensitive" },
+          },
+        ],
       },
     ];
   }
@@ -182,6 +208,7 @@ export const prismaOfferRepository: OfferRepository = {
     await client.offer.update({
       where: { id },
       data: {
+        status: patch.status,
         currency: patch.currency,
         baseSalary: patch.baseSalary != null ? new Prisma.Decimal(patch.baseSalary) : undefined,
         variablePay: patch.variablePay !== undefined ? (patch.variablePay != null ? new Prisma.Decimal(patch.variablePay) : null) : undefined,
