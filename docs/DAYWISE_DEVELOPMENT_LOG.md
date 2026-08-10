@@ -1,6 +1,6 @@
 # ZEBL AMS — day-wise development log
 
-This log summarizes repository activity from Git history and the current working tree (through 6 August 2026). It describes delivered outcomes rather than every changed file.
+This log summarizes repository activity from Git history and the current working tree (through 10 August 2026). It describes delivered outcomes rather than every changed file.
 
 ## 24 May 2026 — Initial application and UI foundation
 
@@ -162,16 +162,27 @@ Commit: `b94e9f6`
 
 Commit: `63a2bde`
 
+## 7–10 August 2026 — Recruitment production checkpoint and staging prep
+
+- Hardened deterministic resume parsing (Phase C / A+): PDF line reconstruction, section/pattern recall, merge-engine safety; experience precision 100% with zero PROJECT_AS_EXPERIENCE / P0 on the synthetic corpus. Phase B Gemini semantic verify remains off by default (`RESUME_SEMANTIC_VERIFY=0`).
+- Added optional Gemini candidate enrichment and resume-field recovery (settings + API-key gated), with pending-insight uniqueness migrations.
+- Shipped create-candidate-from-resume review flow and the hiring-decision vertical slice (eligibility, Prisma repo, service/actions/UI, offer gate, timeline/audit).
+- Improved recruitment workflow continuity: context headers, breadcrumbs/return-to, pipeline/offer/conversion navigation, and shared loading skeletons across admin/employee shells.
+- Added S3 recruitment storage driver, profile-avatar preview helpers, payroll summary read-path timing, and security headers / SSO auto-link default-off.
+- Added AWS ECS Fargate staging artifacts (Dockerfile, task definition) and pilot rollout runbook.
+
+Commits: `62dbddc`, `d460f1a`
+
 ## Current project state
 
 - Core HR areas: attendance, employees, leave workflows, payroll-related attendance views, notifications, helpdesk, account management, and recruitment (hiring workspace).
-- Security: role-based access, login history, active sessions, revocation, password changes, audit-oriented workflows, and security dashboards.
-- Infrastructure: PostgreSQL/Supabase via Prisma, Vercel and Cloudflare/OpenNext deployment support, CI, CodeQL, Dependabot, and resumable attendance-import jobs.
+- Security: role-based access, login history, active sessions, revocation, password changes, audit-oriented workflows, security dashboards, SSO auto-link opt-in only, and global security headers.
+- Infrastructure: PostgreSQL/Supabase via Prisma, Vercel and Cloudflare/OpenNext deployment support, AWS ECS/S3 staging path, CI, CodeQL, Dependabot, and resumable attendance-import jobs.
 - Attendance ingestion: daily Excel, daily PDF (including eSSL Daily Basic), eSSL Summary PDF, multi-date rows, optional preview, chunked jobs, and duplicate-skip reporting.
-- Recruitment: jobs → candidates/resume import → applications/pipeline → interviews → offers → employee conversion, plus communications, documents, analytics/reports, and deepened intake/offer/conversion/dashboard UX.
-- Documentation: architecture, development setup, deployment, database/migrations, authentication, integrations, notifications, workflows, CI, attendance-import phases, and recruitment PRD/architecture/schema/tech/blueprint.
+- Recruitment: jobs → candidates/resume import (deterministic A+) → applications/pipeline → hiring decision → interviews → offers → employee conversion, plus optional Gemini enrichment/recovery, communications, documents, analytics/reports, and workflow-continuity UX.
+- Documentation: architecture, development setup, deployment, database/migrations, authentication, integrations, notifications, workflows, CI, attendance-import phases, recruitment PRD/architecture/schema/tech/blueprint, AWS staging, and pilot rollout.
 
 ## Source notes
 
-- Dates and committed outcomes were derived from repository commits through 6 August 2026.
+- Dates and committed outcomes were derived from repository commits through 10 August 2026.
 - This log should be updated when major work is merged.
