@@ -1,0 +1,107 @@
+{
+  "family": "zebl-ams-staging",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/zebl-ams-staging-task",
+  "containerDefinitions": [
+    {
+      "name": "zebl-ams",
+      "image": "ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/zebl-ams:staging",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "NODE_ENV", "value": "production" },
+        { "name": "PORT", "value": "3000" },
+        { "name": "HOSTNAME", "value": "0.0.0.0" },
+        { "name": "RECRUITMENT_MODULE_ENABLED", "value": "true" },
+        { "name": "RECRUITMENT_STORAGE_DRIVER", "value": "s3" },
+        { "name": "AUTH_SSO_AUTO_LINK", "value": "false" },
+        { "name": "AUTH_SSO_AUTO_PROVISION", "value": "false" }
+      ],
+      "secrets": [
+        {
+          "name": "DATABASE_URL",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:zebl-ams/staging/DATABASE_URL"
+        },
+        {
+          "name": "DIRECT_URL",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:zebl-ams/staging/DIRECT_URL"
+        },
+        {
+          "name": "AUTH_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:zebl-ams/staging/AUTH_SECRET"
+        },
+        {
+          "name": "APP_BASE_URL",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:zebl-ams/staging/APP_BASE_URL"
+        },
+        {
+          "name": "SMTP_HOST",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:zebl-ams/staging/SMTP_HOST"
+        },
+        {
+          "name": "SMTP_PORT",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:zebl-ams/staging/SMTP_PORT"
+        },
+        {
+          "name": "SMTP_USER",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:zebl-ams/staging/SMTP_USER"
+        },
+        {
+          "name": "SMTP_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:zebl-ams/staging/SMTP_PASSWORD"
+        },
+        {
+          "name": "EMAIL_FROM",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:zebl-ams/staging/EMAIL_FROM"
+        },
+        {
+          "name": "NOTIFICATION_CRON_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:zebl-ams/staging/NOTIFICATION_CRON_SECRET"
+        },
+        {
+          "name": "INTEGRATION_CRON_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:zebl-ams/staging/INTEGRATION_CRON_SECRET"
+        },
+        {
+          "name": "ANALYTICS_CRON_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:zebl-ams/staging/ANALYTICS_CRON_SECRET"
+        },
+        {
+          "name": "RECRUITMENT_S3_BUCKET",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:zebl-ams/staging/RECRUITMENT_S3_BUCKET"
+        },
+        {
+          "name": "RECRUITMENT_S3_REGION",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:zebl-ams/staging/RECRUITMENT_S3_REGION"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/zebl-ams-staging",
+          "awslogs-region": "REGION",
+          "awslogs-stream-prefix": "app"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 40
+      }
+    }
+  ]
+}
