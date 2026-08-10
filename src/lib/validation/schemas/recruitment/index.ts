@@ -48,6 +48,11 @@ export {
   mergeCandidateResumeSchema,
 } from "@/lib/validation/schemas/recruitment/resume-import";
 export {
+  submitHiringDecisionSchema,
+  type SubmitHiringDecisionInput,
+  type SubmitHiringDecisionData,
+} from "@/lib/validation/schemas/recruitment/decisions";
+export {
   createApplicationSchema,
   updateApplicationSchema,
   applicationIdSchema,
@@ -79,6 +84,26 @@ export {
   convertEmployeeSchema,
   employeeAccountSchema,
 } from "@/lib/validation/schemas/recruitment/conversions";
+export {
+  generateCandidateAiEnrichmentSchema,
+  dismissCandidateAiEnrichmentSchema,
+  acceptCandidateAiEnrichmentSchema,
+  type GenerateCandidateAiEnrichmentInput,
+  type DismissCandidateAiEnrichmentInput,
+  type AcceptCandidateAiEnrichmentInput,
+} from "@/lib/validation/schemas/recruitment/ai-enrichment";
+export {
+  generateCandidateAiRecoverySchema,
+  dismissCandidateAiRecoverySchema,
+  acceptCandidateAiRecoverySchema,
+  type GenerateCandidateAiRecoveryInput,
+  type DismissCandidateAiRecoveryInput,
+  type AcceptCandidateAiRecoveryInput,
+} from "@/lib/validation/schemas/recruitment/ai-recovery";
+export {
+  createCandidateFromResumeReviewSchema,
+  type CreateCandidateFromResumeReviewInput,
+} from "@/lib/validation/schemas/recruitment/new-candidate-resume";
 export {
   createDraftSchema,
   updateDraftSchema,

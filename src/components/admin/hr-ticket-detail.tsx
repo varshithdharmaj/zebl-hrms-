@@ -308,8 +308,8 @@ export function HRTicketDetail({
                   />
                 </div>
               )}
-              <Button type="submit" disabled={statusPending} size="sm">
-                {statusPending ? "Updating..." : "Update Status"}
+              <Button type="submit" loading={statusPending} size="sm">
+                {statusPending ? "Updating…" : "Update Status"}
               </Button>
             </form>
           </SectionCard>

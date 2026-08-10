@@ -15,6 +15,7 @@ import type { ManagerSummary } from "@/lib/org-types";
 import type { AppUserRole } from "@/lib/roles";
 import type { AccountStatus, AuthProvider } from "@/generated/prisma/enums";
 import { AccountManagementTab } from "@/components/admin/employee-profile/account-management-tab";
+import { ProfileAvatar } from "@/components/shared/profile-avatar";
 
 export type ProfileEmployee = {
   id: number;
@@ -126,6 +127,14 @@ export function EmployeeProfileShell({
   return (
     <div className="space-y-6 lg:space-y-8">
       <WorkspacePageHeader
+        leading={
+          <ProfileAvatar
+            imageUrl={employee.user?.profilePhotoUrl}
+            alt={`${employee.name} profile photo`}
+            editable
+            size="lg"
+          />
+        }
         title={employee.name}
         description={[employee.employeeCode, employee.designation, employee.department]
           .filter(Boolean)

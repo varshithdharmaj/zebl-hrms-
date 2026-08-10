@@ -10,11 +10,36 @@ export {
   createCandidateService,
 } from "@/lib/recruitment/services/candidate-service";
 export {
+  createCandidateFromResumeService,
+  cleanupConsumedIntakeStorage,
+  RESUME_ATTACH_FAILURE_MESSAGE,
+  type CandidateFromResumeService,
+  type NewCandidateResumeReviewDraft,
+  type CreateCandidateFromResumeResult,
+} from "@/lib/recruitment/services/create-candidate-from-resume-service";
+export {
   createCandidateDocumentService,
 } from "@/lib/recruitment/services/candidate-document-service";
 export {
+  createCandidateAiEnrichmentService,
+  isEnrichmentFresh,
+  ENRICHMENT_STALE_ACCEPT_MESSAGE,
+  type CandidateAiEnrichmentService,
+} from "@/lib/recruitment/services/candidate-ai-enrichment-service";
+export {
+  createCandidateAiRecoveryService,
+  isRecoveryFresh,
+  RECOVERY_STALE_ACCEPT_MESSAGE,
+  RECOVERY_FIELD_FILLED_MESSAGE,
+  type CandidateAiRecoveryService,
+} from "@/lib/recruitment/services/candidate-ai-recovery-service";
+export {
   createApplicationService,
 } from "@/lib/recruitment/services/application-service";
+export {
+  createHiringDecisionService,
+  type HiringDecisionService,
+} from "@/lib/recruitment/services/hiring-decision-service";
 export {
   createInterviewService,
 } from "@/lib/recruitment/services/interview-service";

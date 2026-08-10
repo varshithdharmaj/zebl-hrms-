@@ -71,7 +71,7 @@ async function resolveScopeUncached(actor: RecruitmentActor): Promise<Recruitmen
     if (row.role === HiringTeamRole.team_lead) isTeamLead = true;
   }
 
-  let isInterviewer = panelRows.length > 0;
+  const isInterviewer = panelRows.length > 0;
   for (const row of panelRows) {
     applicationIds.add(row.interview.applicationId);
     candidateIds.add(row.interview.application.candidateId);

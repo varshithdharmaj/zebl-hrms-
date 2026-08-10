@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import { OfferStatus } from "@/generated/prisma/enums";
 import { OfferStatusBadge } from "./offer-status-badge";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
@@ -9,7 +10,7 @@ import { format } from "date-fns";
 type OfferRow = {
   id: string;
   offerNumber?: string | null;
-  status: string;
+  status: OfferStatus | string;
   sentAt?: Date | string | null;
   releasedAt?: Date | string | null;
   expiresAt?: Date | string | null;
@@ -26,22 +27,13 @@ type OfferRow = {
   } | null;
 };
 
-function candidateName(candidate: OfferRow["application"] extends infer A
-  ? A extends { candidate?: infer C }
-    ? C
-    : null
-  : null): string {
+type OfferCandidate = NonNullable<NonNullable<OfferRow["application"]>["candidate"]>;
+
+function candidateName(candidate: OfferCandidate | null | undefined): string {
   if (!candidate) return "Unknown";
-  if (typeof candidate === "object" && candidate !== null && "fullName" in candidate && candidate.fullName) {
-    return String(candidate.fullName);
-  }
-  if (typeof candidate === "object" && candidate !== null) {
-    const first = "firstName" in candidate ? candidate.firstName : "";
-    const last = "lastName" in candidate ? candidate.lastName : "";
-    const name = `${first ?? ""} ${last ?? ""}`.trim();
-    return name || "Unknown";
-  }
-  return "Unknown";
+  if (candidate.fullName) return String(candidate.fullName);
+  const name = `${candidate.firstName ?? ""} ${candidate.lastName ?? ""}`.trim();
+  return name || "Unknown";
 }
 
 function formatDate(value: Date | string | null | undefined): string {
@@ -91,7 +83,7 @@ export function OfferTable({ offers }: { offers: readonly OfferRow[] }) {
                   <div className="font-medium text-foreground">{job?.title || "N/A"}</div>
                 </td>
                 <td className="px-6 py-4">
-                  <OfferStatusBadge status={offer.status} />
+                  <OfferStatusBadge status={offer.status as OfferStatus} />
                 </td>
                 <td className="px-6 py-4 text-muted-foreground">{formatDate(sent)}</td>
                 <td className="px-6 py-4 text-muted-foreground">{formatDate(offer.expiresAt)}</td>

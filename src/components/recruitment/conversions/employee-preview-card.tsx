@@ -4,10 +4,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type {
+  EmployeeConversionFormData,
+  EmployeeConversionFormField,
+} from "@/lib/recruitment/conversion/types";
 
 interface EmployeePreviewCardProps {
-  formData: any;
-  onChange: (field: string, value: any) => void;
+  formData: EmployeeConversionFormData;
+  onChange: <K extends EmployeeConversionFormField>(
+    field: K,
+    value: EmployeeConversionFormData[K]
+  ) => void;
   managers: { id: number; name: string; employeeCode: string }[];
 }
 

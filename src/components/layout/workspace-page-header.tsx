@@ -9,6 +9,7 @@ export function WorkspacePageHeader({
   backLabel = "Back",
   action,
   badge,
+  leading,
 }: {
   title: string;
   description?: string;
@@ -16,6 +17,8 @@ export function WorkspacePageHeader({
   backLabel?: string;
   action?: React.ReactNode;
   badge?: React.ReactNode;
+  /** Optional leading visual (e.g. profile avatar). */
+  leading?: React.ReactNode;
 }) {
   return (
     <section className="rounded-xl border border-border bg-card p-6 shadow-subtle lg:p-7">
@@ -28,17 +31,20 @@ export function WorkspacePageHeader({
         </Button>
       )}
       <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-        <div className="min-w-0 space-y-3">
-          {badge}
-          <div className="space-y-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-              {title}
-            </h1>
-            {description && (
-              <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-[0.9375rem]">
-                {description}
-              </p>
-            )}
+        <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-start">
+          {leading ? <div className="shrink-0">{leading}</div> : null}
+          <div className="min-w-0 space-y-3">
+            {badge}
+            <div className="space-y-2">
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+                {title}
+              </h1>
+              {description && (
+                <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-[0.9375rem]">
+                  {description}
+                </p>
+              )}
+            </div>
           </div>
         </div>
         {action && <div className="w-full shrink-0 lg:w-auto">{action}</div>}

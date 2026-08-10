@@ -11,7 +11,12 @@ import {
 } from "@/lib/recruitment/permissions/permission-service";
 import { RecruitmentScopeEngine } from "@/lib/recruitment/permissions/recruitment-scope-engine";
 import { prismaInterviewRepository } from "@/lib/recruitment/repositories/prisma-interview-repository";
-import type { InterviewRepository } from "@/lib/recruitment/repositories/interview-repository";
+import type {
+  InterviewDetail,
+  InterviewListFilters,
+  InterviewRepository,
+} from "@/lib/recruitment/repositories/interview-repository";
+import type { SearchFilters } from "@/lib/recruitment/types/pagination";
 import { prismaApplicationRepository } from "@/lib/recruitment/repositories/prisma-application-repository";
 import { RecruitmentDomainError } from "@/lib/recruitment/shared/errors";
 import { withRecruitmentTransaction } from "@/lib/recruitment/shared/transaction";
@@ -134,8 +139,8 @@ export function createInterviewService(
             entityType: "application",
             entityId: interview.applicationId,
             applicationId: interview.applicationId,
-            candidateId: interview.application.candidateId,
-            jobOpeningId: interview.application.jobOpeningId,
+            candidateId: interview.application?.candidateId ?? null,
+            jobOpeningId: interview.application?.jobOpeningId ?? null,
             eventType: "interview_updated",
             summary: `Updated interview: ${parsed.title ?? interview.title}`,
             actorUserId: session.id,
@@ -184,8 +189,8 @@ export function createInterviewService(
             entityType: "application",
             entityId: interview.applicationId,
             applicationId: interview.applicationId,
-            candidateId: interview.application.candidateId,
-            jobOpeningId: interview.application.jobOpeningId,
+            candidateId: interview.application?.candidateId ?? null,
+            jobOpeningId: interview.application?.jobOpeningId ?? null,
             eventType: "interview_cancelled",
             summary: `Cancelled interview: ${interview.title}`,
             actorUserId: session.id,
@@ -247,8 +252,8 @@ export function createInterviewService(
             entityType: "application",
             entityId: interview.applicationId,
             applicationId: interview.applicationId,
-            candidateId: interview.application.candidateId,
-            jobOpeningId: interview.application.jobOpeningId,
+            candidateId: interview.application?.candidateId ?? null,
+            jobOpeningId: interview.application?.jobOpeningId ?? null,
             eventType: "interview_completed",
             summary: `Completed interview: ${interview.title}`,
             actorUserId: session.id,
@@ -293,8 +298,8 @@ export function createInterviewService(
             entityType: "application",
             entityId: interview.applicationId,
             applicationId: interview.applicationId,
-            candidateId: interview.application.candidateId,
-            jobOpeningId: interview.application.jobOpeningId,
+            candidateId: interview.application?.candidateId ?? null,
+            jobOpeningId: interview.application?.jobOpeningId ?? null,
             eventType: "interview_no_show",
             summary: `No-show for interview: ${interview.title}`,
             actorUserId: session.id,
@@ -349,7 +354,7 @@ export function createInterviewService(
 
       // Check if user is a panelist or HR/Super Admin
       const isPanelist = interview.panelists.some(
-        (p: any) => p.employee.user?.id === session.id
+        (p) => p.employee.user?.id === session.id
       );
       const isHrOrAdmin = ["hr", "super_admin"].includes(session.role);
 
@@ -378,8 +383,8 @@ export function createInterviewService(
             entityType: "application",
             entityId: interview.applicationId,
             applicationId: interview.applicationId,
-            candidateId: interview.application.candidateId,
-            jobOpeningId: interview.application.jobOpeningId,
+            candidateId: interview.application?.candidateId ?? null,
+            jobOpeningId: interview.application?.jobOpeningId ?? null,
             eventType: "interview_feedback_submitted",
             summary: `Feedback submitted for interview: ${interview.title}`,
             actorUserId: session.id,
@@ -391,7 +396,7 @@ export function createInterviewService(
         return id;
       });
 
-      return feedbackId;
+      return { id: feedbackId };
     },
 
     async archiveInterview(session: SessionUser, id: string): Promise<void> {
@@ -422,7 +427,7 @@ export function createInterviewService(
       });
     },
 
-    async getInterview(session: SessionUser, id: string): Promise<Record<string, any> | null> {
+    async getInterview(session: SessionUser, id: string): Promise<InterviewDetail | null> {
       RecruitmentPermissionService.requireModuleEnabled();
       const scope = await RecruitmentScopeEngine.getScope(session);
       const interview = await repository.getInterview(id);
@@ -434,7 +439,7 @@ export function createInterviewService(
     async listInterviews(
       session: SessionUser,
       args: {
-        filters?: any;
+        filters?: InterviewListFilters | SearchFilters;
         pagination: { page: number; pageSize: number };
         sort?: { field: string; direction: "asc" | "desc" };
       }
@@ -448,9 +453,15 @@ export function createInterviewService(
       });
     },
 
-    async getDashboardMetrics(session: SessionUser, filters?: any): Promise<Record<string, any>> {
+    async getDashboardMetrics(
+      session: SessionUser,
+      filters?: InterviewListFilters | SearchFilters
+    ): Promise<Record<string, unknown>> {
       const scope = await RecruitmentScopeEngine.getScope(session);
-      const counts = await repository.countInterviews(scope, filters);
+      const counts = await repository.countInterviews(
+        scope,
+        filters as InterviewListFilters | undefined
+      );
 
       // Upcoming and today's interviews count
       const todayStart = new Date();

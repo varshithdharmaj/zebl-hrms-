@@ -1,60 +1,28 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { FileText } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import {
   AddCandidateMethodChooser,
   type AddCandidateMethod,
 } from "@/components/recruitment/candidates/add-candidate-method-chooser";
 import { CandidateForm, type EmployeeOption } from "@/components/recruitment/candidates/candidate-form";
 import { ResumeUploadPanel } from "@/components/recruitment/candidates/resume-upload-panel";
-import { ResumeParsingPlaceholder } from "@/components/recruitment/candidates/resume-parsing-placeholder";
+import { NewCandidateResumeReview } from "@/components/recruitment/candidates/new-candidate-resume-review";
 import { SectionCard } from "@/components/ui/section-card";
+import { Button } from "@/components/ui/button";
+import { parseResumeForNewCandidateAction } from "@/actions/recruitment-new-candidate-resume";
+import type { NewCandidateResumeReviewDraft } from "@/lib/recruitment/services/create-candidate-from-resume-service";
 
-type FlowStep = "choose" | "manual" | "upload" | "parsing";
+type FlowStep = "choose" | "manual" | "upload" | "parsing" | "review";
 
-const PENDING_RESUME_KEY = "recruitment:pending-resume-meta";
-
-type PendingResumeMeta = {
-  fileName: string;
-  fileSize: number;
-  mimeType: string;
-  selectedAt: string;
-};
-
-function parseStep(method: string | null, from: string | null): FlowStep {
+function parseStep(method: string | null): FlowStep {
   if (method === "manual") return "manual";
   if (method === "upload") return "upload";
   if (method === "parsing") return "parsing";
-  if (from === "resume") return "manual";
+  if (method === "review") return "review";
   return "choose";
-}
-
-function writePendingResumeMeta(file: File) {
-  // TODO(resume-parser): replace sessionStorage metadata with a server-side
-  // intake draft (file storage key + parse job id). Do not create Candidate here.
-  const meta: PendingResumeMeta = {
-    fileName: file.name,
-    fileSize: file.size,
-    mimeType: file.type,
-    selectedAt: new Date().toISOString(),
-  };
-  try {
-    sessionStorage.setItem(PENDING_RESUME_KEY, JSON.stringify(meta));
-  } catch {
-    // Ignore quota / private-mode failures — UI flow still continues.
-  }
-}
-
-function readPendingResumeMeta(): PendingResumeMeta | null {
-  try {
-    const raw = sessionStorage.getItem(PENDING_RESUME_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as PendingResumeMeta;
-  } catch {
-    return null;
-  }
 }
 
 export function NewCandidateFlow({ employees }: { employees: EmployeeOption[] }) {
@@ -63,20 +31,15 @@ export function NewCandidateFlow({ employees }: { employees: EmployeeOption[] })
   const searchParams = useSearchParams();
 
   const methodParam = searchParams.get("method");
-  const fromParam = searchParams.get("from");
-  const [step, setStep] = useState<FlowStep>(() => parseStep(methodParam, fromParam));
+  const [step, setStep] = useState<FlowStep>(() => parseStep(methodParam));
   const [file, setFile] = useState<File | null>(null);
-  const [pendingMeta, setPendingMeta] = useState<PendingResumeMeta | null>(null);
+  const [draft, setDraft] = useState<NewCandidateResumeReviewDraft | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
 
   useEffect(() => {
-    setStep(parseStep(methodParam, fromParam));
-  }, [methodParam, fromParam]);
-
-  useEffect(() => {
-    if (fromParam === "resume" || methodParam === "manual") {
-      setPendingMeta(readPendingResumeMeta());
-    }
-  }, [fromParam, methodParam]);
+    setStep(parseStep(methodParam));
+  }, [methodParam]);
 
   const replaceQuery = useCallback(
     (next: Record<string, string | null>) => {
@@ -98,27 +61,28 @@ export function NewCandidateFlow({ employees }: { employees: EmployeeOption[] })
 
   function handleMethodSelect(method: AddCandidateMethod) {
     if (method === "manual") {
-      goToStep("manual", { method: "manual", from: null });
+      goToStep("manual", { method: "manual" });
       return;
     }
-    goToStep("upload", { method: "upload", from: null });
+    goToStep("upload", { method: "upload" });
   }
 
   function handleUploadContinue() {
     if (!file) return;
-    writePendingResumeMeta(file);
-    setPendingMeta({
-      fileName: file.name,
-      fileSize: file.size,
-      mimeType: file.type,
-      selectedAt: new Date().toISOString(),
-    });
-    // TODO(resume-parser): start parse job here, then route to Review instead of placeholder.
-    goToStep("parsing", { method: "parsing", from: null });
-  }
+    setParseError(null);
+    goToStep("parsing", { method: "parsing" });
 
-  function handleContinueToForm() {
-    goToStep("manual", { method: "manual", from: "resume" });
+    startTransition(async () => {
+      const formData = new FormData();
+      formData.set("file", file);
+      const result = await parseResumeForNewCandidateAction(formData);
+      if (result.error || !result.draft) {
+        setParseError(result.error ?? "Failed to analyze resume.");
+        return;
+      }
+      setDraft(result.draft);
+      goToStep("review", { method: "review" });
+    });
   }
 
   if (step === "choose") {
@@ -137,7 +101,8 @@ export function NewCandidateFlow({ employees }: { employees: EmployeeOption[] })
         showSuccess={Boolean(file)}
         onBack={() => {
           setFile(null);
-          goToStep("choose", { method: null, from: null });
+          setDraft(null);
+          goToStep("choose", { method: null });
         }}
         onContinue={handleUploadContinue}
       />
@@ -145,33 +110,70 @@ export function NewCandidateFlow({ employees }: { employees: EmployeeOption[] })
   }
 
   if (step === "parsing") {
-    const name = file?.name ?? pendingMeta?.fileName ?? "resume";
     return (
-      <ResumeParsingPlaceholder
-        fileName={name}
-        onBackToUpload={() => goToStep("upload", { method: "upload", from: null })}
-        onContinueToForm={handleContinueToForm}
+      <SectionCard
+        title="Extracting candidate information"
+        description="Reading the resume with the deterministic parser. This is not AI analysis."
+      >
+        <div className="mx-auto flex w-full max-w-md flex-col items-center gap-4 py-6 text-center">
+          {parseError ? (
+            <>
+              <p className="text-sm text-danger" role="alert">
+                {parseError}
+              </p>
+              <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => goToStep("upload", { method: "upload" })}
+                >
+                  Back to upload
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => goToStep("manual", { method: "manual" })}
+                >
+                  Enter details manually
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <Loader2
+                className="h-8 w-8 animate-spin text-muted-foreground"
+                aria-hidden
+              />
+              <p className="text-sm font-semibold text-foreground">
+                Extracting candidate information...
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {file?.name ?? "Resume"}
+              </p>
+              {pending ? null : (
+                <p className="text-xs text-muted-foreground">Starting…</p>
+              )}
+            </>
+          )}
+        </div>
+      </SectionCard>
+    );
+  }
+
+  if (step === "review" && draft) {
+    return (
+      <NewCandidateResumeReview
+        draft={draft}
+        onBack={() => {
+          setDraft(null);
+          goToStep("upload", { method: "upload" });
+        }}
+        onContinueManual={() => goToStep("manual", { method: "manual" })}
       />
     );
   }
 
   return (
     <div className="space-y-4">
-      {fromParam === "resume" && pendingMeta && (
-        <div className="flex items-start gap-3 rounded-xl border border-border bg-muted/20 px-4 py-3 text-sm">
-          <FileText className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-          <div className="min-w-0">
-            <p className="font-semibold text-foreground">Resume selected — manual entry</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {/* TODO(resume-parser): prefill CandidateForm from extracted draft mapped fields */}
-              <span className="truncate font-medium text-foreground/80">{pendingMeta.fileName}</span>
-              {" · "}
-              Auto-fill from resume is not available yet. Complete the form below. No candidate was
-              created from the upload step.
-            </p>
-          </div>
-        </div>
-      )}
       <CandidateForm mode="create" employees={employees} />
     </div>
   );

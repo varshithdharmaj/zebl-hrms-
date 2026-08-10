@@ -307,7 +307,7 @@ export function CandidateTable({
               onCheckedChange={(checked) => handleSelectAll(!!checked)}
               aria-label="Select all candidates"
               key="select-all"
-            /> as any,
+            />,
             "Candidate Name",
             "Current Position",
             "Contact",

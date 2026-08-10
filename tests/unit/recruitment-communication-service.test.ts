@@ -26,8 +26,8 @@ vi.mock("@/lib/recruitment/shared/after-commit", () => ({
   createAfterCommitBuffer: () => {
     const events: unknown[] = [];
     return {
-      push: (e: unknown) => events.push(e),
-      publishAll: vi.fn(async () => undefined),
+      enqueue: (e: unknown) => events.push(e),
+      flush: vi.fn(async () => undefined),
       get size() {
         return events.length;
       },

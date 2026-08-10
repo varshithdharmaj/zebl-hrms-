@@ -56,7 +56,7 @@ export function LeaveRequestForm() {
           <Label htmlFor="reason" className="text-xs font-semibold text-slate-700">Reason</Label>
           <Textarea id="reason" name="reason" required placeholder="State your reason for leave..." rows={3} />
         </div>
-        <Button type="submit" disabled={pending} className="w-full sm:w-auto">
+        <Button type="submit" loading={pending} className="w-full sm:w-auto">
           {pending ? "Submitting request…" : "Submit leave request"}
         </Button>
       </form>

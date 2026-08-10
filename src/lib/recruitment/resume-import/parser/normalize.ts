@@ -34,12 +34,14 @@ export function normalizeParsedResumeDraft(draft: ParsedResumeDraft): ParsedResu
     draft.educations.map((e) => ({
       institution: normalizeWhitespace(e.institution),
       degree: e.degree ? normalizeWhitespace(e.degree) : null,
+      field: e.field ? normalizeWhitespace(e.field) : null,
       graduationYear: e.graduationYear,
     })),
     (e) =>
       [
         normalizeComparable(e.institution),
         normalizeComparable(e.degree),
+        normalizeComparable(e.field),
         String(e.graduationYear ?? ""),
       ].join("::")
   );
@@ -48,6 +50,7 @@ export function normalizeParsedResumeDraft(draft: ParsedResumeDraft): ParsedResu
     draft.experiences.map((e) => ({
       company: normalizeWhitespace(e.company),
       title: normalizeWhitespace(e.title),
+      location: e.location ? normalizeWhitespace(e.location) : null,
       startDate: normalizeResumeDate(e.startDate),
       endDate: e.isCurrent ? null : normalizeResumeDate(e.endDate),
       isCurrent: e.isCurrent,
@@ -61,6 +64,34 @@ export function normalizeParsedResumeDraft(draft: ParsedResumeDraft): ParsedResu
       ].join("::")
   );
 
+  const projects = dedupeByKey(
+    (draft.projects ?? [])
+      .map((p) => ({
+        title: normalizeWhitespace(p.title),
+        summary: p.summary ? normalizeWhitespace(p.summary) : null,
+        techStack: p.techStack ? normalizeWhitespace(p.techStack) : null,
+        url: p.url?.trim() || null,
+        duration: p.duration ? normalizeWhitespace(p.duration) : null,
+      }))
+      .filter((p) => p.title.length > 0),
+    (p) =>
+      `${normalizeComparable(p.title)}::${normalizeComparable(p.url ?? "")}`
+  );
+
+  const certifications = dedupeByKey(
+    (draft.certifications ?? [])
+      .map((c) => ({
+        name: normalizeWhitespace(c.name),
+        issuer: c.issuer ? normalizeWhitespace(c.issuer) : null,
+        issuedAt: c.issuedAt ? normalizeResumeDate(c.issuedAt) ?? c.issuedAt : null,
+        credentialUrl: c.credentialUrl?.trim() || null,
+        credentialId: c.credentialId ? normalizeWhitespace(c.credentialId) : null,
+      }))
+      .filter((c) => c.name.length > 0),
+    (c) =>
+      `${normalizeComparable(c.name)}::${normalizeComparable(c.issuer ?? "")}`
+  );
+
   return {
     personal: {
       fullName,
@@ -72,8 +103,13 @@ export function normalizeParsedResumeDraft(draft: ParsedResumeDraft): ParsedResu
         ? normalizeWhitespace(draft.personal.location)
         : null,
       linkedinUrl: draft.personal.linkedinUrl?.trim() || null,
+      githubUrl: draft.personal.githubUrl?.trim() || null,
+      portfolioUrl: draft.personal.portfolioUrl?.trim() || null,
     },
     professional: {
+      headline: draft.professional.headline
+        ? normalizeWhitespace(draft.professional.headline)
+        : null,
       currentCompany: draft.professional.currentCompany
         ? normalizeWhitespace(draft.professional.currentCompany)
         : null,
@@ -88,5 +124,7 @@ export function normalizeParsedResumeDraft(draft: ParsedResumeDraft): ParsedResu
     experiences,
     educations,
     skills,
+    projects,
+    certifications,
   };
 }

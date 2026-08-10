@@ -26,3 +26,7 @@ export {
   type ResumeMergeConflict,
   type ResumeMergeResult,
 } from "./merge-engine";
+export {
+  mapParsedDraftToReviewDefaults,
+  stripDeniedFieldsFromReviewPayload,
+} from "./map-new-candidate-review";

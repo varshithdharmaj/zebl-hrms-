@@ -3,19 +3,45 @@
 import React, { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { ErrorAlert } from "@/components/ui/error-alert";
 import { ConversionChecklist } from "./conversion-checklist";
 import { ConversionSummaryCard } from "./conversion-summary-card";
 import { EmployeePreviewCard } from "./employee-preview-card";
 import { convertEmployeeAction } from "@/actions/recruitment-conversions";
-import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, UserCheck, Loader2 } from "lucide-react";
+import type {
+  EmployeeConversionFormData,
+  EmployeeConversionFormField,
+  EmployeeConversionPreviewData,
+} from "@/lib/recruitment/conversion/types";
+import { ArrowLeft, UserCheck } from "lucide-react";
 import Link from "next/link";
 
 interface ConversionPreviewProps {
   previewData: {
-    candidate: { id: string; fullName: string };
-    offer: { id: string };
-    employeePreview: Record<string, unknown>;
+    candidate: {
+      id: string;
+      fullName: string;
+      email: string | null;
+      phone: string | null;
+      status: string;
+    };
+    application?: {
+      id: string;
+      jobOpeningId: string;
+      jobTitle: string;
+      currentStage: string;
+    } | null;
+    offer: {
+      id: string;
+      offerNumber: string | null;
+      status: string;
+      ctc: number;
+      currency: string;
+      joiningDate: string;
+      department: string;
+      location: string;
+    };
+    employeePreview: EmployeeConversionPreviewData;
     checklist: {
       offerAccepted: boolean;
       candidateActive: boolean;
@@ -31,16 +57,19 @@ interface ConversionPreviewProps {
 
 export function ConversionPreview({ previewData, managers }: ConversionPreviewProps) {
   const router = useRouter();
-  const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<EmployeeConversionFormData>({
     ...previewData.employeePreview,
     createLogin: false,
     password: "",
   });
 
-  const handleFieldChange = (field: string, value: unknown) => {
+  const handleFieldChange = <K extends EmployeeConversionFormField>(
+    field: K,
+    value: EmployeeConversionFormData[K]
+  ) => {
     setFormData((prev) => ({
       ...prev,
       [field]: value,
@@ -52,47 +81,36 @@ export function ConversionPreview({ previewData, managers }: ConversionPreviewPr
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (hasBlockingErrors) {
-      toast({
-        variant: "destructive",
-        title: "Conversion Blocked",
-        description: "Please resolve all blocking checklist issues before converting.",
-      });
+      setError("Please resolve all blocking checklist issues before converting.");
       return;
     }
 
     startTransition(async () => {
+      setError(null);
       const result = await convertEmployeeAction(
         {},
         {
           offerId: previewData.offer.id,
-          employeeCode: String(formData.employeeCode ?? ""),
-          name: String(formData.name ?? ""),
-          email: formData.email as string | null | undefined,
-          phone: formData.phone as string | null | undefined,
-          department: String(formData.department ?? ""),
-          designation: String(formData.designation ?? ""),
-          managerId: formData.managerId as number | null | undefined,
-          employmentType: String(formData.employmentType ?? ""),
-          workLocation: String(formData.workLocation ?? ""),
-          joiningDate: String(formData.joiningDate ?? ""),
-          grade: formData.grade as string | null | undefined,
-          ctc: Number(formData.ctc ?? 0),
-          createLogin: Boolean(formData.createLogin),
-          password: (formData.password as string) || null,
+          employeeCode: formData.employeeCode,
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          department: formData.department,
+          designation: formData.designation,
+          managerId: formData.managerId,
+          employmentType: formData.employmentType,
+          workLocation: formData.workLocation,
+          joiningDate: formData.joiningDate,
+          grade: formData.grade,
+          ctc: formData.ctc,
+          createLogin: formData.createLogin,
+          password: formData.password || null,
         }
       );
 
       if (result.error) {
-        toast({
-          variant: "destructive",
-          title: "Conversion Failed",
-          description: result.error,
-        });
+        setError(result.error);
       } else if (result.success && result.employeeId) {
-        toast({
-          title: "Success",
-          description: "Candidate converted successfully!",
-        });
         router.push(
           `/admin/recruitment/conversions/success?employeeId=${result.employeeId}&candidateId=${encodeURIComponent(previewData.candidate.id)}`
         );
@@ -118,6 +136,8 @@ export function ConversionPreview({ previewData, managers }: ConversionPreviewPr
         </div>
       </div>
 
+      {error ? <ErrorAlert message={error} /> : null}
+
       <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <EmployeePreviewCard
@@ -136,12 +156,11 @@ export function ConversionPreview({ previewData, managers }: ConversionPreviewPr
               type="submit"
               size="sm"
               className="text-xs rounded-lg gap-1.5 font-semibold"
-              disabled={isPending || hasBlockingErrors}
+              loading={isPending}
+              disabled={hasBlockingErrors}
             >
               {isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" /> Converting...
-                </>
+                "Converting…"
               ) : (
                 <>
                   <UserCheck className="h-4 w-4" /> Complete Conversion

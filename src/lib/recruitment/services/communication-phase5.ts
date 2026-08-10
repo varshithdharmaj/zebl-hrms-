@@ -145,7 +145,10 @@ export function createCommunicationPhase5Methods(
   repository: CommunicationRepository
 ) {
   return {
-    async listTemplatesAdmin(session: SessionUser, input: ListTemplatesAdminInput = {}) {
+    async listTemplatesAdmin(
+      session: SessionUser,
+      input: Partial<ListTemplatesAdminInput> = {}
+    ) {
       await assertCanRead(session);
       const parsed = listTemplatesAdminSchema.parse(input);
       const defaults = await getDefaultEmailTemplateMap();

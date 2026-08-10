@@ -110,7 +110,11 @@ describe("recruitment candidate actions", () => {
 
   it("createCandidateAction handles duplicate candidate conflict error", async () => {
     createMock.mockRejectedValueOnce(
-      new RecruitmentDomainError("REC_CONFLICT", "Candidate with this email already exists.")
+      new RecruitmentDomainError(
+        "REC_CONFLICT",
+        "Candidate with this email already exists.",
+        { duplicateCandidateId: "cand-existing" }
+      )
     );
     const payload = {
       fullName: "John Doe",
@@ -118,6 +122,7 @@ describe("recruitment candidate actions", () => {
     };
     const result = await createCandidateAction({}, payload);
     expect(result.error).toMatch(/already exists/i);
+    expect(result.duplicateCandidateId).toBe("cand-existing");
   });
 
   it("updateCandidateAction validates and updates", async () => {

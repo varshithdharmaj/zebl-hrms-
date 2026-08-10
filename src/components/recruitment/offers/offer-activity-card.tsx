@@ -1,8 +1,13 @@
 "use client";
 
 import React from "react";
+import type { Offer } from "@/generated/prisma/client";
 
-export function OfferActivityCard({ offer }: { offer: any }) {
+export function OfferActivityCard({
+  offer,
+}: {
+  offer: Pick<Offer, "offerNotes">;
+}) {
   return (
     <div className="rounded-xl border border-border bg-card p-6 shadow-subtle space-y-4">
       <div className="border-b border-border pb-4">

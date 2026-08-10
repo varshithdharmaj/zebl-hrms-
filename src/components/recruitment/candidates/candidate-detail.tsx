@@ -44,7 +44,16 @@ import {
   MessagesSquare,
 } from "lucide-react";
 import { AddCandidateFieldButton } from "./add-candidate-field-dialog";
+import { CandidateAiInsightsCard } from "./candidate-ai-insights-card";
+import { CandidateAiRecoveryCard } from "./candidate-ai-recovery-card";
 import { hasMissingAddableFields } from "@/lib/recruitment/candidate/addable-fields";
+import type { CandidateEnrichmentInsightContent } from "@/lib/recruitment/ai/types";
+import type { ResumeFieldRecoveryInsightContent } from "@/lib/recruitment/ai/recovery-types";
+import {
+  buildPipelineHref,
+  buildRecruitmentEntityHref,
+} from "@/lib/recruitment/navigation/return-to";
+import { formatRecruitmentEnumLabel } from "@/lib/recruitment/navigation/breadcrumbs";
 
 const NOTE_MAX_LENGTH = 5000;
 function formatDate(value: Date | string | null | undefined): string {
@@ -77,8 +86,16 @@ type CandidateApplicationRow = {
   id: string;
   status: string;
   currentStage: string;
+  jobOpeningId?: string;
   jobTitle: string;
   createdAt: Date | string;
+};
+
+type CandidateNavContext = {
+  returnTo?: string | null;
+  originatingApplicationId?: string | null;
+  jobOpeningId?: string | null;
+  currentStage?: string | null;
 };
 
 export function CandidateDetailView({
@@ -90,6 +107,10 @@ export function CandidateDetailView({
   applications = [],
   canWriteDiscussion = false,
   canManageCandidate = false,
+  aiEnrichment,
+  aiRecovery,
+  bannerNotice = null,
+  navContext,
 }: {
   candidate: CandidateDetail;
   timeline: readonly TimelineItem[];
@@ -114,8 +135,38 @@ export function CandidateDetailView({
   applications?: CandidateApplicationRow[];
   canWriteDiscussion?: boolean;
   canManageCandidate?: boolean;
+  aiEnrichment?: {
+    insightId: string | null;
+    status: string | null;
+    content: CandidateEnrichmentInsightContent | null;
+    sourceDraftId: string | null;
+    isStale?: boolean;
+  };
+  aiRecovery?: {
+    insightId: string | null;
+    status: string | null;
+    content: ResumeFieldRecoveryInsightContent | null;
+    sourceDraftId: string | null;
+    isStale?: boolean;
+  };
+  /** One-shot recoverable notice (e.g. resume attach failed after create). */
+  bannerNotice?: string | null;
+  navContext?: CandidateNavContext;
 }) {
   const router = useRouter();
+  const createApplicationHref = `/admin/recruitment/applications/new?candidateId=${encodeURIComponent(candidate.id)}`;
+  const applicationHref = (app: CandidateApplicationRow) =>
+    buildRecruitmentEntityHref(`/admin/recruitment/applications/${app.id}`, {
+      returnTo: `/admin/recruitment/candidates/${candidate.id}`,
+      jobOpeningId: app.jobOpeningId || navContext?.jobOpeningId,
+      currentStage: app.currentStage,
+    });
+  const pipelineHrefForApp = (app: CandidateApplicationRow) =>
+    buildPipelineHref({
+      applicationId: app.id,
+      jobOpeningId: app.jobOpeningId || undefined,
+      currentStage: app.currentStage,
+    });
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("overview");
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -222,6 +273,14 @@ export function CandidateDetailView({
 
   return (
     <div className="space-y-6">
+      {bannerNotice && (
+        <div
+          role="status"
+          className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-500/10 dark:text-amber-200"
+        >
+          {bannerNotice}
+        </div>
+      )}
       {error && <ErrorAlert message={error} />}
       {success && (
         <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900/30 dark:bg-emerald-500/10 dark:text-emerald-400">
@@ -280,7 +339,7 @@ export function CandidateDetailView({
             description="Jobs this candidate has applied to."
             action={
               <Button asChild size="sm" className="font-semibold text-xs shadow-subtle">
-                <Link href={`/admin/recruitment/applications/new?candidateId=${candidate.id}`}>
+                <Link href={createApplicationHref}>
                   New Application
                 </Link>
               </Button>
@@ -305,11 +364,14 @@ export function CandidateDetailView({
                         {app.currentStage.replace(/_/g, " ")} · {app.status} · {formatDate(app.createdAt)}
                       </p>
                     </div>
-                    <Button asChild variant="outline" size="sm" className="text-xs font-semibold">
-                      <Link href={`/admin/recruitment/pipeline?applicationId=${app.id}`}>
-                        Open in Pipeline
-                      </Link>
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button asChild size="sm" className="text-xs font-semibold">
+                        <Link href={applicationHref(app)}>Open Application</Link>
+                      </Button>
+                      <Button asChild variant="outline" size="sm" className="text-xs font-semibold">
+                        <Link href={pipelineHrefForApp(app)}>Open in Pipeline</Link>
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -371,6 +433,49 @@ export function CandidateDetailView({
       {activeTab === "overview" && (
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">
+            <CandidateSection
+              title="Applications"
+              description="This candidate’s hiring journeys. Each application belongs to one job."
+              action={
+                <Button asChild size="sm" className="font-semibold text-xs shadow-subtle">
+                  <Link href={createApplicationHref}>Create Application</Link>
+                </Button>
+              }
+            >
+              {applications.length === 0 ? (
+                <CandidateEmptyState
+                  icon={ClipboardList}
+                  title="No applications yet"
+                  description="This candidate is not attached to a job. Create an application when you are ready to start hiring."
+                />
+              ) : (
+                <div className="space-y-3">
+                  {applications.map((app) => {
+                    const isOriginating = navContext?.originatingApplicationId === app.id;
+                    return (
+                      <div
+                        key={app.id}
+                        className={`flex items-center justify-between rounded-xl border bg-card p-3.5 ${
+                          isOriginating ? "border-primary/50" : "border-border/60"
+                        }`}
+                      >
+                        <div>
+                          <h4 className="text-xs font-bold text-foreground">{app.jobTitle}</h4>
+                          <p className="mt-1 text-[11px] font-medium text-muted-foreground">
+                            {formatRecruitmentEnumLabel(app.currentStage)} ·{" "}
+                            {formatRecruitmentEnumLabel(app.status)}
+                          </p>
+                        </div>
+                        <Button asChild variant="outline" size="sm" className="text-xs font-semibold">
+                          <Link href={applicationHref(app)}>Open Application</Link>
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CandidateSection>
+
             {canManageCandidate && hasMissingAddableFields(candidate) ? (
               <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-card px-4 py-3">
                 <div className="min-w-0">
@@ -387,6 +492,34 @@ export function CandidateDetailView({
                   }}
                 />
               </div>
+            ) : null}
+
+            {canManageCandidate || aiEnrichment?.content ? (
+              <CandidateAiInsightsCard
+                candidateId={candidate.id}
+                insightId={aiEnrichment?.insightId ?? null}
+                status={aiEnrichment?.status ?? null}
+                content={aiEnrichment?.content ?? null}
+                sourceDraftId={aiEnrichment?.sourceDraftId ?? null}
+                isStale={Boolean(aiEnrichment?.isStale)}
+                canManage={Boolean(canManageCandidate)}
+                profileHeadline={candidate.headline}
+                profileSummary={candidate.professionalSummary}
+              />
+            ) : null}
+
+            {canManageCandidate || aiRecovery?.content ? (
+              <CandidateAiRecoveryCard
+                candidateId={candidate.id}
+                insightId={aiRecovery?.insightId ?? null}
+                status={aiRecovery?.status ?? null}
+                content={aiRecovery?.content ?? null}
+                sourceDraftId={
+                  aiRecovery?.sourceDraftId ?? aiEnrichment?.sourceDraftId ?? null
+                }
+                isStale={Boolean(aiRecovery?.isStale)}
+                canManage={Boolean(canManageCandidate)}
+              />
             ) : null}
 
             <CandidateSection title="Personal" description="Identity, contact, and location.">

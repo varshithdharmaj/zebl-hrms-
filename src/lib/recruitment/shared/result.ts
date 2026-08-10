@@ -6,6 +6,10 @@ import {
 } from "@/lib/recruitment/shared/errors";
 import { PermissionError } from "@/lib/permissions";
 
+export type MappedActionState = ActionState & {
+  duplicateCandidateId?: string;
+};
+
 export function okResult<T>(data: T, success?: string): ActionResult<T> {
   return { ok: true, data, state: success ? { success } : undefined };
 }
@@ -19,8 +23,19 @@ export function toActionState(result: ActionResult<unknown>): ActionState {
   return result.state;
 }
 
-export function mapUnknownToActionState(error: unknown): ActionState {
+function readDuplicateCandidateId(
+  details: Record<string, unknown> | undefined
+): string | undefined {
+  const value = details?.duplicateCandidateId;
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+export function mapUnknownToActionState(error: unknown): MappedActionState {
   if (isRecruitmentDomainError(error)) {
+    const duplicateCandidateId = readDuplicateCandidateId(error.details);
+    if (duplicateCandidateId) {
+      return { error: error.message, duplicateCandidateId };
+    }
     return { error: error.message };
   }
   if (error instanceof PermissionError) {

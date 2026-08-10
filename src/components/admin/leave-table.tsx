@@ -64,8 +64,13 @@ function ApproveButton({
     <form action={formAction} className="inline">
       <input type="hidden" name="leaveId" value={leaveId} />
       <input type="hidden" name="version" value={version} />
-      <Button type="submit" size="sm" variant={isOverride ? "secondary" : "default"} disabled={pending}>
-        {pending ? "…" : isOverride ? "Override approve" : "Approve"}
+      <Button
+        type="submit"
+        size="sm"
+        variant={isOverride ? "secondary" : "default"}
+        loading={pending}
+      >
+        {pending ? "Approving…" : isOverride ? "Override approve" : "Approve"}
       </Button>
       {state.error && <p className="text-xs text-danger">{state.error}</p>}
     </form>
@@ -79,7 +84,7 @@ function CancelApprovedForm({ leaveId }: { leaveId: number }) {
       <input type="hidden" name="leaveId" value={leaveId} />
       <Label className="text-xs">Cancellation reason (required)</Label>
       <Input name="reason" required minLength={10} placeholder="Reason for cancellation" />
-      <Button type="submit" size="sm" variant="outline" disabled={pending}>
+      <Button type="submit" size="sm" variant="outline" loading={pending}>
         {pending ? "Cancelling…" : "Cancel approved leave"}
       </Button>
       {state.error && <p className="text-xs text-danger">{state.error}</p>}

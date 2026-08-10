@@ -29,8 +29,8 @@ export default async function PendingConversionsPage() {
       />
 
       <ConversionTabsView
-        pendingConversions={pendingConversions as never[]}
-        history={history as never[]}
+        pendingConversions={pendingConversions}
+        history={history}
       />
     </div>
   );

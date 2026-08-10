@@ -3,13 +3,14 @@
 import React, { useState } from "react";
 import { FileText, UploadCloud, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { CandidateDocumentView } from "@/lib/recruitment/candidate/types";
 import { CandidateSection } from "./candidate-section";
 import { CandidateDocumentTable } from "./candidate-document-table";
 import { CandidateUploadDialog } from "./candidate-upload-dialog";
 
 export interface CandidateDocumentsCardProps {
   candidateId: string;
-  documents: any[];
+  documents: readonly CandidateDocumentView[];
 }
 
 export function CandidateDocumentsCard({ candidateId, documents }: CandidateDocumentsCardProps) {

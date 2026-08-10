@@ -25,7 +25,7 @@ export async function GET(request: Request) {
       searchParams.get("name") || fileName || "offer.pdf"
     );
 
-    return new NextResponse(content, {
+    return new NextResponse(new Uint8Array(content), {
       headers: {
         "Content-Type": mimeType,
         "Content-Disposition": `attachment; filename="${encodeURIComponent(downloadName)}"`,

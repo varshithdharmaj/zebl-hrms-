@@ -4,9 +4,10 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar, User, ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import type { ConversionHistoryItem } from "@/lib/recruitment/conversion/types";
 
 interface HistoryProps {
-  history: any[];
+  history: readonly ConversionHistoryItem[];
 }
 
 export function ConversionHistoryCard({ history }: HistoryProps) {

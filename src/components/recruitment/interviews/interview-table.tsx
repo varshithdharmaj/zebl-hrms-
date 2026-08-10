@@ -6,33 +6,34 @@ import { Clock, User, Briefcase, Calendar, CheckCircle2, XCircle, AlertTriangle 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
-interface Interview {
+/** View-model fields used by the table; compatible with `InterviewDetail` from list queries. */
+export type InterviewTableItem = {
   id: string;
-  title: string;
+  title: string | null;
   roundType: string;
   status: string;
-  scheduledStart: string;
-  scheduledEnd: string;
+  scheduledStart: string | Date | null;
+  scheduledEnd: string | Date | null;
   application: {
     candidate: {
       fullName: string;
-    };
+    } | null;
     jobOpening: {
       title: string;
-    };
-  };
+    } | null;
+  } | null;
   panelists: {
     employee: {
       name: string;
     };
   }[];
-}
+};
 
 export function InterviewTable({
   interviews,
   detailHrefPrefix = "/admin/recruitment/interviews",
 }: {
-  interviews: Interview[];
+  interviews: InterviewTableItem[];
   detailHrefPrefix?: string;
 }) {
   if (interviews.length === 0) {
@@ -98,15 +99,20 @@ export function InterviewTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-border/60">
-            {interviews.map((item) => (
+            {interviews.map((item) => {
+              const candidateName = item.application?.candidate?.fullName ?? "Unknown";
+              const jobTitle = item.application?.jobOpening?.title ?? "—";
+              const scheduledAt = item.scheduledStart ? new Date(item.scheduledStart) : null;
+
+              return (
               <tr key={item.id} className="hover:bg-muted/5 transition-colors">
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-2.5">
                     <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs uppercase">
-                      {item.application.candidate.fullName.charAt(0)}
+                      {candidateName.charAt(0)}
                     </div>
                     <div>
-                      <div className="font-bold text-foreground">{item.application.candidate.fullName}</div>
+                      <div className="font-bold text-foreground">{candidateName}</div>
                       <div className="text-[11px] text-muted-foreground font-medium mt-0.5">{item.title}</div>
                     </div>
                   </div>
@@ -114,7 +120,7 @@ export function InterviewTable({
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-1.5 text-muted-foreground font-medium">
                     <Briefcase className="h-4 w-4 shrink-0 text-muted-foreground/60" />
-                    <span className="truncate max-w-[180px]">{item.application.jobOpening.title}</span>
+                    <span className="truncate max-w-[180px]">{jobTitle}</span>
                   </div>
                 </td>
                 <td className="px-6 py-4">
@@ -125,17 +131,21 @@ export function InterviewTable({
                 <td className="px-6 py-4">
                   <div className="flex flex-col text-xs font-medium text-muted-foreground">
                     <span className="font-bold text-foreground">
-                      {new Date(item.scheduledStart).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
+                      {scheduledAt
+                        ? scheduledAt.toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })
+                        : "—"}
                     </span>
                     <span className="mt-0.5">
-                      {new Date(item.scheduledStart).toLocaleTimeString("en-US", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                      {scheduledAt
+                        ? scheduledAt.toLocaleTimeString("en-US", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "—"}
                     </span>
                   </div>
                 </td>
@@ -158,7 +168,8 @@ export function InterviewTable({
                   </Link>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

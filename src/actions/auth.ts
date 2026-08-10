@@ -16,7 +16,7 @@ import { establishSession } from "@/lib/auth/session-bridge";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
 import { checkRateLimit, resetRateLimit } from "@/lib/rate-limit";
 import { getRequestSecurityContext } from "@/lib/security/request-context";
-import { closeSession, recordFailedLogin } from "@/lib/security/login-history-service";
+import { recordFailedLogin } from "@/lib/security/login-history-service";
 
 export type AuthState = {
   error?: string;
@@ -115,14 +115,13 @@ export async function logoutAction() {
   const session = await getSession();
   const clientIp = await getRequestClientIp();
   if (session) {
-    if (session.sessionId) {
-      await closeSession(session.sessionId);
-    } else {
-      await invalidateUserSessionsWithAudit(session.id, {
-        userId: session.id,
-        email: session.email,
-      }, "legacy_logout");
-    }
+    // Bump sessionVersion so Edge middleware rejects the JWT immediately
+    // (middleware does not check LoginSession jti / DB revoke state).
+    await invalidateUserSessionsWithAudit(
+      session.id,
+      { userId: session.id, email: session.email },
+      "logout"
+    );
     const requestContext = await getRequestSecurityContext();
     await writeAuditLog({
       entityType: "user",

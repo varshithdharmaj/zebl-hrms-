@@ -3,10 +3,17 @@ import {
   displayValue,
   normalizeComparable,
 } from "@/lib/recruitment/resume-import/draft-content";
+import {
+  JOB_TITLE_SIGNAL_RE,
+  looksLikeJobTitle,
+  looksLikeName,
+} from "@/lib/recruitment/resume-import/parser/patterns";
 import type {
+  ResumeImportCertificationMapped,
   ResumeImportEducationMapped,
   ResumeImportExperienceMapped,
   ResumeImportMappedDraft,
+  ResumeImportProjectMapped,
   ResumeImportSkillMapped,
 } from "@/lib/recruitment/resume-import/types";
 
@@ -25,6 +32,8 @@ export type ResumeMergeResult = {
   experiencesToAppend: ResumeImportExperienceMapped[];
   educationsToAppend: ResumeImportEducationMapped[];
   skillsToAppend: ResumeImportSkillMapped[];
+  projectsToAppend: ResumeImportProjectMapped[];
+  certificationsToAppend: ResumeImportCertificationMapped[];
 };
 
 type ScalarDef = {
@@ -33,6 +42,71 @@ type ScalarDef = {
   current: unknown;
   imported: unknown;
 };
+
+/** P0 identity/role fields — weak parser values must not silently auto-fill. */
+const P0_AUTOFILL_KEYS = new Set([
+  "fullName",
+  "headline",
+  "currentTitle",
+  "currentCompany",
+]);
+
+const WEAK_PROJECT_COMPANY_RE =
+  /\b((?:employee|library|inventory|hospital|school|student|attendance|payroll|recruitment)\s+management(?:\s+system)?|management\s+system|tracking\s+system|capstone|academic\s+project|(?:web|mobile)\s+app|website|dashboard|portal)\b/i;
+
+function isWeakP0AutoFill(key: string, imported: string): boolean {
+  const value = imported.trim();
+  if (!value) return true;
+
+  if (key === "fullName") {
+    if (looksLikeJobTitle(value)) return true;
+    if (WEAK_PROJECT_COMPANY_RE.test(value)) return true;
+    return false;
+  }
+
+  if (key === "headline") {
+    if (looksLikeName(value)) return true;
+    if (!JOB_TITLE_SIGNAL_RE.test(value)) return true;
+    if (WEAK_PROJECT_COMPANY_RE.test(value) && !looksLikeJobTitle(value)) {
+      return true;
+    }
+    return false;
+  }
+
+  if (key === "currentTitle") {
+    if (/^unknown$/i.test(value)) return true;
+    if (looksLikeName(value)) return true;
+    if (!looksLikeJobTitle(value)) return true;
+    return false;
+  }
+
+  if (key === "currentCompany") {
+    if (looksLikeName(value)) return true;
+    if (looksLikeJobTitle(value)) return true;
+    if (WEAK_PROJECT_COMPANY_RE.test(value)) return true;
+    return false;
+  }
+
+  return false;
+}
+
+function isWeakExperienceRow(row: ResumeImportExperienceMapped): boolean {
+  const title = row.title?.trim() ?? "";
+  const company = row.company?.trim() ?? "";
+  if (!title || !company) return true;
+  if (/^unknown$/i.test(title)) return true;
+  if (!looksLikeJobTitle(title)) return true;
+  if (looksLikeName(title)) return true;
+  if (
+    WEAK_PROJECT_COMPANY_RE.test(company) &&
+    !/\b(pvt\.?\s*ltd\.?|ltd\.?|limited|inc\.?|llc|technologies|solutions|softwares?)\b/i.test(
+      company
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
 
 const SCALAR_DEFS = (
   candidate: CandidateDetail,
@@ -178,6 +252,20 @@ function skillKey(row: { name?: string | null; skillName?: string | null }): str
   return normalizeComparable(row.skillName ?? row.name);
 }
 
+function projectKey(row: {
+  title?: string | null;
+  url?: string | null;
+}): string {
+  return `${normalizeComparable(row.title)}::${normalizeComparable(row.url ?? "")}`;
+}
+
+function certificationKey(row: {
+  name?: string | null;
+  issuer?: string | null;
+}): string {
+  return `${normalizeComparable(row.name)}::${normalizeComparable(row.issuer ?? "")}`;
+}
+
 /**
  * Pure merge planner — does not write to the database.
  *
@@ -185,7 +273,7 @@ function skillKey(row: { name?: string | null; skillName?: string | null }): str
  * - Empty + resume value → autoFill
  * - Same → ignore
  * - Different → conflict
- * - Experiences / educations / skills → append only, skip duplicates
+ * - Experiences / educations / skills / projects / certifications → append only, skip duplicates
  */
 export function buildResumeMergeResult(
   candidate: CandidateDetail,
@@ -201,6 +289,13 @@ export function buildResumeMergeResult(
     if (!imported) continue;
 
     if (!current) {
+      if (
+        P0_AUTOFILL_KEYS.has(def.key) &&
+        isWeakP0AutoFill(def.key, imported)
+      ) {
+        // Missing is better than wrong — leave empty for HR review.
+        continue;
+      }
       autoFill[def.key] = coerceImportedValue(def.key, def.imported);
       continue;
     }
@@ -222,6 +317,7 @@ export function buildResumeMergeResult(
   );
   const experiencesToAppend = (mapped.experiences ?? []).filter((row) => {
     if (!row.company?.trim() || !row.title?.trim()) return false;
+    if (isWeakExperienceRow(row)) return false;
     return !existingExperienceKeys.has(experienceKey(row));
   });
 
@@ -239,12 +335,30 @@ export function buildResumeMergeResult(
     return !existingSkillKeys.has(skillKey(row));
   });
 
+  const existingProjectKeys = new Set(
+    (candidate.projects ?? []).map((p) => projectKey(p))
+  );
+  const projectsToAppend = (mapped.projects ?? []).filter((row) => {
+    if (!row.title?.trim()) return false;
+    return !existingProjectKeys.has(projectKey(row));
+  });
+
+  const existingCertificationKeys = new Set(
+    (candidate.certifications ?? []).map((c) => certificationKey(c))
+  );
+  const certificationsToAppend = (mapped.certifications ?? []).filter((row) => {
+    if (!row.name?.trim()) return false;
+    return !existingCertificationKeys.has(certificationKey(row));
+  });
+
   return {
     autoFill,
     conflicts,
     experiencesToAppend,
     educationsToAppend,
     skillsToAppend,
+    projectsToAppend,
+    certificationsToAppend,
   };
 }
 
@@ -268,6 +382,8 @@ export function resumeMergeHasWork(result: ResumeMergeResult): boolean {
     result.conflicts.length > 0 ||
     result.experiencesToAppend.length > 0 ||
     result.educationsToAppend.length > 0 ||
-    result.skillsToAppend.length > 0
+    result.skillsToAppend.length > 0 ||
+    result.projectsToAppend.length > 0 ||
+    result.certificationsToAppend.length > 0
   );
 }

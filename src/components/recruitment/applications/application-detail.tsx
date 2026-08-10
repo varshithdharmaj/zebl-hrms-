@@ -15,12 +15,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ApplicationAssessmentForm } from "@/components/recruitment/applications/application-assessment-form";
+import { HiringDecisionForm } from "@/components/recruitment/applications/hiring-decision-form";
+import type { HiringDecisionRecord } from "@/lib/recruitment/repositories/decision-repository";
+import { canCreateOfferFromDecisionState } from "@/lib/recruitment/decision/eligibility";
 import {
   moveApplicationStageAction,
   rejectApplicationAction,
   withdrawApplicationAction,
   reopenApplicationAction,
 } from "@/actions/recruitment-applications";
+import type { ApplicationDetail } from "@/lib/recruitment/repositories/application-repository";
+import type { InterviewDetail } from "@/lib/recruitment/repositories/interview-repository";
+import type { OfferByApplication } from "@/lib/recruitment/repositories/offer-repository";
 import {
   User,
   Mail,
@@ -46,16 +52,33 @@ function formatDate(value: Date | string | null): string {
   });
 }
 
+const NON_MOVABLE_STAGES: readonly RecruitmentPipelineStage[] = [
+  RecruitmentPipelineStage.rejected,
+  RecruitmentPipelineStage.withdrawn,
+  RecruitmentPipelineStage.hired,
+  RecruitmentPipelineStage.on_hold,
+];
+
 export function ApplicationDetailView({
   application,
   employeeOptions,
   interviews = [],
   offers = [],
+  currentDecision = null,
+  requireDecisionForOffer = true,
+  navigation,
 }: {
-  application: any;
+  application: ApplicationDetail;
   employeeOptions: { id: number; name: string; user: { id: string; email: string } | null }[];
-  interviews?: any[];
-  offers?: any[];
+  interviews?: readonly InterviewDetail[];
+  offers?: readonly OfferByApplication[];
+  currentDecision?: HiringDecisionRecord | null;
+  requireDecisionForOffer?: boolean;
+  navigation?: {
+    candidateHref: string;
+    jobHref: string;
+    pipelineHref: string;
+  };
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -160,12 +183,42 @@ export function ApplicationDetailView({
     });
   };
 
-  const acceptedOffer = offers.find(
-    (o: { status?: string }) => o.status === OfferStatus.accepted
-  ) as { id: string } | undefined;
+  const acceptedOffer = offers.find((o) => o.status === OfferStatus.accepted);
+  const canCreateOffer = canCreateOfferFromDecisionState(
+    requireDecisionForOffer,
+    currentDecision?.outcome
+  );
+  const candidate = application.candidate;
+  const jobOpening = application.jobOpening;
+  const candidateName = candidate?.fullName ?? "Unknown";
+  const candidateHref =
+    navigation?.candidateHref ??
+    (candidate?.id ? `/admin/recruitment/candidates/${candidate.id}` : null);
+  const jobHref =
+    navigation?.jobHref ??
+    (jobOpening?.id ? `/admin/recruitment/jobs/${jobOpening.id}` : null);
+  const pipelineHref =
+    navigation?.pipelineHref ??
+    `/admin/recruitment/pipeline?applicationId=${encodeURIComponent(application.id)}`;
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap gap-2">
+        {candidateHref ? (
+          <Button asChild variant="outline" size="sm" className="font-semibold text-xs">
+            <Link href={candidateHref}>Open Candidate</Link>
+          </Button>
+        ) : null}
+        {jobHref ? (
+          <Button asChild variant="outline" size="sm" className="font-semibold text-xs">
+            <Link href={jobHref}>Open Job</Link>
+          </Button>
+        ) : null}
+        <Button asChild variant="outline" size="sm" className="font-semibold text-xs">
+          <Link href={pipelineHref}>Open in Pipeline</Link>
+        </Button>
+      </div>
+
       {error && <ErrorAlert message={error} />}
       {success && (
         <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-900/30 dark:bg-emerald-500/10 dark:text-emerald-400">
@@ -179,16 +232,24 @@ export function ApplicationDetailView({
           {/* Candidate Overview */}
           <CandidateSection title="Candidate Details" description="Information about the applicant.">
             <div className="flex items-center gap-4 pb-4 border-b border-border/40">
-              <CandidateAvatar fullName={application.candidate.fullName} className="h-12 w-12" />
+              <CandidateAvatar fullName={candidateName} className="h-12 w-12" />
               <div>
-                <h3 className="text-base font-bold text-foreground">{application.candidate.fullName}</h3>
-                <span className="text-xs text-muted-foreground">{application.candidate.email}</span>
+                {candidateHref ? (
+                  <h3 className="text-base font-bold text-foreground">
+                    <Link href={candidateHref} className="hover:text-primary hover:underline">
+                      {candidateName}
+                    </Link>
+                  </h3>
+                ) : (
+                  <h3 className="text-base font-bold text-foreground">{candidateName}</h3>
+                )}
+                <span className="text-xs text-muted-foreground">{candidate?.email ?? "—"}</span>
               </div>
             </div>
             <dl className="grid gap-4 sm:grid-cols-2 mt-4">
-              <CandidateInfoItem label="Email" value={application.candidate.email} icon={Mail} />
-              <CandidateInfoItem label="Phone" value={application.candidate.phone} icon={Phone} />
-              <CandidateInfoItem label="Location" value={application.candidate.location} icon={MapPin} />
+              <CandidateInfoItem label="Email" value={candidate?.email ?? "—"} icon={Mail} />
+              <CandidateInfoItem label="Phone" value={candidate?.phone ?? "—"} icon={Phone} />
+              <CandidateInfoItem label="Location" value={candidate?.location ?? "—"} icon={MapPin} />
               <CandidateInfoItem label="Source" value={application.source ?? "—"} icon={Globe} />
             </dl>
           </CandidateSection>
@@ -196,10 +257,22 @@ export function ApplicationDetailView({
           {/* Job Opening Details */}
           <CandidateSection title="Job Opening" description="The position this application is linked to.">
             <dl className="grid gap-4 sm:grid-cols-2">
-              <CandidateInfoItem label="Job Title" value={application.jobOpening.title} icon={Briefcase} />
-              <CandidateInfoItem label="Department" value={application.jobOpening.department} icon={Briefcase} />
-              <CandidateInfoItem label="Location" value={application.jobOpening.location} icon={MapPin} />
-              <CandidateInfoItem label="Work Mode" value={application.jobOpening.workMode} icon={Globe} />
+              <CandidateInfoItem
+                label="Job Title"
+                value={
+                  jobOpening?.title && jobHref ? (
+                    <Link href={jobHref} className="font-semibold text-primary hover:underline">
+                      {jobOpening.title}
+                    </Link>
+                  ) : (
+                    (jobOpening?.title ?? "—")
+                  )
+                }
+                icon={Briefcase}
+              />
+              <CandidateInfoItem label="Department" value={jobOpening?.department ?? "—"} icon={Briefcase} />
+              <CandidateInfoItem label="Location" value={jobOpening?.location ?? "—"} icon={MapPin} />
+              <CandidateInfoItem label="Work Mode" value={jobOpening?.workMode ?? "—"} icon={Globe} />
             </dl>
           </CandidateSection>
 
@@ -209,6 +282,13 @@ export function ApplicationDetailView({
               assessment={application.assessment ?? null}
               assessmentUpdatedAt={application.assessmentUpdatedAt ?? null}
               assessmentUpdatedByEmail={application.assessmentUpdatedBy?.email ?? null}
+            />
+          </div>
+
+          <div className="rounded-xl border border-border/60 bg-card p-4 shadow-subtle sm:p-5">
+            <HiringDecisionForm
+              applicationId={application.id}
+              currentDecision={currentDecision}
             />
           </div>
 
@@ -230,7 +310,9 @@ export function ApplicationDetailView({
               </div>
             ) : (
               <div className="space-y-3">
-                {interviews.map((item: any) => (
+                {interviews.map((item) => {
+                  const scheduledAt = item.scheduledStart ? new Date(item.scheduledStart) : null;
+                  return (
                   <div
                     key={item.id}
                     className="flex items-center justify-between p-3.5 rounded-xl border border-border/60 bg-card hover:shadow-subtle transition-shadow duration-150"
@@ -239,11 +321,12 @@ export function ApplicationDetailView({
                       <h4 className="font-bold text-foreground text-xs">{item.title}</h4>
                       <p className="text-[11px] text-muted-foreground font-medium mt-1 flex items-center gap-1">
                         <Clock className="h-3.5 w-3.5" />
-                        {new Date(item.scheduledStart).toLocaleDateString()} at{" "}
-                        {new Date(item.scheduledStart).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
+                        {scheduledAt
+                          ? `${scheduledAt.toLocaleDateString()} at ${scheduledAt.toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}`
+                          : "—"}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -255,7 +338,8 @@ export function ApplicationDetailView({
                       </Button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CandidateSection>
@@ -265,11 +349,17 @@ export function ApplicationDetailView({
             title="Offers"
             description="Manage and track compensation offers for this candidate."
             action={
-              <Button asChild size="sm" className="font-semibold text-xs rounded-lg shadow-subtle">
-                <Link href={`/admin/recruitment/offers/new?applicationId=${application.id}`}>
-                  Create Offer
-                </Link>
-              </Button>
+              canCreateOffer ? (
+                <Button asChild size="sm" className="font-semibold text-xs rounded-lg shadow-subtle">
+                  <Link href={`/admin/recruitment/offers/new?applicationId=${application.id}`}>
+                    Create Offer
+                  </Link>
+                </Button>
+              ) : (
+                <span className="text-[11px] font-medium text-muted-foreground">
+                  Submit a hire / strong hire decision to create an offer.
+                </span>
+              )
             }
           >
             {offers.length === 0 ? (
@@ -278,7 +368,7 @@ export function ApplicationDetailView({
               </div>
             ) : (
               <div className="space-y-3">
-                {offers.map((item: any) => (
+                {offers.map((item) => (
                   <div
                     key={item.id}
                     className="flex items-center justify-between p-3.5 rounded-xl border border-border/60 bg-card hover:shadow-subtle transition-shadow duration-150"
@@ -312,7 +402,7 @@ export function ApplicationDetailView({
               <div className="text-center py-6 text-xs text-muted-foreground">No stage history recorded.</div>
             ) : (
               <div className="space-y-4">
-                {application.stageHistory.map((h: any, i: number) => (
+                {application.stageHistory.map((h) => (
                   <div key={h.id} className="relative border-l-2 border-border/80 pl-5 ml-2.5 animate-in fade-in-50 duration-200">
                     <div className="absolute -left-[6px] top-1.5 h-2.5 w-2.5 rounded-full bg-primary ring-4 ring-background" />
                     <div className="flex items-start justify-between gap-4">
@@ -381,6 +471,7 @@ export function ApplicationDetailView({
                   value={application.assignedManager?.name ?? "—"}
                 />
                 <CandidateMetaRow label="Priority" value={application.priority.toUpperCase()} />
+                <CandidateMetaRow label="Applied" value={formatDate(application.createdAt)} />
               </div>
 
               {/* Stage Transition Controls */}
@@ -394,12 +485,7 @@ export function ApplicationDetailView({
                       .filter(
                         (stage) =>
                           stage !== application.currentStage &&
-                          ![
-                            RecruitmentPipelineStage.rejected,
-                            RecruitmentPipelineStage.withdrawn,
-                            RecruitmentPipelineStage.hired,
-                            RecruitmentPipelineStage.on_hold,
-                          ].includes(stage)
+                          !NON_MOVABLE_STAGES.includes(stage)
                       )
                       .slice(0, 3) // Show next few logical stages
                       .map((stage) => (

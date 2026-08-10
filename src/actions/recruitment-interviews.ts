@@ -227,9 +227,13 @@ export async function submitInterviewFeedbackAction(
     await service.submitFeedback(session, parsed.data);
 
     // 5. Cache Invalidation
+    // applicationId is optional UI context (not in submitFeedbackSchema); narrow safely for revalidate.
     revalidateInterviewDetail(parsed.data.interviewId);
-    if ((input as any).applicationId) {
-      revalidateApplicationDetail((input as any).applicationId);
+    if (typeof input === "object" && input !== null) {
+      const applicationId = Reflect.get(input, "applicationId");
+      if (typeof applicationId === "string" && applicationId.trim().length > 0) {
+        revalidateApplicationDetail(applicationId.trim());
+      }
     }
 
     // 6. Return ActionState

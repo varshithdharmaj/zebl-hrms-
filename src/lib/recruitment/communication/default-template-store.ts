@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@/generated/prisma/client";
 import type { RecruitmentEmailTemplateType } from "@/generated/prisma/enums";
 
 const SETTINGS_ID = "default";
@@ -52,13 +53,13 @@ export async function setDefaultEmailTemplate(
     where: { id: SETTINGS_ID },
     create: {
       id: SETTINGS_ID,
-      metadata: { [META_KEY]: defaults },
+      metadata: { [META_KEY]: defaults } as unknown as Prisma.InputJsonValue,
     },
     update: {
       metadata: {
         ...meta,
         [META_KEY]: defaults,
-      },
+      } as unknown as Prisma.InputJsonValue,
     },
   });
 }

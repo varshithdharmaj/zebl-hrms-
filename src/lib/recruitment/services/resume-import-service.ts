@@ -461,7 +461,9 @@ export function createResumeImportService(
       const hasAppendWork =
         merge.experiencesToAppend.length > 0 ||
         merge.educationsToAppend.length > 0 ||
-        merge.skillsToAppend.length > 0;
+        merge.skillsToAppend.length > 0 ||
+        merge.projectsToAppend.length > 0 ||
+        merge.certificationsToAppend.length > 0;
 
       if (!hasScalarWork && !hasAppendWork) {
         // Mark draft accepted with no profile changes (nothing useful to merge).
@@ -506,6 +508,22 @@ export function createResumeImportService(
           );
           appended.push("skill");
         }
+        for (const row of merge.projectsToAppend) {
+          await repository.upsertProject(
+            candidateId,
+            row as unknown as Record<string, unknown>,
+            tx
+          );
+          appended.push("project");
+        }
+        for (const row of merge.certificationsToAppend) {
+          await repository.upsertCertification(
+            candidateId,
+            row as unknown as Record<string, unknown>,
+            tx
+          );
+          appended.push("certification");
+        }
 
         await repository.updateInsightStatus(
           input.draftId,
@@ -528,6 +546,8 @@ export function createResumeImportService(
               appendedExperiences: merge.experiencesToAppend.length,
               appendedEducations: merge.educationsToAppend.length,
               appendedSkills: merge.skillsToAppend.length,
+              appendedProjects: merge.projectsToAppend.length,
+              appendedCertifications: merge.certificationsToAppend.length,
             },
           },
           tx
@@ -541,6 +561,10 @@ export function createResumeImportService(
               ...(merge.experiencesToAppend.length > 0 ? ["section:experiences"] : []),
               ...(merge.educationsToAppend.length > 0 ? ["section:educations"] : []),
               ...(merge.skillsToAppend.length > 0 ? ["section:skills"] : []),
+              ...(merge.projectsToAppend.length > 0 ? ["section:projects"] : []),
+              ...(merge.certificationsToAppend.length > 0
+                ? ["section:certifications"]
+                : []),
             ],
           })
         );

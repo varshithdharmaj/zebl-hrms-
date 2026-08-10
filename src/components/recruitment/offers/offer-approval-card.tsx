@@ -2,8 +2,20 @@
 
 import React from "react";
 import { format } from "date-fns";
+import type { Offer } from "@/generated/prisma/client";
 
-export function OfferApprovalCard({ offer }: { offer: any }) {
+export function OfferApprovalCard({
+  offer,
+}: {
+  offer: Pick<
+    Offer,
+    | "managerApprovedAt"
+    | "managerApprovalSkipped"
+    | "managerApprovedByUserId"
+    | "hrApprovedAt"
+    | "hrApprovedByUserId"
+  >;
+}) {
   return (
     <div className="rounded-xl border border-border bg-card p-6 shadow-subtle space-y-6">
       <div className="border-b border-border pb-4">

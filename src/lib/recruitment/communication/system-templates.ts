@@ -10,7 +10,7 @@ export type ComposeTemplateOption = {
   isSystem: boolean;
 };
 
-export const TEMPLATE_PLACEHOLDERS: Array<keyof TemplateVariables> = [
+export const TEMPLATE_PLACEHOLDERS = [
   "candidateName",
   "jobTitle",
   "company",
@@ -22,7 +22,7 @@ export const TEMPLATE_PLACEHOLDERS: Array<keyof TemplateVariables> = [
   "offerSalary",
   "offerAmount",
   "joiningDate",
-];
+] as const satisfies ReadonlyArray<keyof TemplateVariables>;
 
 export const SYSTEM_EMAIL_TEMPLATES: readonly ComposeTemplateOption[] = [
   {

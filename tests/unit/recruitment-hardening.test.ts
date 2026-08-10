@@ -78,6 +78,21 @@ describe("recruitment hardening — error mapping", () => {
     });
   });
 
+  it("preserves duplicateCandidateId from conflict details", () => {
+    expect(
+      mapUnknownToActionState(
+        new RecruitmentDomainError(
+          "REC_CONFLICT",
+          "Candidate with this email already exists.",
+          { duplicateCandidateId: "cand-existing" }
+        )
+      )
+    ).toEqual({
+      error: "Candidate with this email already exists.",
+      duplicateCandidateId: "cand-existing",
+    });
+  });
+
   it("does not leak unexpected Error messages", () => {
     expect(
       mapUnknownToActionState(new Error("prisma: relation deletedAt does not exist"))

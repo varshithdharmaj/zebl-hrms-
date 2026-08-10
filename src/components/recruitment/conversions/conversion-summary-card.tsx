@@ -2,7 +2,6 @@ import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Mail, Phone, MapPin, Briefcase, Calendar, DollarSign } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
 
 interface SummaryCardProps {
   candidate: {

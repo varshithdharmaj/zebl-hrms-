@@ -1,3 +1,4 @@
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getOperationalShiftFilterOption } from "@/lib/attendance-shift";
 import { parsePayrollPeriodKey } from "@/lib/payroll/payroll-period";
@@ -196,8 +197,7 @@ export async function getAttendanceRecords(params: {
     };
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const where: Record<string, any> = {};
+  const where: Prisma.AttendanceRecordWhereInput = {};
 
   if (params.employeeIds) {
     where.employeeId = { in: params.employeeIds };
@@ -245,7 +245,7 @@ export async function getAttendanceRecords(params: {
   }
 
   const shiftFilter = getOperationalShiftFilterOption(params.shift);
-  const employeeWhere: Record<string, unknown> = {};
+  const employeeWhere: Prisma.EmployeeWhereInput = {};
 
   if (params.search) {
     const q = params.search.trim();
@@ -264,12 +264,12 @@ export async function getAttendanceRecords(params: {
     where.employee = employeeWhere;
   }
 
-  const orderBy =
+  const orderBy: Prisma.AttendanceRecordOrderByWithRelationInput[] =
     params.sort === "name"
-      ? [{ employee: { name: sortDir } }, { attendanceDate: "desc" as const }]
+      ? [{ employee: { name: sortDir } }, { attendanceDate: "desc" }]
       : params.sort === "workedHours"
-        ? [{ workedMinutes: sortDir }, { attendanceDate: "desc" as const }]
-        : [{ attendanceDate: sortDir }, { employee: { name: "asc" as const } }];
+        ? [{ workedMinutes: sortDir }, { attendanceDate: "desc" }]
+        : [{ attendanceDate: sortDir }, { employee: { name: "asc" } }];
 
   const [records, total] = await Promise.all([
     prisma.attendanceRecord.findMany({
@@ -310,8 +310,7 @@ export async function getEmployeeAttendanceHistory(
 ) {
   const skip = (page - 1) * PAGE_SIZE;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const where: Record<string, any> = { employeeId };
+  const where: Prisma.AttendanceRecordWhereInput = { employeeId };
 
   let explicitRange: { rangeStart: Date; rangeEnd: Date; toExclusive: Date } | null = null;
   if (startStr || endStr) {

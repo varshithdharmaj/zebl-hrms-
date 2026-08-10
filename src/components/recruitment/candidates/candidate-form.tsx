@@ -94,7 +94,18 @@ export function CandidateForm({
       <input type="hidden" name="preferredWorkMode" value={workMode} />
       <input type="hidden" name="willingToRelocate" value={willingToRelocate} />
 
-      {state.error && <ErrorAlert message={state.error} />}
+      {state.error ? (
+        <div className="space-y-2">
+          <ErrorAlert message={state.error} />
+          {state.duplicateCandidateId ? (
+            <Button asChild variant="outline" size="sm" className="font-semibold">
+              <Link href={`/admin/recruitment/candidates/${state.duplicateCandidateId}`}>
+                Open Existing Candidate
+              </Link>
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">

@@ -2,6 +2,7 @@ import type { AppendTimelineInput, TimelineItem } from "@/lib/recruitment/types/
 import type { TimelineListFilter } from "@/lib/recruitment/repositories/timeline-repository";
 import { prismaTimelineProjectionRepository } from "@/lib/recruitment/repositories/prisma-timeline-repository";
 import type { TimelineProjectionRepository } from "@/lib/recruitment/repositories/timeline-repository";
+import type { RepositoryTx } from "@/lib/recruitment/repositories/types";
 
 /**
  * Operational timeline projection service.
@@ -11,8 +12,8 @@ export function createRecruitmentTimelineService(
   repository: TimelineProjectionRepository = prismaTimelineProjectionRepository
 ) {
   return {
-    append(input: AppendTimelineInput): Promise<TimelineItem> {
-      return repository.append(input);
+    append(input: AppendTimelineInput, tx?: RepositoryTx): Promise<TimelineItem> {
+      return repository.append(input, tx);
     },
 
     list(filter: TimelineListFilter): Promise<readonly TimelineItem[]> {

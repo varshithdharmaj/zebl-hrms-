@@ -421,7 +421,7 @@ export function createCommunicationService(
           const rendered = renderEmailContent(
             subject,
             body,
-            parsed.templateVariables
+            parsed.templateVariables as Record<string, string | undefined>
           );
           subject = rendered.subject;
           body = rendered.body;
@@ -430,7 +430,7 @@ export function createCommunicationService(
         const rendered = renderEmailContent(
           subject,
           body,
-          parsed.templateVariables
+          parsed.templateVariables as Record<string, string | undefined>
         );
         subject = rendered.subject;
         body = rendered.body;

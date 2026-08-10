@@ -4,6 +4,7 @@ import React, { useRef, useState, useTransition } from "react";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { RecruitmentDocumentType } from "@/generated/prisma/enums";
 import { DOCUMENT_TYPE_LABELS } from "@/lib/recruitment/candidate/document-labels";
+import type { CandidateDocumentView } from "@/lib/recruitment/candidate/types";
 import { CandidateEmptyState } from "./candidate-empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,20 +47,7 @@ function formatDate(value: Date | string | null): string {
 }
 
 export interface CandidateDocumentRowProps {
-  doc: {
-    id: string;
-    candidateId: string;
-    documentType: RecruitmentDocumentType;
-    fileName: string;
-    mimeType: string | null;
-    sizeBytes: number | null;
-    storageKey: string;
-    version?: number | null;
-    isPrimary: boolean;
-    createdAt: Date | string;
-    deletedAt: Date | string | null;
-    uploadedByUserId: string | null;
-  };
+  doc: CandidateDocumentView;
   onRename: (id: string, newName: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onRestore: (id: string) => Promise<void>;
@@ -293,7 +281,7 @@ export function CandidateDocumentRow({
 }
 
 export interface CandidateDocumentTableProps {
-  documents: any[];
+  documents: readonly CandidateDocumentView[];
   candidateId: string;
 }
 

@@ -1,5 +1,5 @@
 import React from "react";
-import { Dialog, DialogContent, CardHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, User, ArrowRight } from "lucide-react";
 import Link from "next/link";

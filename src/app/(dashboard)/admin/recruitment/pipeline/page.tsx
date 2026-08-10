@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
+import { RecruitmentContextHeader } from "@/components/recruitment/shared/recruitment-context-header";
+import { buildRecruitmentBreadcrumbs } from "@/lib/recruitment/navigation/breadcrumbs";
 import { ApplicationFilters } from "@/components/recruitment/applications/application-filters";
 import { ApplicationTable } from "@/components/recruitment/applications/application-table";
 import { PipelineBoard } from "@/components/recruitment/applications/pipeline-board";
@@ -9,6 +11,10 @@ import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
 import { getApplicationCached, listApplicationsCached } from "@/lib/recruitment/application";
 import { getEmployeeOptions } from "@/lib/recruitment/candidate";
 import { listInterviewsCached } from "@/lib/recruitment/interview/queries";
+import {
+  getCurrentHiringDecisionCached,
+  getRequireDecisionForOfferCached,
+} from "@/lib/recruitment/decision/queries";
 import { prisma } from "@/lib/prisma";
 import { ApplicationStatus, RecruitmentPipelineStage } from "@/generated/prisma/enums";
 import {
@@ -51,7 +57,15 @@ export default async function RecruitmentPipelinePage({
       ? { page: 1, pageSize: boardTake.take }
       : { page: 1, pageSize: MAX_PAGE_SIZE };
 
-  const [result, employeeOptions, jobs, selectedDetail, selectedInterviews] = await Promise.all([
+  const [
+    result,
+    employeeOptions,
+    jobs,
+    selectedDetail,
+    selectedInterviews,
+    selectedDecision,
+    requireDecisionForOffer,
+  ] = await Promise.all([
     listApplicationsCached(
       session,
       {
@@ -74,6 +88,10 @@ export default async function RecruitmentPipelinePage({
     applicationId
       ? listInterviewsCached(session, { applicationId }, { page: 1, pageSize: 20 })
       : Promise.resolve({ items: [] as Record<string, unknown>[] }),
+    applicationId
+      ? getCurrentHiringDecisionCached(session, applicationId).catch(() => null)
+      : Promise.resolve(null),
+    getRequireDecisionForOfferCached(),
   ]);
 
   let selectedOffers: Array<{
@@ -104,14 +122,14 @@ export default async function RecruitmentPipelinePage({
         priority: (selectedDetail as { priority?: string | null }).priority ?? null,
         createdAt: selectedDetail.createdAt as Date | string,
         candidate: {
-          id: String(selectedDetail.candidate.id),
-          fullName: String(selectedDetail.candidate.fullName),
-          email: selectedDetail.candidate.email ?? null,
-          phone: selectedDetail.candidate.phone ?? null,
+          id: String(selectedDetail.candidate?.id ?? ""),
+          fullName: String(selectedDetail.candidate?.fullName ?? "Unknown"),
+          email: selectedDetail.candidate?.email ?? null,
+          phone: selectedDetail.candidate?.phone ?? null,
         },
         jobOpening: {
-          id: String(selectedDetail.jobOpening.id),
-          title: String(selectedDetail.jobOpening.title),
+          id: String(selectedDetail.jobOpening?.id ?? ""),
+          title: String(selectedDetail.jobOpening?.title ?? "Untitled"),
         },
         interviews: selectedInterviews.items.map((item) => ({
           id: String(item.id),
@@ -137,11 +155,22 @@ export default async function RecruitmentPipelinePage({
               assessmentUpdatedBy?: { email?: string | null } | null;
             }
           ).assessmentUpdatedBy?.email ?? null,
+        currentDecision: selectedDecision,
+        requireDecisionForOffer,
       }
     : null;
 
+  const filteredJob = jobFilter ? jobs.find((job) => job.id === jobFilter) : undefined;
+
   return (
     <div className="space-y-6 lg:space-y-8">
+      <RecruitmentContextHeader
+        crumbs={buildRecruitmentBreadcrumbs({
+          section: "pipeline",
+          job: filteredJob ? { id: filteredJob.id, title: filteredJob.title } : null,
+        })}
+        stage={stageFilter}
+      />
       <WorkspacePageHeader
         title="Pipeline"
         description="Move candidates through hiring stages. Interviews, offers, and Convert to Employee live on each card. Joined is for converted hires only."

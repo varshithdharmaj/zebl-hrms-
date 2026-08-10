@@ -29,11 +29,14 @@ export type ParsedResumePersonal = {
   phone: string | null;
   location: string | null;
   linkedinUrl: string | null;
+  githubUrl: string | null;
+  portfolioUrl: string | null;
 };
 
 export type ParsedResumeExperience = {
   company: string;
   title: string;
+  location?: string | null;
   startDate: string | null;
   endDate: string | null;
   isCurrent: boolean;
@@ -43,12 +46,31 @@ export type ParsedResumeExperience = {
 export type ParsedResumeEducation = {
   institution: string;
   degree: string | null;
+  field: string | null;
   graduationYear: number | null;
+};
+
+export type ParsedResumeProject = {
+  title: string;
+  summary: string | null;
+  techStack: string | null;
+  url: string | null;
+  duration: string | null;
+};
+
+export type ParsedResumeCertification = {
+  name: string;
+  issuer: string | null;
+  issuedAt: string | null;
+  credentialUrl: string | null;
+  credentialId: string | null;
 };
 
 export type ParsedResumeDraft = {
   personal: ParsedResumePersonal;
   professional: {
+    /** Header headline only — never inferred from experience.currentTitle. */
+    headline: string | null;
     currentCompany: string | null;
     currentTitle: string | null;
     totalExperienceYears: string | null;
@@ -57,6 +79,8 @@ export type ParsedResumeDraft = {
   experiences: ParsedResumeExperience[];
   educations: ParsedResumeEducation[];
   skills: string[];
+  projects: ParsedResumeProject[];
+  certifications: ParsedResumeCertification[];
 };
 
 export type ResumeParseSuccess = {
@@ -82,8 +106,11 @@ export const EMPTY_PARSED_RESUME_DRAFT = (): ParsedResumeDraft => ({
     phone: null,
     location: null,
     linkedinUrl: null,
+    githubUrl: null,
+    portfolioUrl: null,
   },
   professional: {
+    headline: null,
     currentCompany: null,
     currentTitle: null,
     totalExperienceYears: null,
@@ -92,6 +119,8 @@ export const EMPTY_PARSED_RESUME_DRAFT = (): ParsedResumeDraft => ({
   experiences: [],
   educations: [],
   skills: [],
+  projects: [],
+  certifications: [],
 });
 
-export const RESUME_PARSER_VERSION = "deterministic-v1";
+export const RESUME_PARSER_VERSION = "deterministic-v2";

@@ -1079,6 +1079,7 @@ enum AiInsightType {
   profile_completion
   quality_score
   candidate_summary
+  resume_field_recovery
   duplicate_suggestion
   job_match
   interview_summary
@@ -1638,6 +1639,9 @@ model CandidateAiInsight {
   @@index([candidateId, status])
   @@index([insightType, status])
   @@index([createdAt])
+  /// Partial unique indexes (pending insights) — enforced in migration SQL:
+  /// - one pending candidate_summary per candidate
+  /// - one pending resume_field_recovery per candidate
   @@map("candidate_ai_insights")
 }
 

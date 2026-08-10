@@ -13,7 +13,8 @@
     "db:ping": "tsx prisma/scripts/ping-database.ts",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck:tests": "tsc --noEmit -p tsconfig.test.json",
     "validate": "npm run typecheck && npm run lint && npm test",
     "db:generate": "prisma generate && node scripts/patch-prisma-browser-types.mjs",
     "db:push": "prisma db push",
@@ -42,10 +43,12 @@
     "db:setup:legacy": "npx prisma db push && npm run db:migrate-phase3 && npm run db:migrate-phase4 && npm run db:migrate-phase5 && npm run db:migrate-phase6 && npm run db:migrate-phase7 && npm run db:seed",
     "test": "vitest run",
     "test:watch": "vitest",
+    "bench:resumes": "tsx --import ./scripts/mock-server-only-register.mjs scripts/resume-corpus-benchmark.ts",
     "cf:build": "opennextjs-cloudflare build && node scripts/prepare-cloudflare-wasm.mjs",
     "cf:deploy": "npm run cf:build && wrangler deploy"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1106.0",
     "@prisma/adapter-pg": "^6.19.3",
     "@prisma/client": "^6.8.2",
     "@radix-ui/react-dialog": "^1.1.14",

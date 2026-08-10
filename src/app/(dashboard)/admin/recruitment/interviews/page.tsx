@@ -49,20 +49,26 @@ export default async function RecruitmentInterviewsPage({
   const layout = resolveLayout(params.layout);
   const canManage = canAccessHRAdministration(session.role);
 
-  const [tableResult, calendarResult] = await Promise.all([
-    listInterviewsCached(
-      session,
-      { status: statusForView(view) },
-      { page: 1, pageSize: 50 },
-      { field: "scheduledStart", direction: view === "upcoming" ? "asc" : "desc" }
-    ),
-    listInterviewsCached(
-      session,
-      {},
-      { page: 1, pageSize: 100 },
-      { field: "scheduledStart", direction: "asc" }
-    ),
-  ]);
+  // Fetch only the layout the user is viewing — both queries used heavy detail includes.
+  const tableResult =
+    layout === "list"
+      ? await listInterviewsCached(
+          session,
+          { status: statusForView(view) },
+          { page: 1, pageSize: 50 },
+          { field: "scheduledStart", direction: view === "upcoming" ? "asc" : "desc" }
+        )
+      : { items: [], total: 0, page: 1, pageSize: 50, totalPages: 0 };
+
+  const calendarResult =
+    layout === "calendar"
+      ? await listInterviewsCached(
+          session,
+          {},
+          { page: 1, pageSize: 100 },
+          { field: "scheduledStart", direction: "asc" }
+        )
+      : { items: [], total: 0, page: 1, pageSize: 100, totalPages: 0 };
 
   const tabs: { id: InterviewView; label: string }[] = [
     { id: "upcoming", label: "Upcoming" },

@@ -64,6 +64,8 @@ function mapNotificationType(event: RecruitmentDomainEvent): NotificationType | 
       return null;
     case "CandidateDuplicateDetected":
       return NotificationType.recruitment_duplicate_found;
+    default:
+      return null;
   }
 }
 

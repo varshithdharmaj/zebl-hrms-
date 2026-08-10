@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { Download, RefreshCw } from "lucide-react";
+import { Download } from "lucide-react";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { PayrollAttendanceFilters } from "@/components/admin/payroll/payroll-attendance-filters";
 import { PayrollAttendanceTable } from "@/components/admin/payroll/payroll-attendance-table";
+import { PayrollRefreshButton } from "@/components/admin/payroll/payroll-refresh-button";
 import { PayrollSummaryCards } from "@/components/admin/payroll/payroll-summary-cards";
 import { SectionCard } from "@/components/ui/section-card";
 import { Button } from "@/components/ui/button";
@@ -48,9 +49,10 @@ export default async function PayrollAttendancePage({
     search: params.q,
   };
 
+  // Read path uses ensure/dedupe — full recompute only when summaries missing or via Refresh.
   const [cards, rows] = await Promise.all([
-    getPayrollDashboardCards(period),
-    getPayrollAttendanceSummaries(period, filters),
+    getPayrollDashboardCards(period, { recompute: "ensure" }),
+    getPayrollAttendanceSummaries(period, filters, { recompute: "ensure" }),
   ]);
 
   const exportQuery = new URLSearchParams();
@@ -78,13 +80,7 @@ export default async function PayrollAttendancePage({
                 Export Payroll Summary
               </Link>
             </Button>
-            <form action="/admin/payroll-attendance" method="get">
-              <input type="hidden" name="period" value={period.key} />
-              <Button type="submit" variant="outline" size="sm">
-                <RefreshCw className="h-4 w-4" />
-                Refresh view
-              </Button>
-            </form>
+            <PayrollRefreshButton periodKey={period.key} />
           </div>
         }
       />

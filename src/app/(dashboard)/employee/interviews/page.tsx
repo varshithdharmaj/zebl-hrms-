@@ -79,7 +79,7 @@ export default async function EmployeeInterviewsPage({
       </div>
 
       <InterviewTable
-        interviews={result.items as any[]}
+        interviews={result.items}
         detailHrefPrefix="/employee/interviews"
       />
     </div>

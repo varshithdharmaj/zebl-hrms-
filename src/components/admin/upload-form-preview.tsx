@@ -10,7 +10,7 @@ import {
   type DragEvent,
   type KeyboardEvent,
 } from "react";
-import { FileSpreadsheet, FileText, Loader2, Upload } from "lucide-react";
+import { FileSpreadsheet, FileText, Upload } from "lucide-react";
 import {
   cancelAttendancePreviewAction,
   confirmAttendanceImportAction,
@@ -472,16 +472,13 @@ export function UploadFormPreview({ defaultDate }: { defaultDate: string }) {
           )}
         </div>
 
-        <Button type="submit" disabled={!canPreview} aria-disabled={!canPreview}>
-          {previewPending ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
-              <span>Preparing preview…</span>
-              <span className="sr-only">Preview in progress</span>
-            </>
-          ) : (
-            "Preview import"
-          )}
+        <Button
+          type="submit"
+          loading={previewPending}
+          disabled={!canPreview && !previewPending}
+          aria-disabled={!canPreview}
+        >
+          {previewPending ? "Preparing preview…" : "Preview import"}
         </Button>
       </form>
     </SectionCard>

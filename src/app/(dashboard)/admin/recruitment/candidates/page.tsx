@@ -61,7 +61,7 @@ export default async function RecruitmentCandidatesPage({
     },
     { page: filters.page, pageSize: filters.pageSize },
     {
-      field: filters.sort as any,
+      field: filters.sort,
       direction: filters.direction,
     }
   );

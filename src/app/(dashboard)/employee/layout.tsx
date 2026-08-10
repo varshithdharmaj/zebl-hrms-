@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import { AppShell } from "@/components/layout/app-shell";
+import { DashboardPageSkeleton } from "@/components/loading";
 import { getSession } from "@/lib/auth";
 import { redirectToLogin } from "@/lib/auth/redirect-login";
 import { canAccessEmployeeShell } from "@/lib/permissions";
@@ -21,7 +23,17 @@ export default async function EmployeeLayout({
       deferMyTeamNav
       showPanelistInterviews={isRecruitmentModuleEnabled()}
     >
-      {children}
+      <Suspense
+        fallback={
+          <DashboardPageSkeleton
+            label="Loading employee workspace"
+            kpiCount={3}
+            showTable={false}
+          />
+        }
+      >
+        {children}
+      </Suspense>
     </AppShell>
   );
 }

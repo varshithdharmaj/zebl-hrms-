@@ -27,7 +27,7 @@ export const createDraftSchema = z.object({
   recipientEmail: z.string().trim().email("Invalid recipient email.").optional().nullable(),
   parentId: z.string().trim().min(1).optional().nullable(),
   threadId: z.string().trim().min(1).optional().nullable(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const updateDraftSchema = z.object({
@@ -41,7 +41,7 @@ export const updateDraftSchema = z.object({
   offerId: z.string().trim().min(1).optional().nullable(),
   templateId: z.string().trim().min(1).optional().nullable(),
   recipientEmail: z.string().trim().email("Invalid recipient email.").optional().nullable(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const deleteDraftSchema = communicationIdSchema;
@@ -60,8 +60,8 @@ export const sendMessageSchema = z.object({
   recipientEmail: z.string().trim().email("Invalid recipient email.").optional().nullable(),
   parentId: z.string().trim().min(1).optional().nullable(),
   threadId: z.string().trim().min(1).optional().nullable(),
-  templateVariables: z.record(z.string()).optional(),
-  metadata: z.record(z.unknown()).optional(),
+  templateVariables: z.record(z.string(), z.string()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 }).refine(
   (value) => Boolean(value.id) || (Boolean(value.subject) && Boolean(value.body)),
   { message: "Provide an existing draft id or subject and body to send." }

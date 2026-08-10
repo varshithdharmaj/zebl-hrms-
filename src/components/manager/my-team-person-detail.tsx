@@ -3,6 +3,7 @@ import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { SectionCard } from "@/components/ui/section-card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ProfileAvatar } from "@/components/shared/profile-avatar";
 import type { MyTeamPersonDetail } from "@/lib/manager/team-people-query";
 import { LEAVE_TYPE_LABELS, type LeaveType } from "@/lib/leave-types";
 import { formatDate } from "@/lib/utils";
@@ -27,6 +28,9 @@ export function MyTeamPersonView({ data }: { data: MyTeamPersonDetail }) {
   return (
     <div className="space-y-8">
       <WorkspacePageHeader
+        leading={
+          <ProfileAvatar alt={`${person.name} profile photo`} editable={false} size="lg" />
+        }
         title={person.name}
         description={`${person.employeeCode}${person.designation ? ` · ${person.designation}` : ""}`}
         backHref="/employee/team/people"

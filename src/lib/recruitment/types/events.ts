@@ -170,7 +170,7 @@ export type CandidateDocumentUploadedPayload = {
 export type CandidateDocumentUpdatedPayload = {
   candidateId: string;
   documentId: string;
-  patch: Record<string, any>;
+  patch: Record<string, unknown>;
 };
 
 export type CandidateDocumentDeletedPayload = {

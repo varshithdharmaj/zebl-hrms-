@@ -1,8 +1,12 @@
 import "server-only";
 
-import { extractText, getDocumentProxy } from "unpdf";
+import { extractText, extractTextItems, getDocumentProxy } from "unpdf";
 import mammoth from "mammoth";
 import type { ResumeParserError, ResumeTextExtraction } from "./types";
+import {
+  reconstructPdfTextFromItems,
+  shouldUsePositionalPdfReconstruction,
+} from "./pdf-line-reconstruct";
 
 const PDF_MIME = new Set([
   "application/pdf",
@@ -38,11 +42,32 @@ function toUint8Array(buffer: Buffer | Uint8Array): Uint8Array {
   return copy;
 }
 
+/**
+ * Extract PDF text while preserving line structure for section detection.
+ *
+ * Root cause of prior failure: unpdf `extractText(..., { mergePages: true })`
+ * joins pages then runs `.replace(/\s+/g, " ")`, which deletes hasEOL newlines.
+ *
+ * Strategy:
+ * 1. Prefer per-page text (`mergePages: false`) which keeps hasEOL `\n`.
+ * 2. Join pages with `\n` (no whitespace collapse).
+ * 3. If a PDF emits almost no EOLs, fall back to Y/X positional reconstruction
+ *    via `extractTextItems` (same library — no new dependency).
+ */
 async function extractPdfText(bytes: Uint8Array): Promise<{ text: string; pageCount: number }> {
   const proxy = await getDocumentProxy(toUint8Array(bytes));
-  const { totalPages, text } = await extractText(proxy, { mergePages: true });
-  const merged = Array.isArray(text) ? text.join("\n") : String(text ?? "");
-  return { text: merged, pageCount: totalPages };
+  const { totalPages, text: pageTexts } = await extractText(proxy, {
+    mergePages: false,
+  });
+  const pages = Array.isArray(pageTexts) ? pageTexts : [String(pageTexts ?? "")];
+  let text = pages.join("\n");
+
+  if (shouldUsePositionalPdfReconstruction(text)) {
+    const { items } = await extractTextItems(proxy);
+    text = reconstructPdfTextFromItems(items);
+  }
+
+  return { text, pageCount: totalPages };
 }
 
 async function extractDocxText(bytes: Buffer | Uint8Array): Promise<string> {

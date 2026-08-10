@@ -11,8 +11,17 @@ import {
   paginationSkip,
   toPageResult,
 } from "@/lib/recruitment/shared/pagination";
-import type { InterviewRepository } from "@/lib/recruitment/repositories/interview-repository";
-import type { ScopedListArgs, ScopedSearchArgs } from "@/lib/recruitment/repositories/types";
+import type {
+  InterviewDetail,
+  InterviewDetailRow,
+  InterviewListFilters,
+  InterviewRepository,
+} from "@/lib/recruitment/repositories/interview-repository";
+import type {
+  SearchFilters,
+  CursorPaginationInput,
+  PaginationInput,
+} from "@/lib/recruitment/repositories/types";
 
 type Client = RepositoryTx;
 
@@ -55,40 +64,51 @@ function decimalToNumber(
 }
 
 /** Strip Prisma.Decimal so RSC → client props stay plain JSON-safe. */
-function mapInterviewRow<T extends Record<string, unknown>>(row: T): T {
-  const application = (row as { application?: Record<string, unknown> | null }).application;
-  if (!application) return row;
+function mapInterviewRow(row: InterviewDetailRow): InterviewDetail {
+  const { application, ...rest } = row;
+  if (!application) {
+    return { ...rest, application: null };
+  }
 
-  const candidate = application.candidate as Record<string, unknown> | null | undefined;
-  const jobOpening = application.jobOpening as Record<string, unknown> | null | undefined;
+  const { candidate, jobOpening, ...applicationRest } = application;
 
   return {
-    ...row,
+    ...rest,
     application: {
-      ...application,
+      ...applicationRest,
       candidate: candidate
         ? {
             ...candidate,
-            currentCtc: decimalToNumber(candidate.currentCtc as Prisma.Decimal | null),
-            expectedCtc: decimalToNumber(candidate.expectedCtc as Prisma.Decimal | null),
-            totalExperienceYears: decimalToNumber(
-              candidate.totalExperienceYears as Prisma.Decimal | null
-            ),
+            currentCtc: decimalToNumber(candidate.currentCtc),
+            expectedCtc: decimalToNumber(candidate.expectedCtc),
+            totalExperienceYears: decimalToNumber(candidate.totalExperienceYears),
           }
         : candidate,
       jobOpening: jobOpening
         ? {
             ...jobOpening,
-            compensationMin: decimalToNumber(
-              jobOpening.compensationMin as Prisma.Decimal | null
-            ),
-            compensationMax: decimalToNumber(
-              jobOpening.compensationMax as Prisma.Decimal | null
-            ),
+            compensationMin: decimalToNumber(jobOpening.compensationMin),
+            compensationMax: decimalToNumber(jobOpening.compensationMax),
           }
         : jobOpening,
     },
   };
+}
+
+function readStringFilter(
+  filters: InterviewListFilters | SearchFilters | undefined,
+  key: string
+): string | undefined {
+  if (!filters) return undefined;
+  const value = (filters as SearchFilters)[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function toPagePagination(
+  input: PaginationInput | CursorPaginationInput
+): Partial<PaginationInput> {
+  if ("page" in input) return input;
+  return { page: 1, pageSize: input.limit };
 }
 
 function scopeWhere(scope: RecruitmentScope): Prisma.InterviewWhereInput {
@@ -108,32 +128,43 @@ function scopeWhere(scope: RecruitmentScope): Prisma.InterviewWhereInput {
   };
 }
 
-function filtersWhere(filters?: any): Prisma.InterviewWhereInput {
+function filtersWhere(
+  filters?: InterviewListFilters | SearchFilters
+): Prisma.InterviewWhereInput {
   const where: Prisma.InterviewWhereInput = {};
   if (!filters?.includeArchived) {
     where.deletedAt = null;
   }
-  if (filters?.status && filters.status !== "all") {
-    where.status = filters.status;
+  const status = readStringFilter(filters, "status");
+  if (status && status !== "all") {
+    where.status = status as InterviewStatus;
   }
-  if (filters?.roundType && filters.roundType !== "all") {
-    where.roundType = filters.roundType;
+  const roundType = readStringFilter(filters, "roundType");
+  if (roundType && roundType !== "all") {
+    where.roundType = roundType as InterviewRoundType;
   }
-  if (filters?.applicationId) {
-    where.applicationId = filters.applicationId;
+  const applicationId = readStringFilter(filters, "applicationId");
+  if (applicationId) {
+    where.applicationId = applicationId;
   }
-  if (filters?.q?.trim()) {
-    const q = filters.q.trim();
+  const candidateId = readStringFilter(filters, "candidateId");
+  if (candidateId) {
+    const applicationFilter: Prisma.ApplicationWhereInput = { candidateId };
+    where.application = applicationFilter;
+  }
+  const q = readStringFilter(filters, "q");
+  if (q?.trim()) {
+    const trimmed = q.trim();
     where.OR = [
       {
         application: {
           candidate: {
-            fullName: { contains: q, mode: "insensitive" },
+            fullName: { contains: trimmed, mode: "insensitive" },
           },
         },
       },
       {
-        title: { contains: q, mode: "insensitive" },
+        title: { contains: trimmed, mode: "insensitive" },
       },
     ];
   }
@@ -142,7 +173,7 @@ function filtersWhere(filters?: any): Prisma.InterviewWhereInput {
 
 function mergeWhere(
   scope: RecruitmentScope,
-  filters?: any
+  filters?: InterviewListFilters | SearchFilters
 ): Prisma.InterviewWhereInput {
   return {
     AND: [scopeWhere(scope), filtersWhere(filters)],
@@ -223,7 +254,7 @@ export const prismaInterviewRepository: InterviewRepository = {
       where: { id },
       include: detailInclude,
     });
-    return row ? mapInterviewRow(row as Record<string, unknown>) : null;
+    return row ? mapInterviewRow(row) : null;
   },
 
   async listInterviews(args) {
@@ -245,14 +276,14 @@ export const prismaInterviewRepository: InterviewRepository = {
     ]);
 
     return toPageResult(
-      rows.map((row) => mapInterviewRow(row as Record<string, unknown>)),
+      rows.map((row) => mapInterviewRow(row)),
       total,
       pagination
     );
   },
 
   async searchInterviews(args) {
-    const pagination = normalizePagination(args.pagination);
+    const pagination = normalizePagination(toPagePagination(args.pagination));
     const where = mergeWhere(args.scope, { q: args.query });
 
     const [total, rows] = await prisma.$transaction([
@@ -267,7 +298,7 @@ export const prismaInterviewRepository: InterviewRepository = {
     ]);
 
     return toPageResult(
-      rows.map((row) => mapInterviewRow(row as Record<string, unknown>)),
+      rows.map((row) => mapInterviewRow(row)),
       total,
       pagination
     );
@@ -279,7 +310,7 @@ export const prismaInterviewRepository: InterviewRepository = {
       include: detailInclude,
       orderBy: { scheduledStart: "asc" },
     });
-    return rows.map((row) => mapInterviewRow(row as Record<string, unknown>));
+    return rows.map((row) => mapInterviewRow(row));
   },
 
   async listByScheduleRange(args) {
@@ -290,7 +321,7 @@ export const prismaInterviewRepository: InterviewRepository = {
         gte: args.rangeStart,
         lte: args.rangeEnd,
       },
-    });
+    } as InterviewListFilters);
 
     const [total, rows] = await prisma.$transaction([
       prisma.interview.count({ where }),
@@ -304,7 +335,7 @@ export const prismaInterviewRepository: InterviewRepository = {
     ]);
 
     return toPageResult(
-      rows.map((row) => mapInterviewRow(row as Record<string, unknown>)),
+      rows.map((row) => mapInterviewRow(row)),
       total,
       pagination
     );
@@ -388,7 +419,7 @@ export const prismaInterviewRepository: InterviewRepository = {
         author: { select: { id: true, name: true } },
       },
     });
-    return rows as any[];
+    return rows;
   },
 
   async findFeedback(feedbackId) {
@@ -398,7 +429,7 @@ export const prismaInterviewRepository: InterviewRepository = {
         author: { select: { id: true, name: true } },
       },
     });
-    return row ? (row as any) : null;
+    return row;
   },
 
   async countInterviews(scope, filters) {

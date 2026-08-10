@@ -80,6 +80,18 @@ describe("Application Server Actions", () => {
     expect(mockCreateApplication).toHaveBeenCalled();
   });
 
+  it("createApplicationAction returns applicationId for pipeline redirect", async () => {
+    const res = await createApplicationAction(
+      {},
+      {
+        candidateId: "cand-1",
+        jobOpeningId: "job-1",
+      }
+    );
+    expect(res.applicationId).toBe("app-1");
+    expect(res.error).toBeUndefined();
+  });
+
   it("should update application via action", async () => {
     const res = await updateApplicationAction(
       {},

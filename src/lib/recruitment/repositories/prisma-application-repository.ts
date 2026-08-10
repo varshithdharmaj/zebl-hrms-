@@ -12,8 +12,17 @@ import {
   paginationSkip,
   toPageResult,
 } from "@/lib/recruitment/shared/pagination";
-import type { ApplicationRepository } from "@/lib/recruitment/repositories/application-repository";
-import type { ScopedListArgs, ScopedSearchArgs } from "@/lib/recruitment/repositories/types";
+import type {
+  ApplicationDetail,
+  ApplicationDetailRow,
+  ApplicationListFilters,
+  ApplicationRepository,
+} from "@/lib/recruitment/repositories/application-repository";
+import type {
+  SearchFilters,
+  CursorPaginationInput,
+  PaginationInput,
+} from "@/lib/recruitment/repositories/types";
 
 type Client = RepositoryTx;
 
@@ -37,6 +46,20 @@ const detailInclude = {
   },
 } as const;
 
+/** Lean include for list/search — omits stageHistory + documents (detail-only). */
+const listInclude = {
+  candidate: {
+    include: {
+      personal: true,
+    },
+  },
+  jobOpening: true,
+  assignedRecruiter: { select: { id: true, email: true } },
+  assignedManager: { select: { id: true, name: true } },
+  createdBy: { select: { id: true, email: true } },
+  assessmentUpdatedBy: { select: { id: true, email: true } },
+} as const;
+
 function decimalToNumber(
   value: Prisma.Decimal | number | string | null | undefined
 ): number | null {
@@ -50,31 +73,33 @@ function decimalToNumber(
 }
 
 /** Strip Prisma.Decimal so RSC → client props stay plain JSON-safe. */
-function mapApplicationRow<T extends Record<string, unknown>>(row: T): T {
-  const candidate = (row as { candidate?: Record<string, unknown> | null }).candidate;
-  const jobOpening = (row as { jobOpening?: Record<string, unknown> | null }).jobOpening;
+function mapApplicationRow(row: ApplicationDetailRow): ApplicationDetail {
+  const { candidate, jobOpening, ...rest } = row;
 
   return {
-    ...row,
+    ...rest,
     candidate: candidate
       ? {
           ...candidate,
-          currentCtc: decimalToNumber(candidate.currentCtc as Prisma.Decimal | null),
-          expectedCtc: decimalToNumber(candidate.expectedCtc as Prisma.Decimal | null),
+          currentCtc: decimalToNumber(candidate.currentCtc),
+          expectedCtc: decimalToNumber(candidate.expectedCtc),
         }
       : candidate,
     jobOpening: jobOpening
       ? {
           ...jobOpening,
-          compensationMin: decimalToNumber(
-            jobOpening.compensationMin as Prisma.Decimal | null
-          ),
-          compensationMax: decimalToNumber(
-            jobOpening.compensationMax as Prisma.Decimal | null
-          ),
+          compensationMin: decimalToNumber(jobOpening.compensationMin),
+          compensationMax: decimalToNumber(jobOpening.compensationMax),
         }
       : jobOpening,
   };
+}
+
+function toPagePagination(
+  input: PaginationInput | CursorPaginationInput
+): Partial<PaginationInput> {
+  if ("page" in input) return input;
+  return { page: 1, pageSize: input.limit };
 }
 
 function scopeWhere(scope: RecruitmentScope): Prisma.ApplicationWhereInput {
@@ -88,46 +113,74 @@ function scopeWhere(scope: RecruitmentScope): Prisma.ApplicationWhereInput {
   };
 }
 
-function filtersWhere(filters?: any): Prisma.ApplicationWhereInput {
+function readStringFilter(
+  filters: ApplicationListFilters | SearchFilters | undefined,
+  key: string
+): string | undefined {
+  if (!filters) return undefined;
+  const value = (filters as SearchFilters)[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function readNumberFilter(
+  filters: ApplicationListFilters | SearchFilters | undefined,
+  key: string
+): number | undefined {
+  if (!filters) return undefined;
+  const value = (filters as SearchFilters)[key];
+  return typeof value === "number" ? value : undefined;
+}
+
+function filtersWhere(
+  filters?: ApplicationListFilters | SearchFilters
+): Prisma.ApplicationWhereInput {
   const where: Prisma.ApplicationWhereInput = {};
   if (!filters?.includeArchived) {
     where.deletedAt = null;
   }
-  if (filters?.jobOpeningId) {
-    where.jobOpeningId = filters.jobOpeningId;
+  const jobOpeningId = readStringFilter(filters, "jobOpeningId");
+  if (jobOpeningId) {
+    where.jobOpeningId = jobOpeningId;
   }
-  if (filters?.candidateId) {
-    where.candidateId = filters.candidateId;
+  const candidateId = readStringFilter(filters, "candidateId");
+  if (candidateId) {
+    where.candidateId = candidateId;
   }
-  if (filters?.status && filters.status !== "all") {
-    where.status = filters.status;
+  const status = readStringFilter(filters, "status");
+  if (status && status !== "all") {
+    where.status = status as ApplicationStatus;
   }
-  if (filters?.currentStage && filters.currentStage !== "all") {
-    where.currentStage = filters.currentStage;
+  const currentStage = readStringFilter(filters, "currentStage");
+  if (currentStage && currentStage !== "all") {
+    where.currentStage = currentStage as RecruitmentPipelineStage;
   }
-  if (filters?.assignedRecruiterUserId) {
-    where.assignedRecruiterUserId = filters.assignedRecruiterUserId;
+  const assignedRecruiterUserId = readStringFilter(filters, "assignedRecruiterUserId");
+  if (assignedRecruiterUserId) {
+    where.assignedRecruiterUserId = assignedRecruiterUserId;
   }
-  if (filters?.assignedManagerEmployeeId) {
-    where.assignedManagerEmployeeId = filters.assignedManagerEmployeeId;
+  const assignedManagerEmployeeId = readNumberFilter(filters, "assignedManagerEmployeeId");
+  if (assignedManagerEmployeeId !== undefined) {
+    where.assignedManagerEmployeeId = assignedManagerEmployeeId;
   }
-  if (filters?.priority) {
-    where.priority = filters.priority;
+  const priority = readStringFilter(filters, "priority");
+  if (priority) {
+    where.priority = priority as ApplicationPriority;
   }
-  if (filters?.q?.trim()) {
-    const q = filters.q.trim();
+  const q = readStringFilter(filters, "q");
+  if (q?.trim()) {
+    const trimmed = q.trim();
     where.OR = [
       {
         candidate: {
           OR: [
-            { fullName: { contains: q, mode: "insensitive" } },
-            { email: { contains: q, mode: "insensitive" } },
+            { fullName: { contains: trimmed, mode: "insensitive" } },
+            { email: { contains: trimmed, mode: "insensitive" } },
           ],
         },
       },
       {
         jobOpening: {
-          title: { contains: q, mode: "insensitive" },
+          title: { contains: trimmed, mode: "insensitive" },
         },
       },
     ];
@@ -137,7 +190,7 @@ function filtersWhere(filters?: any): Prisma.ApplicationWhereInput {
 
 function mergeWhere(
   scope: RecruitmentScope,
-  filters?: any
+  filters?: ApplicationListFilters | SearchFilters
 ): Prisma.ApplicationWhereInput {
   return {
     AND: [scopeWhere(scope), filtersWhere(filters)],
@@ -208,7 +261,7 @@ export const prismaApplicationRepository: ApplicationRepository = {
       where: { id },
       include: detailInclude,
     });
-    return row ? mapApplicationRow(row as any) : null;
+    return row ? mapApplicationRow(row) : null;
   },
 
   async findByCandidate(candidateId) {
@@ -217,7 +270,7 @@ export const prismaApplicationRepository: ApplicationRepository = {
       include: detailInclude,
       orderBy: { createdAt: "desc" },
     });
-    return rows.map((row) => mapApplicationRow(row as any));
+    return rows.map((row) => mapApplicationRow(row));
   },
 
   async findByJob(jobOpeningId) {
@@ -226,7 +279,7 @@ export const prismaApplicationRepository: ApplicationRepository = {
       include: detailInclude,
       orderBy: { createdAt: "desc" },
     });
-    return rows.map((row) => mapApplicationRow(row as any));
+    return rows.map((row) => mapApplicationRow(row));
   },
 
   async findActiveByCandidateAndJob(candidateId, jobOpeningId) {
@@ -239,7 +292,7 @@ export const prismaApplicationRepository: ApplicationRepository = {
       },
       include: detailInclude,
     });
-    return row ? mapApplicationRow(row as any) : null;
+    return row ? mapApplicationRow(row) : null;
   },
 
   async listApplications(args) {
@@ -253,7 +306,7 @@ export const prismaApplicationRepository: ApplicationRepository = {
       prisma.application.count({ where }),
       prisma.application.findMany({
         where,
-        include: detailInclude,
+        include: listInclude,
         skip: paginationSkip(pagination),
         take: pagination.pageSize,
         orderBy: { [sortField]: sortDirection },
@@ -261,21 +314,29 @@ export const prismaApplicationRepository: ApplicationRepository = {
     ]);
 
     return toPageResult(
-      rows.map((row) => mapApplicationRow(row as any)),
+      rows.map((row) =>
+        mapApplicationRow({
+          ...row,
+          stageHistory: [],
+          candidate: row.candidate
+            ? { ...row.candidate, documents: [] }
+            : row.candidate,
+        } as ApplicationDetailRow)
+      ),
       total,
       pagination
     );
   },
 
   async searchApplications(args) {
-    const pagination = normalizePagination(args.pagination);
+    const pagination = normalizePagination(toPagePagination(args.pagination));
     const where = mergeWhere(args.scope, { q: args.query });
 
     const [total, rows] = await prisma.$transaction([
       prisma.application.count({ where }),
       prisma.application.findMany({
         where,
-        include: detailInclude,
+        include: listInclude,
         skip: paginationSkip(pagination),
         take: pagination.pageSize,
         orderBy: { createdAt: "desc" },
@@ -283,7 +344,15 @@ export const prismaApplicationRepository: ApplicationRepository = {
     ]);
 
     return toPageResult(
-      rows.map((row) => mapApplicationRow(row as any)),
+      rows.map((row) =>
+        mapApplicationRow({
+          ...row,
+          stageHistory: [],
+          candidate: row.candidate
+            ? { ...row.candidate, documents: [] }
+            : row.candidate,
+        } as ApplicationDetailRow)
+      ),
       total,
       pagination
     );
@@ -340,7 +409,7 @@ export const prismaApplicationRepository: ApplicationRepository = {
       },
       include: detailInclude,
     });
-    return mapApplicationRow(row as any);
+    return mapApplicationRow(row);
   },
 
   async moveApplicationStage(id, stage, stageEnteredAt, status, tx) {

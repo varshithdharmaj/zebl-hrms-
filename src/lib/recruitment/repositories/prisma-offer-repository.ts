@@ -8,25 +8,22 @@ import {
   paginationSkip,
   toPageResult,
 } from "@/lib/recruitment/shared/pagination";
-import type { OfferRepository } from "@/lib/recruitment/repositories/offer-repository";
-import type { ScopedListArgs } from "@/lib/recruitment/repositories/types";
+import type {
+  OfferByApplication,
+  OfferDetail,
+  OfferDetailRow,
+  OfferListFilters,
+  OfferRepository,
+} from "@/lib/recruitment/repositories/offer-repository";
+import {
+  offerDetailInclude,
+  offerListInclude,
+} from "@/lib/recruitment/repositories/offer-repository";
 
 type Client = RepositoryTx;
 
-const detailInclude = {
-  application: {
-    include: {
-      candidate: true,
-      jobOpening: true,
-    },
-  },
-  createdBy: {
-    select: { id: true, email: true },
-  },
-  revisions: {
-    orderBy: { version: "desc" as const },
-  },
-} as const;
+const detailInclude = offerDetailInclude;
+const listInclude = offerListInclude;
 
 function decimalToNumber(value: Prisma.Decimal | number | string | null | undefined): number | null {
   if (value == null) return null;
@@ -51,12 +48,12 @@ function mapOfferRow<T extends Record<string, unknown>>(row: T): T {
       }
     : candidate;
 
-  const application = (row as { application?: Record<string, unknown> }).application
+  const application = (row as unknown as { application?: Record<string, unknown> }).application
     ? {
-        ...(row as { application: Record<string, unknown> }).application,
+        ...(row as unknown as { application: Record<string, unknown> }).application,
         candidate: mappedCandidate,
         jobOpening: (() => {
-          const job = (row as { application?: { jobOpening?: Record<string, unknown> } })
+          const job = (row as unknown as { application?: { jobOpening?: Record<string, unknown> } })
             .application?.jobOpening;
           if (!job) return job;
           return {
@@ -66,7 +63,7 @@ function mapOfferRow<T extends Record<string, unknown>>(row: T): T {
           };
         })(),
       }
-    : (row as { application?: unknown }).application;
+    : (row as unknown as { application?: unknown }).application;
 
   return {
     ...row,
@@ -95,15 +92,7 @@ function scopeWhere(scope: RecruitmentScope): Prisma.OfferWhereInput {
   };
 }
 
-function filtersWhere(filters?: {
-  status?: string;
-  department?: string;
-  jobOpeningId?: string;
-  applicationId?: string;
-  recruiterUserId?: string;
-  q?: string;
-  includeArchived?: boolean;
-}): Prisma.OfferWhereInput {
+function filtersWhere(filters?: OfferListFilters): Prisma.OfferWhereInput {
   const where: Prisma.OfferWhereInput = {};
   if (filters?.status && filters.status !== "all") {
     if (filters.status === "expired") {
@@ -158,10 +147,26 @@ function filtersWhere(filters?: {
 
 function mergeWhere(
   scope: RecruitmentScope,
-  filters?: any
+  filters?: OfferListFilters | Record<string, string | number | boolean | undefined>
 ): Prisma.OfferWhereInput {
   return {
-    AND: [scopeWhere(scope), filtersWhere(filters)],
+    AND: [scopeWhere(scope), filtersWhere(filters as OfferListFilters | undefined)],
+  };
+}
+
+function toOfferDetail(row: OfferDetailRow): OfferDetail {
+  return mapOfferRow(row as unknown as Record<string, unknown>) as OfferDetail;
+}
+
+function toOfferByApplication(row: OfferDetailRow): OfferByApplication {
+  const mapped = toOfferDetail(row);
+  return {
+    id: mapped.id,
+    status: mapped.status,
+    offerNumber: mapped.offerNumber,
+    ctc: mapped.ctc,
+    currency: mapped.currency,
+    joiningDate: mapped.joiningDate,
   };
 }
 
@@ -241,7 +246,7 @@ export const prismaOfferRepository: OfferRepository = {
       where: { id },
       include: detailInclude,
     });
-    return row ? mapOfferRow(row as any) : null;
+    return row ? toOfferDetail(row) : null;
   },
 
   async listOffers(args) {
@@ -255,14 +260,18 @@ export const prismaOfferRepository: OfferRepository = {
       prisma.offer.count({ where }),
       prisma.offer.findMany({
         where,
-        include: detailInclude,
+        include: listInclude,
         skip: paginationSkip(pagination),
         take: pagination.pageSize,
         orderBy: { [sortField]: sortDirection },
       }),
     ]);
 
-    return toPageResult(rows.map((row) => mapOfferRow(row as any)), total, pagination);
+    return toPageResult(
+      rows.map((row) => toOfferDetail({ ...row, revisions: [] } as OfferDetailRow)),
+      total,
+      pagination
+    );
   },
 
   async listByApplication(applicationId) {
@@ -271,7 +280,7 @@ export const prismaOfferRepository: OfferRepository = {
       include: detailInclude,
       orderBy: { createdAt: "desc" },
     });
-    return rows.map((row) => mapOfferRow(row as any));
+    return rows.map((row) => toOfferByApplication(row));
   },
 
   async sendOffer(id, expiresAt, tx) {
@@ -359,11 +368,10 @@ export const prismaOfferRepository: OfferRepository = {
   },
 
   async latestRevision(offerId) {
-    const row = await prisma.offerRevision.findFirst({
+    return prisma.offerRevision.findFirst({
       where: { offerId },
       orderBy: { version: "desc" },
     });
-    return row ? (row as any) : null;
   },
 
   async existsActiveOffer(applicationId) {

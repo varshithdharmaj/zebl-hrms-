@@ -22,7 +22,7 @@ export async function GET(request: Request) {
     const service = createCandidateDocumentService();
     const { content, mimeType } = await service.getDocumentContent(session, id);
 
-    return new NextResponse(content, {
+    return new NextResponse(new Uint8Array(content), {
       headers: {
         "Content-Type": mimeType,
         "Content-Disposition": "inline",

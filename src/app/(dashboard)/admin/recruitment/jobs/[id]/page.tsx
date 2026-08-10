@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { JobOpeningDetailView } from "@/components/recruitment/jobs/job-opening-detail";
+import { RecruitmentContextHeader } from "@/components/recruitment/shared/recruitment-context-header";
+import { buildRecruitmentBreadcrumbs } from "@/lib/recruitment/navigation/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
@@ -33,6 +35,13 @@ export default async function JobOpeningDetailPage({
 
   return (
     <div className="space-y-6 lg:space-y-8">
+      <RecruitmentContextHeader
+        crumbs={buildRecruitmentBreadcrumbs({
+          section: "jobs",
+          job: { id: job.id, title: job.title },
+        })}
+        status={job.status}
+      />
       <WorkspacePageHeader
         title={job.title}
         description="Job opening detail, hiring team, timeline, and operations."

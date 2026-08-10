@@ -23,8 +23,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import type { Offer } from "@/generated/prisma/client";
 
-export function OfferDetailActions({ offer, userRole }: { offer: any; userRole: string }) {
+export function OfferDetailActions({
+  offer,
+  userRole,
+}: {
+  offer: Pick<Offer, "id" | "status">;
+  userRole: string;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = React.useState<string | null>(null);

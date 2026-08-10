@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
 import { OfferStatus, RecruitmentPipelineStage } from "@/generated/prisma/enums";
 import { Sheet } from "@/components/ui/sheet";
@@ -10,7 +10,15 @@ import { ErrorAlert } from "@/components/ui/error-alert";
 import { moveApplicationStageAction } from "@/actions/recruitment-applications";
 import { CandidateAvatar } from "@/components/recruitment/candidates/candidate-avatar";
 import { ApplicationAssessmentForm } from "@/components/recruitment/applications/application-assessment-form";
+import { HiringDecisionForm } from "@/components/recruitment/applications/hiring-decision-form";
+import type { HiringDecisionRecord } from "@/lib/recruitment/repositories/decision-repository";
+import { canCreateOfferFromDecisionState } from "@/lib/recruitment/decision/eligibility";
 import { Clock, ExternalLink } from "lucide-react";
+import {
+  buildRecruitmentEntityHref,
+  currentPathWithSearch,
+  isSafeRecruitmentReturnTo,
+} from "@/lib/recruitment/navigation/return-to";
 
 const STAGE_OPTIONS: RecruitmentPipelineStage[] = [
   RecruitmentPipelineStage.resume_received,
@@ -62,6 +70,8 @@ export type PipelineDrawerApplication = {
   assessment?: string | null;
   assessmentUpdatedAt?: Date | string | null;
   assessmentUpdatedByEmail?: string | null;
+  currentDecision?: HiringDecisionRecord | null;
+  requireDecisionForOffer?: boolean;
 };
 
 export function ApplicationPipelineDrawer({
@@ -74,8 +84,14 @@ export function ApplicationPipelineDrawer({
   onClose: () => void;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const pipelineReturnTo = (() => {
+    const path = currentPathWithSearch(pathname, searchParams.toString());
+    return isSafeRecruitmentReturnTo(path) ? path : "/admin/recruitment/pipeline";
+  })();
 
   if (!open) return null;
 
@@ -91,6 +107,10 @@ export function ApplicationPipelineDrawer({
   }
 
   const acceptedOffer = application.offers?.find((o) => o.status === OfferStatus.accepted);
+  const canCreateOffer = canCreateOfferFromDecisionState(
+    application.requireDecisionForOffer ?? true,
+    application.currentDecision?.outcome
+  );
 
   const moveStage = (stage: RecruitmentPipelineStage) => {
     setError(null);
@@ -122,12 +142,28 @@ export function ApplicationPipelineDrawer({
           </div>
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline" size="sm" className="text-xs font-semibold">
-              <Link href={`/admin/recruitment/candidates/${application.candidate.id}`}>
+              <Link
+                href={buildRecruitmentEntityHref(
+                  `/admin/recruitment/candidates/${application.candidate.id}`,
+                  {
+                    returnTo: pipelineReturnTo,
+                    applicationId: application.id,
+                    jobOpeningId: application.jobOpening.id,
+                    currentStage: String(application.currentStage),
+                  }
+                )}
+              >
                 Candidate workspace
               </Link>
             </Button>
             <Button asChild variant="outline" size="sm" className="text-xs font-semibold">
-              <Link href={`/admin/recruitment/applications/${application.id}`}>
+              <Link
+                href={buildRecruitmentEntityHref(`/admin/recruitment/applications/${application.id}`, {
+                  returnTo: pipelineReturnTo,
+                  jobOpeningId: application.jobOpening.id,
+                  currentStage: String(application.currentStage),
+                })}
+              >
                 Full application
                 <ExternalLink className="ml-1 h-3 w-3" />
               </Link>
@@ -143,11 +179,17 @@ export function ApplicationPipelineDrawer({
                 Schedule interview
               </Link>
             </Button>
-            <Button asChild variant="outline" size="sm" className="text-xs font-semibold">
-              <Link href={`/admin/recruitment/offers/new?applicationId=${application.id}`}>
-                Create offer
-              </Link>
-            </Button>
+            {canCreateOffer ? (
+              <Button asChild variant="outline" size="sm" className="text-xs font-semibold">
+                <Link href={`/admin/recruitment/offers/new?applicationId=${application.id}`}>
+                  Create offer
+                </Link>
+              </Button>
+            ) : (
+              <span className="text-[11px] font-medium text-muted-foreground">
+                Hire / strong hire decision required to create an offer.
+              </span>
+            )}
             {acceptedOffer ? (
               <Button asChild size="sm" className="text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white">
                 <Link href={`/admin/recruitment/conversions/${acceptedOffer.id}`}>Convert to employee</Link>
@@ -176,6 +218,12 @@ export function ApplicationPipelineDrawer({
           assessment={application.assessment}
           assessmentUpdatedAt={application.assessmentUpdatedAt}
           assessmentUpdatedByEmail={application.assessmentUpdatedByEmail}
+          compact
+        />
+
+        <HiringDecisionForm
+          applicationId={application.id}
+          currentDecision={application.currentDecision ?? null}
           compact
         />
 

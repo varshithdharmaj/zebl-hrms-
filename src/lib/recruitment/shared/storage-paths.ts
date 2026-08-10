@@ -12,6 +12,24 @@ export function buildCandidateDocumentStorageKey(
   return `candidates/${candidateId}/documents/${crypto.randomUUID()}-${sanitizeStorageFileName(fileName)}`;
 }
 
+/** Temporary resume storage before a Candidate exists (new-candidate-from-resume). */
+export function buildIntakeResumeStorageKey(
+  intakeId: string,
+  fileName: string
+): string {
+  return `recruitment/intake/${intakeId}/documents/${crypto.randomUUID()}-${sanitizeStorageFileName(fileName)}`;
+}
+
+export function isSafeIntakeResumeKey(intakeId: string, key: string): boolean {
+  const prefix = `recruitment/intake/${intakeId}/documents/`;
+  return (
+    key.startsWith(prefix) &&
+    !key.includes("..") &&
+    !key.includes("\\") &&
+    !key.includes("//", prefix.length)
+  );
+}
+
 export function buildOfferPdfStorageKey(offerId: string, fileName: string): string {
   return `offers/${offerId}/pdf/${crypto.randomUUID()}-${sanitizeStorageFileName(fileName)}`;
 }

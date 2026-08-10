@@ -8,8 +8,16 @@ import {
 } from "@/lib/recruitment/permissions/permission-service";
 import { RecruitmentScopeEngine } from "@/lib/recruitment/permissions/recruitment-scope-engine";
 import { prismaOfferRepository } from "@/lib/recruitment/repositories/prisma-offer-repository";
-import type { OfferRepository } from "@/lib/recruitment/repositories/offer-repository";
+import type {
+  OfferDetail,
+  OfferListFilters,
+  OfferRepository,
+} from "@/lib/recruitment/repositories/offer-repository";
+import type { SearchFilters } from "@/lib/recruitment/types/pagination";
+import type { z } from "zod";
 import { prismaApplicationRepository } from "@/lib/recruitment/repositories/prisma-application-repository";
+import { prismaDecisionRepository } from "@/lib/recruitment/repositories/prisma-decision-repository";
+import { isOfferEligibleDecisionOutcome } from "@/lib/recruitment/decision/eligibility";
 import { RecruitmentDomainError } from "@/lib/recruitment/shared/errors";
 import { withRecruitmentTransaction } from "@/lib/recruitment/shared/transaction";
 import { createAfterCommitBuffer } from "@/lib/recruitment/shared/after-commit";
@@ -47,30 +55,7 @@ export function createOfferService(
   return {
     async createOffer(
       session: SessionUser,
-      input: {
-        applicationId: string;
-        hiringDecisionId?: string | null;
-        currency?: string;
-        baseSalary: number;
-        variablePay?: number | null;
-        benefitsNotes?: string | null;
-        proposedStartDate?: string | null;
-        expiresAt?: string | null;
-        employmentType: string;
-        department: string;
-        location: string;
-        grade: string;
-        reportingManagerId?: number | null;
-        joiningDate: string;
-        ctc: number;
-        salaryBreakdownJson?: Record<string, number> | null;
-        bonus?: number | null;
-        stock?: string | null;
-        probationDays?: number | null;
-        noticeBuyout?: boolean;
-        offerPdfKey?: string | null;
-        offerNotes?: string | null;
-      }
+      input: z.infer<typeof createOfferSchema>
     ): Promise<{ id: string }> {
       RecruitmentPermissionService.requireOffersEnabled();
       await RecruitmentPermissionService.assertCanManageCandidates(session);
@@ -82,6 +67,30 @@ export function createOfferService(
       const app = await prismaApplicationRepository.getApplication(parsed.applicationId);
       if (!app) {
         throw new RecruitmentDomainError("REC_NOT_FOUND", "Application not found.");
+      }
+
+      const settings = await prisma.recruitmentSettings.findUnique({
+        where: { id: "default" },
+        select: { requireDecisionForOffer: true },
+      });
+      const requireDecisionForOffer = settings?.requireDecisionForOffer ?? true;
+
+      let hiringDecisionId = parsed.hiringDecisionId ?? null;
+      if (requireDecisionForOffer) {
+        const currentDecision = await prismaDecisionRepository.findCurrent(parsed.applicationId);
+        if (!currentDecision) {
+          throw new RecruitmentDomainError(
+            "REC_VALIDATION",
+            "Submit a hiring decision before creating an offer."
+          );
+        }
+        if (!isOfferEligibleDecisionOutcome(currentDecision.outcome)) {
+          throw new RecruitmentDomainError(
+            "REC_VALIDATION",
+            "Offers are only allowed after a strong_hire or hire decision."
+          );
+        }
+        hiringDecisionId = currentDecision.id;
       }
 
       // Rule: Only ONE active offer allowed per application.
@@ -100,6 +109,7 @@ export function createOfferService(
         const { id } = await repository.createOffer(
           {
             ...parsed,
+            hiringDecisionId,
             offerNumber,
             status: OfferStatus.draft,
             createdByUserId: session.id,
@@ -140,29 +150,7 @@ export function createOfferService(
 
     async updateDraft(
       session: SessionUser,
-      input: {
-        id: string;
-        currency?: string;
-        baseSalary?: number;
-        variablePay?: number | null;
-        benefitsNotes?: string | null;
-        proposedStartDate?: string | null;
-        expiresAt?: string | null;
-        employmentType?: string;
-        department?: string;
-        location?: string;
-        grade?: string;
-        reportingManagerId?: number | null;
-        joiningDate?: string;
-        ctc?: number;
-        salaryBreakdownJson?: Record<string, number> | null;
-        bonus?: number | null;
-        stock?: string | null;
-        probationDays?: number | null;
-        noticeBuyout?: boolean;
-        offerPdfKey?: string | null;
-        offerNotes?: string | null;
-      }
+      input: z.infer<typeof updateOfferSchema>
     ): Promise<void> {
       RecruitmentPermissionService.requireModuleEnabled();
       await RecruitmentPermissionService.assertCanManageCandidates(session);
@@ -290,7 +278,7 @@ export function createOfferService(
       const actor = toRecruitmentActor(session);
       const events = createAfterCommitBuffer();
       await withRecruitmentTransaction(async (tx) => {
-        await repository.withdrawOffer(parsed.id, parsed.reason, tx);
+        await repository.withdrawOffer(parsed.id, parsed.reason ?? null, tx);
 
         // Timeline Event
         await RecruitmentTimelineService.append(
@@ -313,7 +301,7 @@ export function createOfferService(
           RecruitmentEventFactory.offerWithdrawn(actor, {
             offerId: parsed.id,
             applicationId: offer.applicationId,
-            reason: parsed.reason,
+            reason: parsed.reason ?? null,
           })
         );
       });
@@ -452,7 +440,7 @@ export function createOfferService(
       const actor = toRecruitmentActor(session);
       const events = createAfterCommitBuffer();
       await withRecruitmentTransaction(async (tx) => {
-        await repository.declineOffer(parsed.id, declinedDate, parsed.reason, tx);
+        await repository.declineOffer(parsed.id, declinedDate, parsed.reason ?? null, tx);
 
         // Timeline Event
         await RecruitmentTimelineService.append(
@@ -475,7 +463,7 @@ export function createOfferService(
           RecruitmentEventFactory.offerDeclined(actor, {
             offerId: parsed.id,
             applicationId: offer.applicationId,
-            reason: parsed.reason,
+            reason: parsed.reason ?? null,
           })
         );
       });
@@ -570,7 +558,7 @@ export function createOfferService(
       input: {
         id: string;
         changeNote: string;
-        patch: any;
+        patch: z.infer<typeof createOfferRevisionSchema>["patch"];
       }
     ): Promise<void> {
       RecruitmentPermissionService.requireModuleEnabled();
@@ -620,7 +608,7 @@ export function createOfferService(
         // Save revision snapshot
         const { id: revisionId } = await repository.createRevision(
           parsed.id,
-          snapshot,
+          snapshot as unknown as Prisma.InputJsonValue,
           parsed.changeNote,
           session.id,
           tx
@@ -711,7 +699,10 @@ export function createOfferService(
             reportingManagerId: offer.reportingManagerId,
             joiningDate: offer.joiningDate,
             ctc: offer.ctc ? Number(offer.ctc) : 0,
-            salaryBreakdownJson: offer.salaryBreakdownJson,
+            salaryBreakdownJson:
+              offer.salaryBreakdownJson == null
+                ? undefined
+                : (offer.salaryBreakdownJson as unknown as Prisma.InputJsonValue),
             bonus: offer.bonus ? Number(offer.bonus) : null,
             stock: offer.stock,
             probationDays: offer.probationDays,
@@ -754,7 +745,7 @@ export function createOfferService(
       return { id: newOfferId };
     },
 
-    async getOffer(session: SessionUser, id: string): Promise<Record<string, any> | null> {
+    async getOffer(session: SessionUser, id: string): Promise<OfferDetail | null> {
       RecruitmentPermissionService.requireOffersEnabled();
       const scope = await RecruitmentScopeEngine.getScope(session);
       const offer = await repository.getOffer(id);
@@ -766,7 +757,7 @@ export function createOfferService(
     async listOffers(
       session: SessionUser,
       args: {
-        filters?: any;
+        filters?: OfferListFilters | SearchFilters;
         pagination: { page: number; pageSize: number };
         sort?: { field: string; direction: "asc" | "desc" };
       }

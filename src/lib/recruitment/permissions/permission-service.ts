@@ -141,4 +141,14 @@ export const RecruitmentPermissionService = {
     const allowed = await RecruitmentScopeEngine.canViewApplication(actor, applicationId);
     if (!allowed) throw new PermissionError("Application outside recruitment scope.");
   },
+
+  async assertCanSubmitHiringDecision(
+    session: SessionUser,
+    applicationId: string
+  ): Promise<void> {
+    this.requireModuleEnabled();
+    this.requireHrAdministration(session);
+    const scope = await RecruitmentScopeEngine.getScope(session);
+    RecruitmentScopeEngine.assertApplicationInScope(scope, applicationId);
+  },
 };

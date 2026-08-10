@@ -34,13 +34,13 @@ export function mappedDraftFromParsed(draft: ParsedResumeDraft): ResumeImportMap
       location: draft.personal.location,
     },
     professional: {
-      headline: draft.professional.currentTitle,
+      headline: draft.professional.headline,
       professionalSummary: draft.professional.summary,
       currentCompany: draft.professional.currentCompany,
       currentTitle: draft.professional.currentTitle,
-      githubUrl: null,
+      githubUrl: draft.personal.githubUrl,
       linkedinUrl: draft.personal.linkedinUrl,
-      portfolioUrl: null,
+      portfolioUrl: draft.personal.portfolioUrl,
       totalExperienceYears: draft.professional.totalExperienceYears,
       preferredWorkMode: null,
       willingToRelocate: null,
@@ -48,7 +48,7 @@ export function mappedDraftFromParsed(draft: ParsedResumeDraft): ResumeImportMap
     experiences: draft.experiences.map((e, index) => ({
       company: e.company,
       title: e.title,
-      location: null,
+      location: e.location ?? null,
       startDate: e.startDate,
       endDate: e.endDate,
       isCurrent: e.isCurrent,
@@ -58,7 +58,7 @@ export function mappedDraftFromParsed(draft: ParsedResumeDraft): ResumeImportMap
     educations: draft.educations.map((e, index) => ({
       institution: e.institution,
       degree: e.degree,
-      field: null,
+      field: e.field,
       startYear: null,
       endYear: e.graduationYear,
       grade: null,
@@ -69,9 +69,23 @@ export function mappedDraftFromParsed(draft: ParsedResumeDraft): ResumeImportMap
       proficiency: null,
       yearsOfExperience: null,
     })),
-    // V1 intentionally empty — reserved for future parsers / AI.
-    projects: [],
-    certifications: [],
+    projects: (draft.projects ?? []).map((p, index) => ({
+      title: p.title,
+      summary: p.summary,
+      techStack: p.techStack,
+      url: p.url,
+      role: null,
+      duration: p.duration,
+      sortOrder: index,
+    })),
+    certifications: (draft.certifications ?? []).map((c) => ({
+      name: c.name,
+      issuer: c.issuer,
+      issuedAt: c.issuedAt,
+      expiresAt: null,
+      credentialId: c.credentialId,
+      credentialUrl: c.credentialUrl,
+    })),
   };
 }
 
@@ -81,6 +95,7 @@ export function draftContentFromParsed(input: {
   warnings: string[];
   rawTextLength: number;
   errorNote?: string;
+  semanticVerification?: ResumeImportDraftContent["metadata"]["semanticVerification"];
 }): ResumeImportDraftContent {
   const mapped = mappedDraftFromParsed(input.draft);
   const fieldConfidence: Record<string, number> = {};
@@ -96,36 +111,38 @@ export function draftContentFromParsed(input: {
   bump("personal.phone", mapped.personal.phone, 0.85);
   bump("personal.location", mapped.personal.location, 0.6);
   bump("professional.linkedinUrl", mapped.professional.linkedinUrl, 0.9);
+  bump("professional.githubUrl", mapped.professional.githubUrl, 0.9);
+  bump("professional.portfolioUrl", mapped.professional.portfolioUrl, 0.7);
+  bump("professional.professionalSummary", mapped.professional.professionalSummary, 0.55);
+  bump("professional.headline", mapped.professional.headline, 0.7);
   bump("professional.currentCompany", mapped.professional.currentCompany, 0.65);
   bump("professional.currentTitle", mapped.professional.currentTitle, 0.65);
-  bump("professional.professionalSummary", mapped.professional.professionalSummary, 0.55);
   bump("professional.totalExperienceYears", mapped.professional.totalExperienceYears, 0.5);
+
   if (mapped.experiences.length) fieldConfidence["section.experiences"] = 0.65;
   if (mapped.educations.length) fieldConfidence["section.educations"] = 0.65;
   if (mapped.skills.length) fieldConfidence["section.skills"] = 0.7;
+  if (mapped.projects.length) fieldConfidence["section.projects"] = 0.6;
+  if (mapped.certifications.length) fieldConfidence["section.certifications"] = 0.6;
+
+  const noteParts = [...input.warnings];
+  if (input.errorNote) noteParts.unshift(input.errorNote);
 
   return {
     version: 1,
     source: "parser",
     documentId: input.documentId,
     raw: {
-      ...mapped,
-      _parser: {
-        version: RESUME_PARSER_VERSION,
-        warnings: input.warnings,
-        rawTextLength: input.rawTextLength,
-        errorNote: input.errorNote ?? null,
-      },
+      textLength: input.rawTextLength,
     },
     mapped,
     fieldConfidence,
     metadata: {
       parserVersion: RESUME_PARSER_VERSION,
-      note:
-        input.errorNote ??
-        (input.warnings.length
-          ? `Parsed with warnings: ${input.warnings.join("; ")}`
-          : "Deterministic resume parser output."),
+      note: noteParts.length ? noteParts.join(" ") : undefined,
+      ...(input.semanticVerification
+        ? { semanticVerification: input.semanticVerification }
+        : {}),
     },
   };
 }

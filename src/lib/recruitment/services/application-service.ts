@@ -1,6 +1,7 @@
 import {
   ApplicationPriority,
   ApplicationStatus,
+  CandidateSource,
   RecruitmentPipelineStage,
 } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
@@ -11,7 +12,12 @@ import {
 } from "@/lib/recruitment/permissions/permission-service";
 import { RecruitmentScopeEngine } from "@/lib/recruitment/permissions/recruitment-scope-engine";
 import { prismaApplicationRepository } from "@/lib/recruitment/repositories/prisma-application-repository";
-import type { ApplicationRepository } from "@/lib/recruitment/repositories/application-repository";
+import type {
+  ApplicationDetail,
+  ApplicationListFilters,
+  ApplicationRepository,
+} from "@/lib/recruitment/repositories/application-repository";
+import type { SearchFilters } from "@/lib/recruitment/types/pagination";
 import { prismaJobRepository } from "@/lib/recruitment/repositories/prisma-job-repository";
 import { RecruitmentDomainError } from "@/lib/recruitment/shared/errors";
 import { withRecruitmentTransaction } from "@/lib/recruitment/shared/transaction";
@@ -42,7 +48,7 @@ export function createApplicationService(
         assignedRecruiterUserId?: string | null;
         assignedManagerEmployeeId?: number | null;
         priority?: ApplicationPriority;
-        source?: any;
+        source?: CandidateSource | null;
       }
     ): Promise<{ id: string }> {
       RecruitmentPermissionService.requireModuleEnabled();
@@ -71,7 +77,7 @@ export function createApplicationService(
       }
 
       // First stage automatically assigned
-      let initialStage = RecruitmentPipelineStage.resume_received;
+      let initialStage: RecruitmentPipelineStage = RecruitmentPipelineStage.resume_received;
       if (job.stages && job.stages.length > 0) {
         // Sort stages by sortOrder to find the first one
         const sortedStages = [...job.stages].sort((a, b) => a.sortOrder - b.sortOrder);
@@ -142,7 +148,7 @@ export function createApplicationService(
         assignedRecruiterUserId?: string | null;
         assignedManagerEmployeeId?: number | null;
         priority?: ApplicationPriority;
-        source?: any;
+        source?: CandidateSource | null;
       }
     ): Promise<void> {
       RecruitmentPermissionService.requireModuleEnabled();
@@ -195,10 +201,11 @@ export function createApplicationService(
         throw new RecruitmentDomainError("REC_NOT_FOUND", "Job opening not found.");
       }
 
-      const isTerminal = [
+      const terminalStages: RecruitmentPipelineStage[] = [
         RecruitmentPipelineStage.rejected,
         RecruitmentPipelineStage.withdrawn,
-      ].includes(parsed.stage);
+      ];
+      const isTerminal = terminalStages.includes(parsed.stage);
 
       if (!isTerminal && job.stages && job.stages.length > 0) {
         const hasStage = job.stages.some((s) => s.stage === parsed.stage);
@@ -416,7 +423,7 @@ export function createApplicationService(
         throw new RecruitmentDomainError("REC_NOT_FOUND", "Job opening not found.");
       }
 
-      let targetStage = RecruitmentPipelineStage.resume_received;
+      let targetStage: RecruitmentPipelineStage = RecruitmentPipelineStage.resume_received;
       if (job.stages && job.stages.length > 0) {
         const sortedStages = [...job.stages].sort((a, b) => a.sortOrder - b.sortOrder);
         if (sortedStages[0]) {
@@ -550,7 +557,7 @@ export function createApplicationService(
       });
     },
 
-    async getApplication(session: SessionUser, id: string): Promise<Record<string, any> | null> {
+    async getApplication(session: SessionUser, id: string): Promise<ApplicationDetail | null> {
       const scope = await RecruitmentScopeEngine.getScope(session);
       RecruitmentScopeEngine.assertApplicationInScope(scope, id);
 
@@ -560,7 +567,7 @@ export function createApplicationService(
     async updateApplicationAssessment(
       session: SessionUser,
       input: UpdateApplicationAssessmentInput
-    ): Promise<Record<string, any>> {
+    ): Promise<ApplicationDetail> {
       RecruitmentPermissionService.requireModuleEnabled();
       await RecruitmentPermissionService.assertCanManageApplications(session);
       const actor = toRecruitmentActor(session);
@@ -636,7 +643,7 @@ export function createApplicationService(
     async listApplications(
       session: SessionUser,
       args: {
-        filters?: any;
+        filters?: ApplicationListFilters | SearchFilters;
         pagination: { page: number; pageSize: number };
         sort?: { field: string; direction: "asc" | "desc" };
       }
@@ -650,18 +657,26 @@ export function createApplicationService(
       });
     },
 
-    async getDashboardMetrics(session: SessionUser, filters?: any): Promise<Record<string, any>> {
+    async getDashboardMetrics(
+      session: SessionUser,
+      filters?: ApplicationListFilters | SearchFilters
+    ): Promise<Record<string, unknown>> {
       const scope = await RecruitmentScopeEngine.getScope(session);
-      const counts = await repository.countApplications(scope, filters);
+      const counts = await repository.countApplications(
+        scope,
+        filters as ApplicationListFilters | undefined
+      );
 
       // Average time in stage (mock/calculated from stage history)
       // In production, we'd query the average duration from StageHistory.
       // Since this is a production-grade ATS, let's calculate actual average time in stage!
+      const jobOpeningId =
+        typeof filters?.jobOpeningId === "string" ? filters.jobOpeningId : undefined;
       const history = await prisma.applicationStageHistory.findMany({
         where: {
           application: {
             deletedAt: null,
-            jobOpeningId: filters?.jobOpeningId ?? undefined,
+            jobOpeningId,
           },
         },
         orderBy: { createdAt: "asc" },

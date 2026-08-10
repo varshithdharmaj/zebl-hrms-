@@ -4,6 +4,7 @@ import React, { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createOfferAction, updateOfferAction } from "@/actions/recruitment-offers";
 import { Button } from "@/components/ui/button";
+import type { Offer } from "@/generated/prisma/client";
 
 interface OfferFormApplicationOption {
   id: string;
@@ -17,10 +18,47 @@ interface OfferFormApplicationOption {
   };
 }
 
+/**
+ * Edit defaults — fields this form reads from a serialized offer
+ * (RSC → client; Prisma.Decimal already flattened to string/number).
+ */
+export type OfferFormValues = Pick<
+  Offer,
+  | "id"
+  | "applicationId"
+  | "employmentType"
+  | "department"
+  | "location"
+  | "grade"
+  | "reportingManagerId"
+  | "currency"
+  | "stock"
+  | "probationDays"
+  | "noticeBuyout"
+  | "offerPdfKey"
+  | "offerNotes"
+  | "benefitsNotes"
+> & {
+  baseSalary: string | number;
+  variablePay?: string | number | null;
+  bonus?: string | number | null;
+  ctc?: string | number | null;
+  joiningDate?: string | Date | null;
+  expiresAt?: string | Date | null;
+  application?: {
+    candidate?: {
+      firstName?: string | null;
+      lastName?: string | null;
+    } | null;
+    jobOpening?: {
+      title?: string | null;
+    } | null;
+  } | null;
+};
+
 interface OfferFormProps {
   mode: "create" | "edit";
-  // Serialized plain object from the server (no Prisma Decimals).
-  offer?: any;
+  offer?: OfferFormValues;
   applicationId?: string;
   applications?: OfferFormApplicationOption[];
   employees: { id: number; name: string }[];
@@ -493,8 +531,8 @@ export function OfferForm({
         >
           Cancel
         </Button>
-        <Button type="submit" disabled={isPending} className="font-semibold shadow-subtle">
-          {isPending ? "Saving..." : mode === "create" ? "Create Offer" : "Save Changes"}
+        <Button type="submit" loading={isPending} className="font-semibold shadow-subtle">
+          {isPending ? "Saving…" : mode === "create" ? "Create Offer" : "Save Changes"}
         </Button>
       </div>
     </form>

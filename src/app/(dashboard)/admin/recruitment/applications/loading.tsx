@@ -1,11 +1,12 @@
-import { Skeleton } from "@/components/ui/skeleton";
+import { ListPageSkeleton } from "@/components/loading";
 
 export default function ApplicationsLoading() {
   return (
-    <div className="space-y-6">
-      <Skeleton className="h-28 w-full rounded-xl" />
-      <Skeleton className="h-24 w-full rounded-xl" />
-      <Skeleton className="h-72 w-full rounded-xl" />
-    </div>
+    <ListPageSkeleton
+      label="Loading applications"
+      filterFields={4}
+      tableRows={7}
+      tableColumns={6}
+    />
   );
 }

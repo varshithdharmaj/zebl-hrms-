@@ -5,7 +5,11 @@ import { getRoleHomePath } from "@/lib/routing";
 import { canAccessAdmin, canAccessEmployeeShell } from "@/lib/permissions";
 import { isSessionVersionStale } from "@/lib/session-version-cache";
 import type { AppUserRole } from "@/lib/roles";
-import { isApprovalPublicPath, isPublicPath } from "@/lib/public-routes";
+import {
+  isApprovalPublicPath,
+  isCronPublicPath,
+  isPublicPath,
+} from "@/lib/public-routes";
 
 function redirectToRoleHome(request: NextRequest, role: AppUserRole) {
   return NextResponse.redirect(new URL(getRoleHomePath(role), request.url));
@@ -55,7 +59,8 @@ export async function middleware(request: NextRequest) {
       response.cookies.set(COOKIE_NAME, "", { path: "/", maxAge: 0 });
       return response;
     }
-    if (session && !isApprovalPublicPath(pathname)) {
+    // Cron process routes authenticate via Bearer secret; never bounce to role home.
+    if (session && !isApprovalPublicPath(pathname) && !isCronPublicPath(pathname)) {
       // Do not bounce away from login when sent here after a failed dashboard auth check.
       const returningFromProtected = request.nextUrl.searchParams.has("from");
       const clearingSession = request.nextUrl.searchParams.get("clear") === "1";

@@ -1,8 +1,23 @@
 "use client";
 
 import React from "react";
+import type { Offer } from "@/generated/prisma/client";
 
-export function SalaryBreakdownCard({ offer }: { offer: any }) {
+/**
+ * Compensation fields this card reads.
+ * Money values are flattened (number/string) before RSC → client — not Prisma.Decimal.
+ */
+export type SalaryBreakdownCardOffer = Pick<
+  Offer,
+  "currency" | "stock" | "benefitsNotes"
+> & {
+  baseSalary?: string | number | null;
+  variablePay?: string | number | null;
+  bonus?: string | number | null;
+  ctc?: string | number | null;
+};
+
+export function SalaryBreakdownCard({ offer }: { offer: SalaryBreakdownCardOffer }) {
   const currency = offer.currency || "INR";
   const ctc = Number(offer.ctc || 0);
   const base = Number(offer.baseSalary || 0);

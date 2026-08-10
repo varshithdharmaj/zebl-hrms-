@@ -30,5 +30,6 @@ export const submitFeedbackSchema = z.object({
   strengths: z.string().trim().min(1, "Strengths are required."),
   concerns: z.string().trim().optional(),
   privateNotes: z.string().trim().optional(),
-  ratingsJson: z.record(z.number()).optional().default({}),
+  // Criterion id (string) → numeric rating. Zod 4 requires explicit key schema.
+  ratingsJson: z.record(z.string(), z.number()).optional().default({}),
 });

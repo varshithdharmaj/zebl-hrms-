@@ -22,6 +22,7 @@ import { isRecruitmentModuleEnabled } from "@/lib/recruitment/config/feature-fla
 
 export type RecruitmentCandidateActionState = ActionState & {
   candidateId?: string;
+  duplicateCandidateId?: string;
 };
 
 function revalidateCandidateList() {
@@ -232,16 +233,14 @@ export async function mergeCandidateAction(
   input: unknown
 ): Promise<RecruitmentCandidateActionState> {
   try {
-    // 1. Validation
-    let payload: any;
-    if (input instanceof FormData) {
-      payload = {
-        sourceId: formString(input, "sourceId"),
-        targetId: formString(input, "targetId"),
-      };
-    } else {
-      payload = input;
-    }
+    // 1. Validation — FormData fields are strings; mergeCandidateSchema validates shape.
+    const payload =
+      input instanceof FormData
+        ? {
+            sourceId: formString(input, "sourceId"),
+            targetId: formString(input, "targetId"),
+          }
+        : input;
     const parsed = safeParseWithSchema(mergeCandidateSchema, payload);
     if (!parsed.ok) return { error: parsed.error };
 

@@ -2,8 +2,34 @@
 
 import React from "react";
 import { format } from "date-fns";
+import type { Offer } from "@/generated/prisma/client";
 
-export function OfferSummaryCard({ offer }: { offer: any }) {
+/** Fields this card reads from a detail offer (dates may be RSC-serialized). */
+export type OfferSummaryCardOffer = Pick<
+  Offer,
+  | "department"
+  | "location"
+  | "employmentType"
+  | "grade"
+  | "probationDays"
+  | "noticeBuyout"
+> & {
+  joiningDate?: string | Date | null;
+  expiresAt?: string | Date | null;
+  application?: {
+    candidate?: {
+      firstName?: string | null;
+      lastName?: string | null;
+      email?: string | null;
+      phone?: string | null;
+    } | null;
+    jobOpening?: {
+      title?: string | null;
+    } | null;
+  } | null;
+};
+
+export function OfferSummaryCard({ offer }: { offer: OfferSummaryCardOffer }) {
   const candidate = offer.application?.candidate;
   const job = offer.application?.jobOpening;
 

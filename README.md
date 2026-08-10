@@ -1,25 +1,28 @@
-# Zebl Attendance Manager
+# Zebl AMS
 
 [![CI](https://github.com/varshithdharmaj/ZEBL_AMS/actions/workflows/ci.yml/badge.svg)](https://github.com/varshithdharmaj/ZEBL_AMS/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/varshithdharmaj/ZEBL_AMS/actions/workflows/codeql.yml/badge.svg)](https://github.com/varshithdharmaj/ZEBL_AMS/actions/workflows/codeql.yml)
 
-Next.js 15 attendance and leave management: TypeScript, Tailwind, shadcn/ui, Prisma, **PostgreSQL**.
+Next.js 15 HR platform: attendance, leave, helpdesk, security, and recruitment. TypeScript, Tailwind, shadcn/ui, Prisma, **PostgreSQL** (Supabase / Neon / local).
 
 ## Features
 
-- **Authentication** — Local login + optional Microsoft Entra ID SSO
+- **Authentication** — Local login + optional Microsoft Entra ID SSO; login history and active sessions
 - **Roles** — `admin`, `hr_admin`, `manager`, `employee` with separate shells
-- **Leave workflow** — Multi-step approvals, balance deduction, cancellation
-- **Email approvals** — One-time signed links (`/approve/[token]`)
+- **Attendance** — Records, dashboards, heatmaps; Excel/PDF biometric import (eSSL Daily/Summary), optional preview, resumable chunked jobs, duplicate-skip reporting
+- **Leave workflow** — Multi-step approvals, balance deduction, cancellation, email one-time approve links (`/approve/[token]`)
+- **Recruitment** — Jobs → candidates/resume import → applications/pipeline → interviews → offers → employee conversion; communications, documents, analytics/reports
+- **Helpdesk** — Employee/admin tickets, comments, notifications, audit
+- **Security** — Role-based access, session revocation, password change, security hubs, audit log
 - **Notifications** — Email queue + optional Microsoft Teams webhooks
 - **Integrations** — Calendar sync, org sync, escalation worker
-- **Analytics** — Workforce metrics and admin dashboards (Phase 7)
+- **Analytics** — Workforce metrics and admin dashboards
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20+
 - npm
 
 ### Setup (recommended)
@@ -27,13 +30,13 @@ Next.js 15 attendance and leave management: TypeScript, Tailwind, shadcn/ui, Pri
 ```bash
 npm install
 cp .env.example .env     # fill DATABASE_URL, AUTH_SECRET (never commit .env)
-npm run db:ping          # verifies Neon/Docker/local Postgres
+npm run db:ping          # verifies Postgres connectivity
 npx prisma migrate deploy
 npm run db:seed
 npm run dev
 ```
 
-**Neon:** [docs/NEON_SETUP.md](docs/NEON_SETUP.md) · **Local Docker:** `npm run db:postgres:up` · **Troubleshooting:** [docs/DATABASE_SETUP.md](docs/DATABASE_SETUP.md)
+**Supabase / Cloudflare:** [docs/CLOUDFLARE_SUPABASE_STACK.md](docs/CLOUDFLARE_SUPABASE_STACK.md) · **Neon:** [docs/NEON_SETUP.md](docs/NEON_SETUP.md) · **Local Docker:** `npm run db:postgres:up` · **Troubleshooting:** [docs/DATABASE_SETUP.md](docs/DATABASE_SETUP.md)
 
 Or step-by-step — see [docs/MIGRATIONS.md](docs/MIGRATIONS.md).
 
@@ -47,6 +50,13 @@ npm run db:migrate-phase6
 npm run db:migrate-phase7
 npm run db:seed
 npm run db:validate
+```
+
+Optional demo data:
+
+```bash
+npm run seed:demo        # recruitment demo seed
+npm run demo:seed        # general demo seed
 ```
 
 Open [http://localhost:3000](http://localhost:3000)
@@ -66,7 +76,7 @@ See [.env.example](.env.example). Required:
 | `AUTH_SECRET` | JWT session signing |
 | `APP_BASE_URL` | Links in approval/notification emails |
 
-Optional: SMTP, `APPROVAL_TOKEN_SECRET`, Microsoft SSO (`AZURE_AD_*`), `TEAMS_WEBHOOK_URL`, cron secrets (`NOTIFICATION_CRON_SECRET`, `INTEGRATION_CRON_SECRET`).
+Optional: SMTP, `APPROVAL_TOKEN_SECRET`, Microsoft SSO (`AZURE_AD_*`), `TEAMS_WEBHOOK_URL`, cron secrets (`NOTIFICATION_CRON_SECRET`, `INTEGRATION_CRON_SECRET`), `ENABLE_ATTENDANCE_IMPORT_PREVIEW`.
 
 ## Background workers
 
@@ -116,6 +126,9 @@ Unit tests run without a database. Integration tests require `DATABASE_URL=postg
 
 ## Documentation
 
+### Core
+
+- [docs/DAYWISE_DEVELOPMENT_LOG.md](docs/DAYWISE_DEVELOPMENT_LOG.md) — day-wise delivered outcomes
 - [docs/github-actions.md](docs/github-actions.md) — CI, CodeQL, Dependabot
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system overview and layers
 - [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) — developer setup and conventions
@@ -128,16 +141,26 @@ Unit tests run without a database. Integration tests require `DATABASE_URL=postg
 - [docs/CODE_OWNERSHIP.md](docs/CODE_OWNERSHIP.md) — module boundaries
 - [docs/MIGRATIONS.md](docs/MIGRATIONS.md) — migration order and rules
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — production runbook
-- [docs/P3_DELIVERABLES.md](docs/P3_DELIVERABLES.md) — P3 maintainability summary
-- [docs/P2_DELIVERABLES.md](docs/P2_DELIVERABLES.md) — P2 UX polish summary
-- [docs/P1_DELIVERABLES.md](docs/P1_DELIVERABLES.md) — P1 stabilization summary
-- [docs/P0_HARDENING_DELIVERABLES.md](docs/P0_HARDENING_DELIVERABLES.md) — P0 hardening summary
+- [docs/CLOUDFLARE_SUPABASE_STACK.md](docs/CLOUDFLARE_SUPABASE_STACK.md) — Cloudflare / Supabase stack
+
+### Recruitment
+
+- [docs/RECRUITMENT_PRD.md](docs/RECRUITMENT_PRD.md)
+- [docs/RECRUITMENT_ARCHITECTURE.md](docs/RECRUITMENT_ARCHITECTURE.md)
+- [docs/RECRUITMENT_SCHEMA_DESIGN.md](docs/RECRUITMENT_SCHEMA_DESIGN.md)
+- [docs/RECRUITMENT_TECHNICAL_SPEC.md](docs/RECRUITMENT_TECHNICAL_SPEC.md)
+- [docs/RECRUITMENT_IMPLEMENTATION_BLUEPRINT.md](docs/RECRUITMENT_IMPLEMENTATION_BLUEPRINT.md)
+
+### Attendance import
+
+- [docs/attendance-import-phase1.md](docs/attendance-import-phase1.md) … [phase5b](docs/attendance-import-phase5b.md)
 
 ## Tech stack
 
 - Next.js 15 (App Router), React 19
-- Prisma ORM, PostgreSQL
+- Prisma ORM, PostgreSQL (Supabase / Neon / Docker)
 - Jose (JWT), bcrypt, nodemailer, openid-client
+- Deploy: Vercel and Cloudflare/OpenNext (`npm run cf:build` / `cf:deploy`)
 
 ## Project structure
 
@@ -145,16 +168,18 @@ Unit tests run without a database. Integration tests require `DATABASE_URL=postg
 src/
 ├── app/              # Routes (admin, manager, employee, approve, api)
 ├── actions/          # Server actions
-├── components/       # UI by role/domain
+├── components/       # UI by role/domain (incl. recruitment/)
 └── lib/
     ├── data/         # Centralized read models
     ├── validation/   # Zod schemas
     ├── errors/       # AppError + API handlers
     ├── workflow/     # Leave engine
+    ├── recruitment/  # Hiring domain services/repos
     └── ...           # auth, notifications, integrations
 prisma/
 ├── schema.prisma
 ├── migrations/
+├── recruitment-demo/ # Demo seed helpers
 └── scripts/          # Phase migrations + workers
 tests/
 ├── fixtures/         # Shared test data

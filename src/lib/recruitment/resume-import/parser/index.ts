@@ -7,14 +7,20 @@ import { parseResumeFromCleanText } from "./parse-resume";
 import { draftContentFromParsed } from "./to-draft-content";
 import {
   EMPTY_PARSED_RESUME_DRAFT,
-  RESUME_PARSER_VERSION,
   type ResumeParseResult,
 } from "./types";
 import type { ResumeImportDraftContent } from "@/lib/recruitment/resume-import/types";
+import { runSemanticVerificationPipeline } from "../semantic";
+import type { SemanticVerifyGenerator } from "../semantic/llm-verify";
 
 export type { ResumeParseResult, ResumeParserError, ParsedResumeDraft } from "./types";
 export { RESUME_PARSER_VERSION, EMPTY_PARSED_RESUME_DRAFT } from "./types";
 export { detectResumeDocumentKind, extractResumeText } from "./extract-text";
+export {
+  reconstructPdfTextFromItems,
+  shouldUsePositionalPdfReconstruction,
+} from "./pdf-line-reconstruct";
+export { isRecruitmentMetadataText } from "./recruitment-metadata";
 export { parseResumeFromCleanText } from "./parse-resume";
 export { normalizeParsedResumeDraft } from "./normalize";
 export { mappedDraftFromParsed, draftContentFromParsed } from "./to-draft-content";
@@ -22,26 +28,29 @@ export {
   extractEmails,
   extractPhones,
   extractLinkedInUrls,
+  extractGitHubUrls,
+  extractPortfolioUrls,
   normalizeResumeDate,
   normalizePhone,
 } from "./patterns";
+export { matchSectionHeader, detectResumeSections } from "./sections";
 
 /**
  * Full pipeline:
- * Document bytes → text extract → cleanup → parse → normalize → draft content
+ * Document bytes → text extract → cleanup → parse → normalize
+ * → optional selective semantic verification → draft content
  *
- * Pure aside from library extractors. Does not write to the database.
- *
- * Future AI extension point:
- *   After `parseResumeFromCleanText`, optionally call an AI enricher that
- *   returns Partial<ParsedResumeDraft>, then merge before normalize.
- *   Keep extract + normalize + draftContentFromParsed unchanged.
+ * Does not write to the database. Candidate remains Source of Truth via HR review.
  */
 export async function parseResumeDocument(input: {
   content: Buffer | Uint8Array;
   fileName: string;
   mimeType: string;
   documentId?: string | null;
+  /** Default false. Opt-in only via `true` or RESUME_SEMANTIC_VERIFY=1. */
+  semanticVerification?: boolean;
+  /** Test seam for Gemini. */
+  semanticGenerate?: SemanticVerifyGenerator;
 }): Promise<{
   result: ResumeParseResult;
   draftContent: ResumeImportDraftContent;
@@ -80,7 +89,7 @@ export async function parseResumeDocument(input: {
       error: {
         code: "EMPTY_DOCUMENT",
         message:
-          "No text could be extracted. Scanned image PDFs are not supported in V1.",
+          "No text could be extracted. Scanned image PDFs are not supported.",
       },
       draft: empty,
       warnings: ["Empty extractable text."],
@@ -99,7 +108,20 @@ export async function parseResumeDocument(input: {
 
   try {
     const { draft: rawDraft, warnings } = parseResumeFromCleanText(cleaned);
-    const draft = normalizeParsedResumeDraft(rawDraft);
+    let draft = normalizeParsedResumeDraft(rawDraft);
+
+    const semanticEnabled =
+      input.semanticVerification === true ||
+      process.env.RESUME_SEMANTIC_VERIFY === "1";
+    const semantic = await runSemanticVerificationPipeline({
+      draft,
+      cleanedText: cleaned,
+      warnings,
+      skipLlm: !semanticEnabled,
+      generate: input.semanticGenerate,
+    });
+    draft = semantic.draft;
+
     const result: ResumeParseResult = {
       ok: true,
       draft,
@@ -113,6 +135,20 @@ export async function parseResumeDocument(input: {
         documentId: input.documentId ?? null,
         warnings,
         rawTextLength: cleaned.length,
+        semanticVerification: {
+          attempted: semantic.meta.attempted,
+          skipped: semantic.meta.skipped,
+          skipReason: semantic.meta.skipReason,
+          ambiguityReasons: semantic.meta.ambiguityReasons,
+          llmSuccess: semantic.meta.llmSuccess,
+          llmError: semantic.meta.llmError,
+          decisionCount: semantic.meta.decisionCount,
+          accepted: semantic.meta.accepted,
+          rejected: semantic.meta.rejected,
+          unsupported: semantic.meta.unsupported,
+          fallbackDeterministic: semantic.meta.fallbackDeterministic,
+          modelId: semantic.meta.modelId,
+        },
       }),
     };
   } catch (err) {
@@ -138,7 +174,10 @@ export async function parseResumeDocument(input: {
   }
 }
 
-/** Parse from plain text only (unit tests / future adapters). */
+/**
+ * Parse from plain text only (unit tests / adapters).
+ * Deterministic only — does not call LLM (keeps tests fast/offline).
+ */
 export function parseResumePlainText(
   text: string,
   documentId: string | null = null

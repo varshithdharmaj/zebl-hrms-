@@ -3,7 +3,12 @@ export type { CandidateRepository } from "@/lib/recruitment/repositories/candida
 export type { ApplicationRepository } from "@/lib/recruitment/repositories/application-repository";
 export type { InterviewRepository } from "@/lib/recruitment/repositories/interview-repository";
 export type { OfferRepository } from "@/lib/recruitment/repositories/offer-repository";
-export type { DecisionRepository } from "@/lib/recruitment/repositories/decision-repository";
+export type {
+  DecisionRepository,
+  HiringDecisionRecord,
+  AppendHiringDecisionData,
+} from "@/lib/recruitment/repositories/decision-repository";
+export { prismaDecisionRepository } from "@/lib/recruitment/repositories/prisma-decision-repository";
 export type { ConversionRepository } from "@/lib/recruitment/repositories/conversion-repository";
 export type { SettingsRepository } from "@/lib/recruitment/repositories/settings-repository";
 export type {

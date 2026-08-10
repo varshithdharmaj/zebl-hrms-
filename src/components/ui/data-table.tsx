@@ -1,4 +1,12 @@
+import type { MouseEventHandler, ReactNode } from "react";
 import { cn } from "@/lib/utils";
+
+function columnKey(col: ReactNode, index: number): string {
+  if (typeof col === "string" || typeof col === "number") {
+    return String(col);
+  }
+  return `col-${index}`;
+}
 
 export function DataTable({
   columns,
@@ -6,8 +14,8 @@ export function DataTable({
   emptyMessage = "No records found.",
   className,
 }: {
-  columns: string[];
-  children: React.ReactNode;
+  columns: ReactNode[];
+  children: ReactNode;
   emptyMessage?: string;
   className?: string;
 }) {
@@ -19,9 +27,9 @@ export function DataTable({
       <table className="w-full min-w-[640px] text-left text-sm">
         <thead>
           <tr className="border-b border-border bg-muted/80">
-            {columns.map((col) => (
+            {columns.map((col, index) => (
               <th
-                key={col}
+                key={columnKey(col, index)}
                 className="sticky top-0 z-10 whitespace-nowrap bg-muted/90 px-4 py-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-muted-foreground"
               >
                 {col}
@@ -53,9 +61,9 @@ export function DataTableRow({
   className,
   onClick,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
-  onClick?: React.MouseEventHandler<HTMLTableRowElement>;
+  onClick?: MouseEventHandler<HTMLTableRowElement>;
 }) {
   return (
     <tr
@@ -72,7 +80,7 @@ export function DataTableCell({
   className,
   colSpan,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
   colSpan?: number;
 }) {

@@ -2,8 +2,19 @@
 
 import React from "react";
 import { format } from "date-fns";
+import type { TimelineItem } from "@/lib/recruitment/types/timeline";
 
-export function OfferTimelineCard({ timeline = [] }: { timeline: readonly any[] }) {
+/** Fields this card reads; `actorUser` is optional enrichment beyond `TimelineItem`. */
+export type OfferTimelineCardItem = Pick<TimelineItem, "id" | "summary"> & {
+  createdAt: string | Date;
+  actorUser?: { email: string } | null;
+};
+
+export function OfferTimelineCard({
+  timeline = [],
+}: {
+  timeline?: readonly OfferTimelineCardItem[];
+}) {
   return (
     <div className="rounded-xl border border-border bg-card p-6 shadow-subtle space-y-6">
       <div className="border-b border-border pb-4">

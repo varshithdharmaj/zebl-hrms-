@@ -1,3 +1,4 @@
+import type { CandidateAiInsight, IntakeItem } from "@/generated/prisma/client";
 import type { CandidateStatus, NoteVisibility } from "@/generated/prisma/enums";
 import type { RecruitmentScope } from "@/lib/recruitment/types/scope";
 import type {
@@ -15,7 +16,12 @@ import type {
   CandidateSort,
   CandidateStatusCounts,
   CandidateNoteView,
+  CandidateDocumentView,
 } from "@/lib/recruitment/candidate/types";
+
+export type CandidateDocumentUpdatePatch = Partial<
+  Pick<CandidateDocumentView, "fileName" | "documentType" | "version" | "isPrimary">
+>;
 
 /** Contract only — Phase 3 implements. */
 export type CandidateRepository = {
@@ -81,15 +87,18 @@ export type CandidateRepository = {
   ): Promise<{ id: string }>;
   setPrimaryResume(documentId: string, tx?: RepositoryTx): Promise<void>;
   softDeleteDocument(documentId: string, tx?: RepositoryTx): Promise<void>;
-  getCandidateDocument(documentId: string): Promise<Record<string, any> | null>;
+  getCandidateDocument(documentId: string): Promise<CandidateDocumentView | null>;
   updateCandidateDocument(
     documentId: string,
-    patch: Record<string, any>,
+    patch: CandidateDocumentUpdatePatch,
     tx?: RepositoryTx
   ): Promise<void>;
   restoreCandidateDocument(documentId: string, tx?: RepositoryTx): Promise<void>;
-  listCandidateDocuments(candidateId: string): Promise<Record<string, any>[]>;
-  findDocumentByChecksum(candidateId: string, checksum: string): Promise<Record<string, any> | null>;
+  listCandidateDocuments(candidateId: string): Promise<CandidateDocumentView[]>;
+  findDocumentByChecksum(
+    candidateId: string,
+    checksum: string
+  ): Promise<CandidateDocumentView | null>;
   setTags(
     candidateId: string,
     tagIds: readonly string[],
@@ -106,11 +115,11 @@ export type CandidateRepository = {
     data: Record<string, unknown>,
     tx?: RepositoryTx
   ): Promise<{ id: string }>;
-  getInsight(insightId: string): Promise<Record<string, unknown> | null>;
+  getInsight(insightId: string): Promise<CandidateAiInsight | null>;
   listInsights(
     candidateId: string,
     filters?: { insightType?: string; status?: string }
-  ): Promise<Record<string, unknown>[]>;
+  ): Promise<CandidateAiInsight[]>;
   updateInsightStatus(
     insightId: string,
     status: string,
@@ -123,8 +132,8 @@ export type CandidateRepository = {
     patch: Record<string, unknown>,
     tx?: RepositoryTx
   ): Promise<void>;
-  findIntake(intakeId: string): Promise<Record<string, unknown> | null>;
-  listIntake(args: ScopedListArgs): Promise<PageResult<Record<string, unknown>>>;
+  findIntake(intakeId: string): Promise<IntakeItem | null>;
+  listIntake(args: ScopedListArgs): Promise<PageResult<IntakeItem>>;
 
   // Candidate foundation additions
   archiveCandidate(id: string, tx?: RepositoryTx): Promise<void>;

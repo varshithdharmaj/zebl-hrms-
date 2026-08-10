@@ -25,13 +25,18 @@ import {
   CalendarClock,
   Headset,
   Briefcase,
+  Calendar,
+  FileCheck,
+  UserCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logoutAction } from "@/actions/auth";
+import { NavLinkPendingHint } from "@/components/layout/nav-link-pending-hint";
 import type { AppUserRole } from "@/lib/roles";
 import { ROLE_LABELS } from "@/lib/roles";
 import { getRoleHomePath } from "@/lib/routing";
 import { buildEmployeeShellNav } from "@/lib/navigation/employee-shell-nav";
+import { isSidebarNavActive } from "@/lib/recruitment/navigation/sidebar-nav-active";
 
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
 type NavGroup = { group: string; items: NavItem[] };
@@ -68,6 +73,9 @@ function groupedNavForRole(
                   { href: "/admin/recruitment/jobs", label: "Jobs", icon: Briefcase },
                   { href: "/admin/recruitment/candidates", label: "Candidates", icon: Users },
                   { href: "/admin/recruitment/pipeline", label: "Pipeline", icon: ClipboardList },
+                  { href: "/admin/recruitment/interviews", label: "Interviews", icon: Calendar },
+                  { href: "/admin/recruitment/offers", label: "Offers", icon: FileCheck },
+                  { href: "/admin/recruitment/conversions", label: "Conversions", icon: UserCheck },
                   { href: "/admin/recruitment/reports", label: "Reports", icon: ScrollText },
                 ],
               },
@@ -241,7 +249,8 @@ export function AppSidebar({
                 {group.group}
               </p>
               {group.items.map((item) => {
-                const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                const siblingHrefs = group.items.map((navItem) => navItem.href);
+                const active = isSidebarNavActive(pathname, item.href, siblingHrefs);
                 const Icon = item.icon;
                 return (
                   <Link
@@ -249,6 +258,7 @@ export function AppSidebar({
                     href={item.href}
                     onClick={onMobileClose}
                     title={collapsed ? item.label : undefined}
+                    aria-current={active ? "page" : undefined}
                     className={cn(
                       "flex items-center gap-3 rounded-lg py-2 text-sm font-medium transition-all duration-200",
                       collapsed ? "lg:justify-center lg:px-2 px-3" : "px-3",
@@ -266,6 +276,7 @@ export function AppSidebar({
                     >
                       {item.label}
                     </span>
+                    {!collapsed && <NavLinkPendingHint />}
                   </Link>
                 );
               })}

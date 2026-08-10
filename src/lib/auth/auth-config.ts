@@ -54,8 +54,8 @@ export function isSsoAutoProvisionEnabled(): boolean {
 }
 
 export function isSsoAutoLinkEnabled(): boolean {
-  const v = read("AUTH_SSO_AUTO_LINK");
-  return v !== "false";
+  // Opt-in only — default false so Entra cannot silently inherit AMS roles by email.
+  return read("AUTH_SSO_AUTO_LINK") === "true";
 }
 
 type ValidationIssue = { field: string; message: string };

@@ -22,10 +22,12 @@ import {
   Plus,
   Pencil,
 } from "lucide-react";
+import type { InterviewDetail } from "@/lib/recruitment/repositories/interview-repository";
 import { FeedbackForm } from "./feedback-form";
+import { buildRecruitmentEntityHref } from "@/lib/recruitment/navigation/return-to";
 
 interface InterviewDetailViewProps {
-  interview: any;
+  interview: InterviewDetail;
   currentUserId: string;
   canManage: boolean;
   backHref?: string;
@@ -41,6 +43,10 @@ export function InterviewDetailView({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = React.useState<string | null>(null);
   const [showFeedbackForm, setShowFeedbackForm] = React.useState(false);
+  const application = interview.application;
+  const candidate = application?.candidate;
+  const jobOpening = application?.jobOpening;
+  const candidateName = candidate?.fullName ?? "Unknown";
 
   const handleCancel = () => {
     if (!confirm("Are you sure you want to cancel this interview?")) return;
@@ -141,8 +147,7 @@ export function InterviewDetailView({
   };
 
   const isAssignedPanelist = interview.panelists.some(
-    (p: { employee?: { user?: { id?: string } } }) =>
-      p.employee?.user?.id === currentUserId
+    (p) => p.employee?.user?.id === currentUserId
   );
   const canSubmitFeedback =
     interview.status !== "cancelled" && (canManage || isAssignedPanelist);
@@ -156,7 +161,7 @@ export function InterviewDetailView({
             size="sm"
             className="font-semibold text-xs rounded-lg gap-1.5 shadow-subtle"
           >
-            <ArrowLeft className="h-4 w-4" /> Back to Interviews
+            <ArrowLeft className="h-4 w-4" /> Back
           </Button>
         </Link>
 
@@ -336,7 +341,7 @@ export function InterviewDetailView({
               </div>
             ) : (
               <div className="space-y-4 divide-y divide-border/60">
-                {interview.feedback.map((feed: any, idx: number) => (
+                {interview.feedback.map((feed, idx) => (
                   <div key={feed.id} className={`pt-4 ${idx === 0 ? "pt-0" : ""}`}>
                     <div className="flex items-start justify-between gap-4 mb-2">
                       <div>
@@ -344,7 +349,10 @@ export function InterviewDetailView({
                           {feed.author.name}
                         </div>
                         <div className="text-[10px] text-muted-foreground font-medium mt-0.5">
-                          Submitted on {new Date(feed.submittedAt).toLocaleDateString()}
+                          Submitted on{" "}
+                          {feed.submittedAt
+                            ? new Date(feed.submittedAt).toLocaleDateString()
+                            : "—"}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -392,32 +400,50 @@ export function InterviewDetailView({
             <div className="space-y-3.5 text-xs">
               <div>
                 <span className="text-muted-foreground block font-medium mb-1">Candidate</span>
-                {canManage ? (
+                {canManage && candidate ? (
                   <Link
-                    href={`/admin/recruitment/candidates/${interview.application.candidate.id}`}
+                    href={buildRecruitmentEntityHref(
+                      `/admin/recruitment/candidates/${candidate.id}`,
+                      {
+                        returnTo: `/admin/recruitment/interviews/${interview.id}`,
+                        applicationId: interview.applicationId,
+                        jobOpeningId: jobOpening?.id,
+                      }
+                    )}
                     className="font-bold text-primary hover:underline"
                   >
-                    {interview.application.candidate.fullName}
+                    {candidateName}
                   </Link>
                 ) : (
-                  <span className="font-bold text-foreground">
-                    {interview.application.candidate.fullName}
-                  </span>
+                  <span className="font-bold text-foreground">{candidateName}</span>
                 )}
               </div>
 
               <div>
                 <span className="text-muted-foreground block font-medium mb-1">Job Opening</span>
-                <span className="font-bold text-foreground">
-                  {interview.application.jobOpening.title}
-                </span>
+                {jobOpening ? (
+                  <Link
+                    href={`/admin/recruitment/jobs/${jobOpening.id}`}
+                    className="font-bold text-primary hover:underline"
+                  >
+                    {jobOpening.title}
+                  </Link>
+                ) : (
+                  <span className="font-bold text-foreground">—</span>
+                )}
               </div>
 
-              {canManage ? (
+              {canManage && application ? (
                 <div>
                   <span className="text-muted-foreground block font-medium mb-1">Application</span>
                   <Link
-                    href={`/admin/recruitment/applications/${interview.application.id}`}
+                    href={buildRecruitmentEntityHref(
+                      `/admin/recruitment/applications/${application.id}`,
+                      {
+                        returnTo: `/admin/recruitment/interviews/${interview.id}`,
+                        jobOpeningId: jobOpening?.id,
+                      }
+                    )}
                     className="font-bold text-primary hover:underline"
                   >
                     View Full Application
@@ -438,14 +464,17 @@ export function InterviewDetailView({
               </div>
             ) : (
               <div className="space-y-3">
-                {interview.panelists.map((p: any) => (
+                {interview.panelists.map((p) => {
+                  const panelistName = p.employee.name;
+                  return (
                   <div key={p.id} className="flex items-center gap-2 text-xs">
                     <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-[10px] uppercase">
-                      {p.employee.name.charAt(0)}
+                      {panelistName.charAt(0)}
                     </div>
-                    <span className="font-bold text-foreground">{p.employee.name}</span>
+                    <span className="font-bold text-foreground">{panelistName}</span>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

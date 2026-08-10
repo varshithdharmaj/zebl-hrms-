@@ -42,6 +42,12 @@ export async function logoutSessionAction(formData: FormData): Promise<void> {
   });
 
   if (actor.sessionId === sessionId) {
+    // Current device logout — bump sessionVersion for Edge JWT rejection.
+    await invalidateUserSessionsWithAudit(
+      actor.id,
+      { userId: actor.id, email: actor.email },
+      "employee_session_self_revoked"
+    );
     await clearSessionCookie();
     redirect("/login");
   }

@@ -8,12 +8,35 @@ import {
 } from "@/actions/recruitment-interviews";
 import { Button } from "@/components/ui/button";
 import { InterviewRoundType, InterviewStatus } from "@/generated/prisma/enums";
+import type { InterviewDetail } from "@/lib/recruitment/repositories/interview-repository";
+
+/** Edit defaults — fields this form reads from `InterviewDetail`. */
+export type InterviewFormValues = Pick<
+  InterviewDetail,
+  | "id"
+  | "applicationId"
+  | "title"
+  | "roundType"
+  | "scheduledStart"
+  | "scheduledEnd"
+  | "location"
+  | "meetingUrl"
+  | "summary"
+  | "panelists"
+>;
+
+/** Application selector options for create mode. */
+export type InterviewApplicationOption = {
+  id: string;
+  candidate: { fullName: string } | null;
+  jobOpening: { title: string } | null;
+};
 
 interface InterviewFormProps {
   mode: "create" | "edit";
-  interview?: any;
+  interview?: InterviewFormValues;
   applicationId?: string;
-  applications?: any[];
+  applications?: readonly InterviewApplicationOption[];
   employees: { id: number; name: string }[];
 }
 
@@ -50,7 +73,7 @@ export function InterviewForm({
   const [meetingUrl, setMeetingUrl] = React.useState(interview?.meetingUrl ?? "");
   const [summary, setSummary] = React.useState(interview?.summary ?? "");
   const [panelistIds, setPanelistIds] = React.useState<number[]>(
-    interview?.panelists?.map((p: any) => p.employeeId) ?? []
+    interview?.panelists.map((p) => p.employeeId) ?? []
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -139,7 +162,7 @@ export function InterviewForm({
                 <option value="">Select an active application...</option>
                 {applications.map((app) => (
                   <option key={app.id} value={app.id}>
-                    {app.candidate.fullName} - {app.jobOpening.title}
+                    {app.candidate?.fullName ?? "Unknown"} - {app.jobOpening?.title ?? "—"}
                   </option>
                 ))}
               </select>
@@ -288,10 +311,10 @@ export function InterviewForm({
         </Button>
         <Button
           type="submit"
-          disabled={isPending}
+          loading={isPending}
           className="font-semibold text-xs h-9 rounded-lg shadow-subtle"
         >
-          {isPending ? "Saving..." : mode === "create" ? "Schedule Interview" : "Update Interview"}
+          {isPending ? "Saving…" : mode === "create" ? "Schedule Interview" : "Update Interview"}
         </Button>
       </div>
     </form>

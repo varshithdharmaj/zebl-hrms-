@@ -74,7 +74,7 @@ export function RecruiterPerformanceTable({ performance }: RecruiterPerformanceT
                           {recruiter.recruiterEmail}
                         </span>
                         {topPerformer?.recruiterId === recruiter.recruiterId && recruiter.hires > 0 && (
-                          <Award className="h-4 w-4 text-amber-500" title="Top Performer" />
+                          <Award className="h-4 w-4 text-amber-500" aria-label="Top Performer" />
                         )}
                       </div>
                     </td>

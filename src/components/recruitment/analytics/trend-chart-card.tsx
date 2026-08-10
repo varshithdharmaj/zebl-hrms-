@@ -16,14 +16,17 @@ interface TrendChartCardProps {
 }
 
 export function TrendChartCard({ data }: TrendChartCardProps) {
-  const [activeMetric, setActiveMetric] = useState<"applications" | "interviews" | "offers" | "hires">("applications");
-
   const metrics = {
     applications: { label: "Applications", data: data.applications, color: "blue" },
     interviews: { label: "Interviews", data: data.interviews, color: "teal" },
     offers: { label: "Offers", data: data.offers, color: "green" },
     hires: { label: "Hires", data: data.hires, color: "amber" },
   };
+
+  type MetricKey = keyof typeof metrics;
+  const metricKeys = Object.keys(metrics) as MetricKey[];
+
+  const [activeMetric, setActiveMetric] = useState<MetricKey>("applications");
 
   const currentData = metrics[activeMetric].data;
   const maxValue = Math.max(...currentData, 1);
@@ -37,17 +40,20 @@ export function TrendChartCard({ data }: TrendChartCardProps) {
             <CardTitle>Trend Analysis</CardTitle>
           </div>
           <div className="flex gap-2">
-            {Object.entries(metrics).map(([key, metric]) => (
+            {metricKeys.map((key) => {
+              const metric = metrics[key];
+              return (
               <Button
                 key={key}
                 size="sm"
                 variant={activeMetric === key ? "default" : "outline"}
-                onClick={() => setActiveMetric(key as any)}
+                onClick={() => setActiveMetric(key)}
                 className="text-xs"
               >
                 {metric.label}
               </Button>
-            ))}
+              );
+            })}
           </div>
         </div>
         <CardDescription>

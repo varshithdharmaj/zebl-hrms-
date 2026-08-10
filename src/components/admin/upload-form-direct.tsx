@@ -102,12 +102,12 @@ function ResultSummary({ state }: { state: UploadState }) {
         <div>
           <dt className="text-xs text-muted-foreground">Duration</dt>
           <dd className="font-semibold tabular-nums">
-            {state.durationMs != null ? `${(state.durationMs / 1000).toFixed(1)}s` : "â€”"}
+            {state.durationMs != null ? `${(state.durationMs / 1000).toFixed(1)}s` : "—"}
           </dd>
         </div>
         <div>
           <dt className="text-xs text-muted-foreground">Report</dt>
-          <dd className="font-semibold">{state.reportType ?? "â€”"}</dd>
+          <dd className="font-semibold">{state.reportType ?? "—"}</dd>
         </div>
       </dl>
       {state.datesImported && state.datesImported.length > 0 && (
@@ -264,7 +264,7 @@ export function UploadFormDirect({ defaultDate }: { defaultDate: string }) {
   return (
     <SectionCard
       title="Import file"
-      description="XLSX, XLS, or PDF Â· Maximum 5 MB Â· Matched by employee code"
+      description="XLSX, XLS, or PDF · Maximum 5 MB · Matched by employee code"
       className="max-w-xl"
     >
       <form action={formAction} className="space-y-5" aria-busy={busy}>
@@ -291,8 +291,8 @@ export function UploadFormDirect({ defaultDate }: { defaultDate: string }) {
                 >
                   {resumePending || resumeTransitionPending ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
-                      Continuingâ€¦
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden />
+                      Continuing…
                     </>
                   ) : (
                     "Continue Import"
@@ -323,7 +323,7 @@ export function UploadFormDirect({ defaultDate }: { defaultDate: string }) {
                   className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"
                 >
                   <span className="min-w-0 truncate">
-                    {job.fileName} Â· {job.nextRowIndex}/{job.totalRows} Â· {job.status}
+                    {job.fileName} · {job.nextRowIndex}/{job.totalRows} · {job.status}
                   </span>
                   <Button
                     type="button"
@@ -347,8 +347,14 @@ export function UploadFormDirect({ defaultDate }: { defaultDate: string }) {
         )}
 
         {busy && (
-          <div className="space-y-3" aria-live="polite" aria-busy="true">
-            <p className="text-sm text-muted-foreground">Importing attendanceâ€¦</p>
+          <div className="space-y-3" aria-live="polite" aria-busy="true" role="status">
+            <p className="text-sm text-muted-foreground">
+              {resumePending || resumeTransitionPending
+                ? "Resuming import…"
+                : detecting
+                  ? "Analyzing report…"
+                  : "Uploading and processing…"}
+            </p>
             <Skeleton className="h-20 w-full" />
           </div>
         )}
@@ -408,7 +414,7 @@ export function UploadFormDirect({ defaultDate }: { defaultDate: string }) {
             >
               <Upload className="mb-3 h-8 w-8 text-muted-foreground" aria-hidden />
               <p className="text-sm font-medium text-foreground">
-                Drop Excel or PDF hereâ€¦
+                Drop Excel or PDF here…
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
                 or{" "}
@@ -417,7 +423,7 @@ export function UploadFormDirect({ defaultDate }: { defaultDate: string }) {
                 </span>
               </p>
               <p id={helpId} className="mt-3 text-xs text-muted-foreground">
-                XLSX, XLS, or PDF Â· Maximum 5 MB
+                XLSX, XLS, or PDF · Maximum 5 MB
               </p>
             </div>
           ) : (
@@ -433,7 +439,7 @@ export function UploadFormDirect({ defaultDate }: { defaultDate: string }) {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-foreground">{selectedFile.name}</p>
                 <p className="text-xs text-muted-foreground">
-                  {fileTypeLabel(selectedFile.name)} Â· {formatFileSize(selectedFile.size)}
+                  {fileTypeLabel(selectedFile.name)} · {formatFileSize(selectedFile.size)}
                 </p>
               </div>
               <Button
@@ -490,16 +496,12 @@ export function UploadFormDirect({ defaultDate }: { defaultDate: string }) {
           )}
         </div>
 
-        <Button type="submit" disabled={!canSubmit} aria-disabled={!canSubmit}>
-          {busy ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
-              <span>Importingâ€¦</span>
-              <span className="sr-only">Import in progress</span>
-            </>
-          ) : (
-            "Import attendance"
-          )}
+        <Button type="submit" loading={busy} disabled={!canSubmit && !busy} aria-disabled={!canSubmit}>
+          {busy
+            ? resumePending || resumeTransitionPending
+              ? "Resuming…"
+              : "Importing…"
+            : "Import attendance"}
         </Button>
       </form>
     </SectionCard>

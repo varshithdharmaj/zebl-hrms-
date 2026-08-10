@@ -2,6 +2,13 @@ import React from "react";
 import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { OfferForm } from "@/components/recruitment/offers/offer-form";
+import { RecruitmentContextHeader } from "@/components/recruitment/shared/recruitment-context-header";
+import { buildRecruitmentBreadcrumbs } from "@/lib/recruitment/navigation/breadcrumbs";
+import {
+  parseRecruitmentNavSearch,
+  resolveRecruitmentReturnTo,
+  returnToLabel,
+} from "@/lib/recruitment/navigation/return-to";
 import { getEmployeeOptions } from "@/lib/recruitment/shared/employees";
 import { prisma } from "@/lib/prisma";
 
@@ -12,9 +19,16 @@ export default async function NewOfferPage({
 }) {
   await requireHROrSuperAdminSession();
   const rawParams = await searchParams;
+  const nav = parseRecruitmentNavSearch(rawParams);
 
   const applicationId =
     typeof rawParams.applicationId === "string" ? rawParams.applicationId : undefined;
+  const backHref = resolveRecruitmentReturnTo(
+    nav.returnTo,
+    applicationId
+      ? `/admin/recruitment/applications/${applicationId}`
+      : "/admin/recruitment/offers"
+  );
 
   const employees = await getEmployeeOptions();
 
@@ -50,9 +64,19 @@ export default async function NewOfferPage({
 
   return (
     <div className="space-y-6 lg:space-y-8">
+      <RecruitmentContextHeader
+        crumbs={buildRecruitmentBreadcrumbs({
+          section: "offers",
+          returnTo: nav.returnTo,
+          application: applicationId ? { id: applicationId } : null,
+          leafLabel: "Create Offer",
+        })}
+      />
       <WorkspacePageHeader
         title="Create Offer"
         description="Draft a new candidate offer package with compensation, benefits, and joining details."
+        backHref={backHref}
+        backLabel={returnToLabel(nav.returnTo, "Back")}
       />
 
       <OfferForm

@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { Prisma } from "@/generated/prisma/client";
-import { ApplicationStatus, RecruitmentPipelineStage, CandidateStatus, OfferStatus, JobOpeningStatus } from "@/generated/prisma/enums";
+import { ApplicationStatus, RecruitmentPipelineStage, CandidateStatus, OfferStatus } from "@/generated/prisma/enums";
 import type { SessionUser } from "@/lib/session";
 import {
   RecruitmentPermissionService,
@@ -19,10 +18,28 @@ import { initializeEmployeeLeaveBalances } from "@/lib/leave";
 import { provisionEmployeeLogin } from "@/lib/admin/user-management";
 import { copyRecruitmentDocsToEmployee } from "@/lib/recruitment/services/conversion-document-transfer";
 import { getRecruitmentStorage, type StorageAdapter } from "@/lib/recruitment/storage";
+import type {
+  ConversionHistoryItem,
+  EmployeeConversionPreviewData,
+  PendingConversionListItem,
+} from "@/lib/recruitment/conversion/types";
+import { Prisma } from "@/generated/prisma/client";
 
 function generateEmployeeCode(): string {
   const rand = Math.floor(1000 + Math.random() * 9000);
   return `EMP-${rand}`;
+}
+
+function decimalToNumber(
+  value: Prisma.Decimal | number | string | null | undefined
+): number | null {
+  if (value == null) return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string") {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  return Number(value.toString());
 }
 
 export function createEmployeeConversionService(
@@ -34,9 +51,30 @@ export function createEmployeeConversionService(
       session: SessionUser,
       offerId: string
     ): Promise<{
-      candidate: any;
-      offer: any;
-      employeePreview: any;
+      candidate: {
+        id: string;
+        fullName: string;
+        email: string | null;
+        phone: string | null;
+        status: string;
+      };
+      application: {
+        id: string;
+        jobOpeningId: string;
+        jobTitle: string;
+        currentStage: string;
+      } | null;
+      offer: {
+        id: string;
+        offerNumber: string | null;
+        status: string;
+        ctc: number;
+        currency: string;
+        joiningDate: string;
+        department: string;
+        location: string;
+      };
+      employeePreview: EmployeeConversionPreviewData;
       checklist: {
         offerAccepted: boolean;
         candidateActive: boolean;
@@ -70,9 +108,9 @@ export function createEmployeeConversionService(
       const candidate = application.candidate;
 
       // Check if already converted
-      const existingSnapshot = await repository.findByOfferId
-        ? await (repository as any).findByOfferId(offerId)
-        : await prisma.employeeConversionSnapshot.findUnique({ where: { offerId } });
+      const existingSnapshot = await prisma.employeeConversionSnapshot.findUnique({
+        where: { offerId },
+      });
 
       const offerAccepted = offer.status === OfferStatus.accepted;
       const candidateActive = candidate.status === CandidateStatus.active || candidate.status === CandidateStatus.talent_pool || candidate.status === CandidateStatus.hired;
@@ -124,15 +162,23 @@ export function createEmployeeConversionService(
           phone: candidate.phone,
           status: candidate.status,
         },
+        application: {
+          id: application.id,
+          jobOpeningId: application.jobOpening?.id ?? application.jobOpeningId ?? "",
+          jobTitle: application.jobOpening?.title ?? "",
+          currentStage: String(application.currentStage ?? ""),
+        },
         offer: {
           id: offer.id,
           offerNumber: offer.offerNumber,
           status: offer.status,
-          ctc: offer.ctc,
+          ctc: offer.ctc != null ? Number(offer.ctc) : 0,
           currency: offer.currency,
-          joiningDate: offer.joiningDate,
-          department: offer.department,
-          location: offer.location,
+          joiningDate: offer.joiningDate
+            ? new Date(offer.joiningDate).toISOString()
+            : "",
+          department: offer.department ?? "",
+          location: offer.location ?? "",
         },
         employeePreview,
         checklist: {
@@ -408,7 +454,9 @@ export function createEmployeeConversionService(
       return { employeeId };
     },
 
-    async listPendingConversions(session: SessionUser) {
+    async listPendingConversions(
+      session: SessionUser
+    ): Promise<PendingConversionListItem[]> {
       RecruitmentPermissionService.requireModuleEnabled();
       const scope = await RecruitmentScopeEngine.getScope(session);
 
@@ -436,15 +484,24 @@ export function createEmployeeConversionService(
 
       const offers = await prisma.offer.findMany({
         where,
-        include: {
-          application: {
-            include: {
-              candidate: true,
-              jobOpening: true,
-            },
-          },
+        select: {
+          id: true,
+          offerNumber: true,
+          acceptedAt: true,
+          ctc: true,
+          currency: true,
           createdBy: {
             select: { id: true, email: true },
+          },
+          application: {
+            select: {
+              candidate: {
+                select: { id: true, fullName: true, email: true },
+              },
+              jobOpening: {
+                select: { id: true, title: true },
+              },
+            },
           },
         },
         orderBy: {
@@ -452,21 +509,40 @@ export function createEmployeeConversionService(
         },
       });
 
-      return offers;
+      return offers.map((offer) => ({
+        id: offer.id,
+        offerNumber: offer.offerNumber,
+        acceptedAt: offer.acceptedAt,
+        ctc: decimalToNumber(offer.ctc),
+        currency: offer.currency,
+        createdBy: offer.createdBy,
+        application: {
+          candidate: offer.application.candidate,
+          jobOpening: offer.application.jobOpening,
+        },
+      }));
     },
 
-    async listConversionHistory(session: SessionUser) {
+    async listConversionHistory(session: SessionUser): Promise<ConversionHistoryItem[]> {
       RecruitmentPermissionService.requireModuleEnabled();
-      
+
       const snapshots = await prisma.employeeConversionSnapshot.findMany({
-        include: {
+        select: {
+          id: true,
+          convertedAt: true,
           application: {
-            include: {
-              candidate: true,
-              jobOpening: true,
+            select: {
+              candidate: {
+                select: { id: true, fullName: true, email: true },
+              },
+              jobOpening: {
+                select: { id: true, title: true },
+              },
             },
           },
-          employee: true,
+          employee: {
+            select: { id: true, employeeCode: true },
+          },
           convertedBy: {
             select: { id: true, email: true },
           },

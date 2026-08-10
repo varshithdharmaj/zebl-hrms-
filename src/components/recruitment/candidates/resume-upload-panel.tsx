@@ -93,7 +93,7 @@ export function ResumeUploadPanel({
   return (
     <SectionCard
       title="Upload Resume"
-      description="Select a PDF or DOCX resume. Parsing will be added in a later step — nothing is sent to AI yet."
+      description="Select a PDF or DOCX resume. We extract structured fields with the deterministic parser — AI enrichment runs only after the candidate is created."
     >
       <div className="mx-auto w-full max-w-xl space-y-4">
         {error && (
@@ -114,7 +114,7 @@ export function ResumeUploadPanel({
             <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
               Resume ready: <strong className="font-semibold">{file.name}</strong>. Continue to
-              prepare the candidate form.
+              extract candidate information.
             </span>
           </div>
         )}
@@ -161,7 +161,7 @@ export function ResumeUploadPanel({
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-foreground">{file.name}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {formatResumeFileSize(file.size)} · Ready for future parsing
+                  {formatResumeFileSize(file.size)} · Ready to extract
                 </p>
               </div>
             </div>

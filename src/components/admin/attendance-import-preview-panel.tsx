@@ -16,8 +16,6 @@ import {
   DataTableRow,
 } from "@/components/ui/data-table";
 import { cn } from "@/lib/utils";
-import { Loader2 } from "lucide-react";
-
 const PAGE_SIZE = 25;
 
 function formatFileSize(bytes: number): string {
@@ -296,18 +294,12 @@ export function AttendanceImportPreviewPanel({
         </Button>
         <Button
           type="button"
-          disabled={confirming || !preview.canConfirm}
+          loading={confirming}
+          disabled={!preview.canConfirm}
           onClick={onConfirm}
           aria-disabled={confirming || !preview.canConfirm}
         >
-          {confirming ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
-              Importing…
-            </>
-          ) : (
-            "Confirm import"
-          )}
+          {confirming ? "Importing…" : "Confirm import"}
         </Button>
       </div>
     </div>

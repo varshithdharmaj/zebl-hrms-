@@ -11,6 +11,7 @@ import { listCandidatesCached } from "@/lib/recruitment/candidate/queries";
 import { RecruitmentTimelineService } from "@/lib/recruitment/services/timeline-service";
 import { RecruitmentDashboardView } from "@/components/recruitment/recruitment-dashboard";
 import { buildHiringFunnelCounts } from "@/lib/recruitment/dashboard/build-funnel-counts";
+import { withTiming } from "@/lib/observability/timing";
 
 export default async function RecruitmentDashboardPage() {
   const session = await requireHROrSuperAdminSession();
@@ -24,20 +25,25 @@ export default async function RecruitmentDashboardPage() {
     candidatesResult,
     interviewsResult,
     timeline,
-  ] = await Promise.all([
-    getJobDashboardCountsCached(session),
-    getInterviewDashboardMetricsCached(session),
-    getOfferDashboardMetricsCached(session),
-    getConversionDashboardMetricsCached(session),
-    getDashboardMetricsCached(session),
-    listPendingConversionsCached(session),
-    listCandidatesCached(session, {}, { page: 1, pageSize: 8 }, { field: "createdAt", direction: "desc" }),
-    listInterviewsCached(session, {}, { page: 1, pageSize: 8 }, {
-      field: "scheduledStart",
-      direction: "asc",
-    }),
-    RecruitmentTimelineService.buildTimeline({ limit: 12 }),
-  ]);
+  ] = await withTiming("recruitment.dashboard.load", () =>
+    Promise.all([
+      getJobDashboardCountsCached(session),
+      getInterviewDashboardMetricsCached(session),
+      getOfferDashboardMetricsCached(session),
+      getConversionDashboardMetricsCached(session),
+      getDashboardMetricsCached(session),
+      listPendingConversionsCached(session),
+      listCandidatesCached(session, {}, { page: 1, pageSize: 8 }, {
+        field: "createdAt",
+        direction: "desc",
+      }),
+      listInterviewsCached(session, {}, { page: 1, pageSize: 8 }, {
+        field: "scheduledStart",
+        direction: "asc",
+      }),
+      RecruitmentTimelineService.buildTimeline({ limit: 12 }),
+    ])
+  );
 
   const now = Date.now();
   const upcomingInterviews = interviewsResult.items

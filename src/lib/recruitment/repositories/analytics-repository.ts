@@ -119,9 +119,12 @@ export type AnalyticsRepository = {
   }>;
 };
 
-function buildDateFilter(dateRange?: AnalyticsDateFilter) {
+function buildDateFilter(dateRange?: AnalyticsDateFilter): {
+  gte?: Date;
+  lte?: Date;
+} {
   if (!dateRange) return {};
-  const filter: any = {};
+  const filter: { gte?: Date; lte?: Date } = {};
   if (dateRange.startDate) filter.gte = dateRange.startDate;
   if (dateRange.endDate) filter.lte = dateRange.endDate;
   return filter;

@@ -18,7 +18,11 @@ export const createOfferSchema = z.object({
   reportingManagerId: z.coerce.number().int().positive().optional().nullable(),
   joiningDate: z.string().trim().min(1, "Joining date is required."),
   ctc: z.coerce.number().positive("CTC must be positive."),
-  salaryBreakdownJson: z.record(z.coerce.number()).optional().nullable(),
+  salaryBreakdownJson: z
+    .record(z.string(), z.coerce.number())
+    .optional()
+    .nullable()
+    .transform((value) => value ?? undefined),
   bonus: z.coerce.number().nonnegative("Bonus must be non-negative.").optional().nullable(),
   stock: z.string().trim().optional().nullable(),
   probationDays: z.coerce.number().int().nonnegative().optional().nullable(),

@@ -1,9 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { OfferStatus } from "@/generated/prisma/enums";
+import { HiringDecisionOutcome, OfferStatus } from "@/generated/prisma/enums";
 import { createOfferService } from "@/lib/recruitment/services/offer-service";
 import type { OfferRepository } from "@/lib/recruitment/repositories/offer-repository";
 import type { SessionUser } from "@/lib/session";
 import { RecruitmentDomainError } from "@/lib/recruitment/shared/errors";
+
+const findUniqueSettings = vi.fn(async () => ({ requireDecisionForOffer: true }));
+const findCurrentDecision = vi.fn(async () => ({
+  id: "dec-hire",
+  applicationId: "app-1",
+  outcome: HiringDecisionOutcome.hire,
+}));
 
 vi.mock("@/lib/recruitment/config/feature-flags", () => ({
   isRecruitmentModuleEnabled: () => true,
@@ -16,6 +23,15 @@ vi.mock("@/lib/prisma", () => ({
     offer: {
       count: vi.fn(async () => 0),
     },
+    recruitmentSettings: {
+      findUnique: (...args: unknown[]) => findUniqueSettings(...args),
+    },
+  },
+}));
+
+vi.mock("@/lib/recruitment/repositories/prisma-decision-repository", () => ({
+  prismaDecisionRepository: {
+    findCurrent: (...args: unknown[]) => findCurrentDecision(...args),
   },
 }));
 
@@ -23,8 +39,8 @@ vi.mock("@/lib/recruitment/shared/after-commit", () => ({
   createAfterCommitBuffer: () => {
     const events: unknown[] = [];
     return {
-      push: (e: unknown) => events.push(e),
-      publishAll: vi.fn(async () => undefined),
+      enqueue: (event: unknown) => events.push(event),
+      flush: vi.fn(async () => undefined),
       get size() {
         return events.length;
       },
@@ -33,7 +49,7 @@ vi.mock("@/lib/recruitment/shared/after-commit", () => ({
 }));
 
 vi.mock("@/lib/recruitment/shared/transaction", () => ({
-  withRecruitmentTransaction: async <T>(work: (tx: any) => Promise<T>) => {
+  withRecruitmentTransaction: async <T>(work: (tx: unknown) => Promise<T>) => {
     return work({});
   },
 }));
@@ -71,17 +87,35 @@ const hrSession: SessionUser = {
 const managerSession: SessionUser = {
   id: "user-manager",
   email: "manager@example.com",
-  role: "manager",
+  role: "employee",
   employeeId: 2,
   employeeName: "Manager User",
   sessionVersion: 1,
   authProvider: "local",
 };
 
+const offerInput = {
+  applicationId: "app-1",
+  baseSalary: 1000000,
+  ctc: 1200000,
+  employmentType: "Full-time",
+  department: "Engineering",
+  location: "Bangalore",
+  grade: "L1",
+  joiningDate: "2026-09-01",
+};
+
 describe("OfferService", () => {
   let mockRepo: OfferRepository;
 
   beforeEach(() => {
+    vi.clearAllMocks();
+    findUniqueSettings.mockResolvedValue({ requireDecisionForOffer: true });
+    findCurrentDecision.mockResolvedValue({
+      id: "dec-hire",
+      applicationId: "app-1",
+      outcome: HiringDecisionOutcome.hire,
+    });
     mockRepo = {
       createOffer: vi.fn(async () => ({ id: "off-1" })),
       updateOffer: vi.fn(async () => undefined),
@@ -113,16 +147,7 @@ describe("OfferService", () => {
 
   it("should create offer successfully", async () => {
     const service = createOfferService(mockRepo);
-    const result = await service.createOffer(hrSession, {
-      applicationId: "app-1",
-      baseSalary: 1000000,
-      ctc: 1200000,
-      employmentType: "Full-time",
-      department: "Engineering",
-      location: "Bangalore",
-      grade: "L1",
-      joiningDate: "2026-09-01",
-    });
+    const result = await service.createOffer(hrSession, offerInput);
 
     expect(result.id).toBe("off-1");
     expect(mockRepo.createOffer).toHaveBeenCalled();
@@ -132,18 +157,94 @@ describe("OfferService", () => {
     mockRepo.existsActiveOffer = vi.fn(async () => true);
     const service = createOfferService(mockRepo);
 
-    await expect(
-      service.createOffer(hrSession, {
-        applicationId: "app-1",
-        baseSalary: 1000000,
-        ctc: 1200000,
-        employmentType: "Full-time",
-        department: "Engineering",
-        location: "Bangalore",
-        grade: "L1",
-        joiningDate: "2026-09-01",
-      })
-    ).rejects.toThrow(RecruitmentDomainError);
+    await expect(service.createOffer(hrSession, offerInput)).rejects.toThrow(RecruitmentDomainError);
+  });
+
+  it("fails when requireDecisionForOffer=true and no decision exists", async () => {
+    findCurrentDecision.mockResolvedValue(null);
+    const service = createOfferService(mockRepo);
+
+    await expect(service.createOffer(hrSession, offerInput)).rejects.toMatchObject({
+      message: "Submit a hiring decision before creating an offer.",
+    });
+    expect(mockRepo.createOffer).not.toHaveBeenCalled();
+  });
+
+  it("fails when current decision is reject", async () => {
+    findCurrentDecision.mockResolvedValue({
+      id: "dec-1",
+      outcome: HiringDecisionOutcome.reject,
+    });
+    const service = createOfferService(mockRepo);
+    await expect(service.createOffer(hrSession, offerInput)).rejects.toMatchObject({
+      message: "Offers are only allowed after a strong_hire or hire decision.",
+    });
+  });
+
+  it("fails when current decision is hold", async () => {
+    findCurrentDecision.mockResolvedValue({
+      id: "dec-1",
+      outcome: HiringDecisionOutcome.hold,
+    });
+    const service = createOfferService(mockRepo);
+    await expect(service.createOffer(hrSession, offerInput)).rejects.toThrow(RecruitmentDomainError);
+  });
+
+  it("fails when current decision is borderline", async () => {
+    findCurrentDecision.mockResolvedValue({
+      id: "dec-1",
+      outcome: HiringDecisionOutcome.borderline,
+    });
+    const service = createOfferService(mockRepo);
+    await expect(service.createOffer(hrSession, offerInput)).rejects.toThrow(RecruitmentDomainError);
+  });
+
+  it("succeeds for current hire and stamps hiringDecisionId", async () => {
+    const service = createOfferService(mockRepo);
+    await service.createOffer(hrSession, {
+      ...offerInput,
+      hiringDecisionId: "client-forged-id",
+    });
+
+    expect(mockRepo.createOffer).toHaveBeenCalledWith(
+      expect.objectContaining({ hiringDecisionId: "dec-hire" }),
+      expect.anything()
+    );
+  });
+
+  it("succeeds for current strong_hire", async () => {
+    findCurrentDecision.mockResolvedValue({
+      id: "dec-strong",
+      outcome: HiringDecisionOutcome.strong_hire,
+    });
+    const service = createOfferService(mockRepo);
+    await service.createOffer(hrSession, offerInput);
+    expect(mockRepo.createOffer).toHaveBeenCalledWith(
+      expect.objectContaining({ hiringDecisionId: "dec-strong" }),
+      expect.anything()
+    );
+  });
+
+  it("allows create without a decision when requireDecisionForOffer=false", async () => {
+    findUniqueSettings.mockResolvedValue({ requireDecisionForOffer: false });
+    findCurrentDecision.mockResolvedValue(null);
+    const service = createOfferService(mockRepo);
+    await service.createOffer(hrSession, offerInput);
+    expect(findCurrentDecision).not.toHaveBeenCalled();
+    expect(mockRepo.createOffer).toHaveBeenCalledWith(
+      expect.objectContaining({ hiringDecisionId: null }),
+      expect.anything()
+    );
+  });
+
+  it("keeps hiringDecisionId null when setting is false", async () => {
+    findUniqueSettings.mockResolvedValue({ requireDecisionForOffer: false });
+    const service = createOfferService(mockRepo);
+    await service.createOffer(hrSession, offerInput);
+    const created = vi.mocked(mockRepo.createOffer).mock.calls[0]?.[0] as {
+      hiringDecisionId?: string | null;
+    };
+    expect(created.hiringDecisionId).toBeNull();
   });
 
   it("should send offer successfully", async () => {

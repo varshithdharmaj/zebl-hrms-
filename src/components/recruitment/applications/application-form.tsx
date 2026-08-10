@@ -14,6 +14,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CandidateSection } from "@/components/recruitment/candidates/candidate-section";
 import { ErrorAlert } from "@/components/ui/error-alert";
+import type { ApplicationDetail } from "@/lib/recruitment/repositories/application-repository";
+import { buildApplicationCreateRedirect } from "@/lib/recruitment/navigation/return-to";
 
 export type EmployeeOption = {
   id: number;
@@ -22,6 +24,18 @@ export type EmployeeOption = {
   department: string | null;
   user: { id: string; email: string } | null;
 };
+
+/** Edit/create initial values — only the fields this form reads from `ApplicationDetail`. */
+export type ApplicationFormValues = Pick<
+  ApplicationDetail,
+  | "id"
+  | "candidateId"
+  | "jobOpeningId"
+  | "assignedRecruiterUserId"
+  | "assignedManagerEmployeeId"
+  | "priority"
+  | "source"
+>;
 
 const initial: RecruitmentApplicationActionState = {};
 
@@ -34,7 +48,7 @@ export function ApplicationForm({
   preselectedCandidateId,
 }: {
   mode: "create" | "edit";
-  application?: any;
+  application?: ApplicationFormValues;
   candidates: { id: string; fullName: string }[];
   jobs: { id: string; title: string }[];
   employees: EmployeeOption[];
@@ -62,17 +76,30 @@ export function ApplicationForm({
   );
 
   useEffect(() => {
-    if (state.success) {
-      router.push("/admin/recruitment/pipeline");
+    if (!state.success) return;
+    if (mode === "create" && state.applicationId) {
+      router.push(
+        buildApplicationCreateRedirect({
+          applicationId: state.applicationId,
+          jobOpeningId: jobOpeningId || undefined,
+        })
+      );
+      router.refresh();
+      return;
+    }
+    if (mode === "edit" && application?.id) {
+      router.push(`/admin/recruitment/applications/${application.id}`);
       router.refresh();
     }
-  }, [state.success, router]);
+  }, [state.success, state.applicationId, mode, application?.id, jobOpeningId, router]);
 
   return (
     <form action={formAction} className="space-y-6 max-w-3xl">
       {state.error && <ErrorAlert message={state.error} />}
 
-      {mode === "edit" && <input type="hidden" name="id" value={application.id} />}
+      {mode === "edit" && application ? (
+        <input type="hidden" name="id" value={application.id} />
+      ) : null}
       <input type="hidden" name="candidateId" value={candidateId} />
       <input type="hidden" name="jobOpeningId" value={jobOpeningId} />
       <input type="hidden" name="assignedRecruiterUserId" value={assignedRecruiterUserId} />

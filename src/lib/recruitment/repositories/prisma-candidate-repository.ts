@@ -4,6 +4,9 @@ import {
   CandidateSource,
   RecruitmentDocumentType,
   NoteVisibility,
+  AiInsightType,
+  AiInsightStatus,
+  IntakeItemStatus,
 } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import type { RepositoryTx } from "@/lib/recruitment/repositories/types";
@@ -14,8 +17,6 @@ import {
   toPageResult,
 } from "@/lib/recruitment/shared/pagination";
 import type {
-  CandidateCreateData,
-  CandidateUpdateData,
   CandidateDetail,
   CandidateListItem,
   CandidateListFilters,
@@ -28,10 +29,9 @@ import type {
   CandidateCertificationView,
   CandidateDocumentView,
   CandidateNoteView,
-  CandidateStatusCounts,
 } from "@/lib/recruitment/candidate/types";
 import type { CandidateRepository } from "@/lib/recruitment/repositories/candidate-repository";
-import type { ScopedListArgs, ScopedSearchArgs, PaginationInput } from "@/lib/recruitment/repositories/types";
+import type { PaginationInput } from "@/lib/recruitment/repositories/types";
 
 type Client = RepositoryTx;
 
@@ -40,7 +40,62 @@ function decimalToString(value: Prisma.Decimal | null | undefined): string | nul
   return value.toString();
 }
 
-function mapPersonal(row: any): CandidatePersonalView | null {
+function parseEnum<T extends string>(value: unknown, values: readonly T[], fallback: T): T {
+  return typeof value === "string" && (values as readonly string[]).includes(value)
+    ? (value as T)
+    : fallback;
+}
+
+function parseEnumOptional<T extends string>(
+  value: unknown,
+  values: readonly T[]
+): T | undefined {
+  return typeof value === "string" && (values as readonly string[]).includes(value)
+    ? (value as T)
+    : undefined;
+}
+
+const detailInclude = {
+  personal: true,
+  experiences: { orderBy: { sortOrder: "asc" } },
+  educations: { orderBy: { sortOrder: "asc" } },
+  skills: true,
+  projects: { orderBy: { sortOrder: "asc" } },
+  certifications: true,
+  documents: { where: { deletedAt: null } },
+  notes: {
+    where: { deletedAt: null },
+    orderBy: { createdAt: "desc" },
+    include: {
+      author: {
+        select: {
+          email: true,
+          role: true,
+          profilePhotoUrl: true,
+          employee: { select: { name: true } },
+        },
+      },
+    },
+  },
+} as const;
+
+const noteAuthorInclude = {
+  author: {
+    select: {
+      email: true,
+      role: true,
+      profilePhotoUrl: true,
+      employee: { select: { name: true } },
+    },
+  },
+} as const;
+
+type CandidateDetailRow = Prisma.CandidateGetPayload<{ include: typeof detailInclude }>;
+type CandidateListRow = Prisma.CandidateGetPayload<object>;
+type CandidateDocumentRow = Prisma.CandidateDocumentGetPayload<object>;
+type CandidateNoteRow = Prisma.CandidateNoteGetPayload<{ include: typeof noteAuthorInclude }>;
+
+function mapPersonal(row: CandidateDetailRow["personal"]): CandidatePersonalView | null {
   if (!row) return null;
   return {
     candidateId: row.candidateId,
@@ -54,7 +109,7 @@ function mapPersonal(row: any): CandidatePersonalView | null {
   };
 }
 
-function mapExperience(row: any): CandidateExperienceView {
+function mapExperience(row: CandidateDetailRow["experiences"][number]): CandidateExperienceView {
   return {
     id: row.id,
     candidateId: row.candidateId,
@@ -75,7 +130,7 @@ function mapExperience(row: any): CandidateExperienceView {
   };
 }
 
-function mapEducation(row: any): CandidateEducationView {
+function mapEducation(row: CandidateDetailRow["educations"][number]): CandidateEducationView {
   return {
     id: row.id,
     candidateId: row.candidateId,
@@ -93,7 +148,7 @@ function mapEducation(row: any): CandidateEducationView {
   };
 }
 
-function mapSkill(row: any): CandidateSkillView {
+function mapSkill(row: CandidateDetailRow["skills"][number]): CandidateSkillView {
   return {
     id: row.id,
     candidateId: row.candidateId,
@@ -106,7 +161,7 @@ function mapSkill(row: any): CandidateSkillView {
   };
 }
 
-function mapProject(row: any): CandidateProjectView {
+function mapProject(row: CandidateDetailRow["projects"][number]): CandidateProjectView {
   return {
     id: row.id,
     candidateId: row.candidateId,
@@ -124,7 +179,9 @@ function mapProject(row: any): CandidateProjectView {
   };
 }
 
-function mapCertification(row: any): CandidateCertificationView {
+function mapCertification(
+  row: CandidateDetailRow["certifications"][number]
+): CandidateCertificationView {
   return {
     id: row.id,
     candidateId: row.candidateId,
@@ -140,7 +197,7 @@ function mapCertification(row: any): CandidateCertificationView {
   };
 }
 
-function mapDocument(row: any): CandidateDocumentView {
+function mapDocument(row: CandidateDocumentRow): CandidateDocumentView {
   return {
     id: row.id,
     candidateId: row.candidateId,
@@ -161,35 +218,7 @@ function mapDocument(row: any): CandidateDocumentView {
   };
 }
 
-type NoteAuthorRow = {
-  email: string;
-  role: string;
-  profilePhotoUrl: string | null;
-  employee: { name: string } | null;
-};
-
-type NoteRow = {
-  id: string;
-  candidateId: string;
-  body: string;
-  visibility: NoteVisibility;
-  isPinned: boolean;
-  isResolved: boolean;
-  authorUserId: string;
-  createdAt: Date;
-  updatedAt: Date;
-  deletedAt: Date | null;
-  content: string | null;
-  author?: NoteAuthorRow | null;
-};
-
-function noteRoleLabel(role: string | null | undefined): string | null {
-  if (role === "hr") return "HR";
-  if (role === "super_admin") return "Super Admin";
-  return null;
-}
-
-function mapNote(row: NoteRow): CandidateNoteView {
+function mapNote(row: CandidateNoteRow): CandidateNoteView {
   const authorEmail = row.author?.email ?? "";
   const authorName =
     row.author?.employee?.name?.trim() ||
@@ -214,7 +243,7 @@ function mapNote(row: NoteRow): CandidateNoteView {
   };
 }
 
-function mapDetail(row: any): CandidateDetail {
+function mapDetail(row: CandidateDetailRow): CandidateDetail {
   return {
     id: row.id,
     tenantId: row.tenantId,
@@ -269,7 +298,7 @@ function mapDetail(row: any): CandidateDetail {
   };
 }
 
-function mapListItem(row: any): CandidateListItem {
+function mapListItem(row: CandidateListRow): CandidateListItem {
   return {
     id: row.id,
     fullName: row.fullName,
@@ -290,40 +319,11 @@ function mapListItem(row: any): CandidateListItem {
   };
 }
 
-const detailInclude = {
-  personal: true,
-  experiences: { orderBy: { sortOrder: "asc" } },
-  educations: { orderBy: { sortOrder: "asc" } },
-  skills: true,
-  projects: { orderBy: { sortOrder: "asc" } },
-  certifications: true,
-  documents: { where: { deletedAt: null } },
-  notes: {
-    where: { deletedAt: null },
-    orderBy: { createdAt: "desc" },
-    include: {
-      author: {
-        select: {
-          email: true,
-          role: true,
-          profilePhotoUrl: true,
-          employee: { select: { name: true } },
-        },
-      },
-    },
-  },
-} as const;
-
-const noteAuthorInclude = {
-  author: {
-    select: {
-      email: true,
-      role: true,
-      profilePhotoUrl: true,
-      employee: { select: { name: true } },
-    },
-  },
-} as const;
+function noteRoleLabel(role: string | null | undefined): string | null {
+  if (role === "hr") return "HR";
+  if (role === "super_admin") return "Super Admin";
+  return null;
+}
 
 function scopeWhere(scope: RecruitmentScope): Prisma.CandidateWhereInput {
   if (scope.mode === "unrestricted") return {};
@@ -1008,7 +1008,7 @@ export const prismaCandidateRepository: CandidateRepository = {
     const row = await prisma.candidateDocument.findUnique({
       where: { id: documentId },
     });
-    return row ? (row as any) : null;
+    return row ? mapDocument(row) : null;
   },
 
   async updateCandidateDocument(documentId, patch, tx) {
@@ -1037,14 +1037,14 @@ export const prismaCandidateRepository: CandidateRepository = {
       where: { candidateId },
       orderBy: { createdAt: "desc" },
     });
-    return rows as any[];
+    return rows.map(mapDocument);
   },
 
   async findDocumentByChecksum(candidateId, checksum) {
     const row = await prisma.candidateDocument.findFirst({
       where: { candidateId, checksum, deletedAt: null },
     });
-    return row ? (row as any) : null;
+    return row ? mapDocument(row) : null;
   },
 
   async setTags(candidateId, tagIds, tx) {
@@ -1088,8 +1088,16 @@ export const prismaCandidateRepository: CandidateRepository = {
     const created = await client.candidateAiInsight.create({
       data: {
         candidateId,
-        insightType: (data.insightType as any) ?? "candidate_summary",
-        status: (data.status as any) ?? "pending_review",
+        insightType: parseEnum(
+          data.insightType,
+          Object.values(AiInsightType),
+          AiInsightType.candidate_summary
+        ),
+        status: parseEnum(
+          data.status,
+          Object.values(AiInsightStatus),
+          AiInsightStatus.pending_review
+        ),
         title: (data.title as string) ?? null,
         contentJson: (data.contentJson as Prisma.InputJsonValue) ?? {},
         confidence: (data.confidence as number) ?? null,
@@ -1104,19 +1112,26 @@ export const prismaCandidateRepository: CandidateRepository = {
     const row = await prisma.candidateAiInsight.findUnique({
       where: { id: insightId },
     });
-    return row ? (row as unknown as Record<string, unknown>) : null;
+    return row;
   },
 
   async listInsights(candidateId, filters) {
+    const insightType = filters?.insightType
+      ? parseEnumOptional(filters.insightType, Object.values(AiInsightType))
+      : undefined;
+    const status = filters?.status
+      ? parseEnumOptional(filters.status, Object.values(AiInsightStatus))
+      : undefined;
+
     const rows = await prisma.candidateAiInsight.findMany({
       where: {
         candidateId,
-        ...(filters?.insightType ? { insightType: filters.insightType as any } : {}),
-        ...(filters?.status ? { status: filters.status as any } : {}),
+        ...(insightType ? { insightType } : {}),
+        ...(status ? { status } : {}),
       },
       orderBy: { createdAt: "desc" },
     });
-    return rows as unknown as Record<string, unknown>[];
+    return rows;
   },
 
   async updateInsightStatus(insightId, status, tx, meta) {
@@ -1124,7 +1139,7 @@ export const prismaCandidateRepository: CandidateRepository = {
     await client.candidateAiInsight.update({
       where: { id: insightId },
       data: {
-        status: status as any,
+        status: parseEnum(status, Object.values(AiInsightStatus), AiInsightStatus.pending_review),
         ...(meta?.reviewedByUserId !== undefined
           ? { reviewedByUserId: meta.reviewedByUserId }
           : {}),
@@ -1139,8 +1154,16 @@ export const prismaCandidateRepository: CandidateRepository = {
       data: {
         candidateId: (data.candidateId as string) ?? null,
         jobOpeningId: (data.jobOpeningId as string) ?? null,
-        status: (data.status as any) ?? "received",
-        source: (data.source as any) ?? CandidateSource.manual_upload,
+        status: parseEnum(
+          data.status,
+          Object.values(IntakeItemStatus),
+          IntakeItemStatus.received
+        ),
+        source: parseEnum(
+          data.source,
+          Object.values(CandidateSource),
+          CandidateSource.manual_upload
+        ),
         rawPayloadJson: (data.rawPayloadJson as Prisma.InputJsonValue) ?? {},
         fileName: (data.fileName as string) ?? null,
         storageKey: (data.storageKey as string) ?? null,
@@ -1155,12 +1178,21 @@ export const prismaCandidateRepository: CandidateRepository = {
 
   async updateIntake(intakeId, patch, tx) {
     const client: Client = tx ?? prisma;
+    const data: Record<string, unknown> = {};
+    if (patch.status !== undefined) data.status = patch.status;
+    if (patch.errorMessage !== undefined) data.errorMessage = patch.errorMessage;
+    if (patch.candidateId !== undefined) data.candidateId = patch.candidateId;
+    if (patch.storageKey !== undefined) data.storageKey = patch.storageKey;
+    if (patch.rawPayloadJson !== undefined) {
+      data.rawPayloadJson = patch.rawPayloadJson as Prisma.InputJsonValue;
+    }
+    if (patch.duplicateOfCandidateId !== undefined) {
+      data.duplicateOfCandidateId = patch.duplicateOfCandidateId;
+    }
+    if (Object.keys(data).length === 0) return;
     await client.intakeItem.update({
       where: { id: intakeId },
-      data: {
-        status: patch.status as any,
-        errorMessage: patch.errorMessage as string,
-      },
+      data: data as never,
     });
   },
 
@@ -1168,7 +1200,7 @@ export const prismaCandidateRepository: CandidateRepository = {
     const row = await prisma.intakeItem.findUnique({
       where: { id: intakeId },
     });
-    return row ? (row as any) : null;
+    return row;
   },
 
   async listIntake(args) {
@@ -1184,7 +1216,7 @@ export const prismaCandidateRepository: CandidateRepository = {
       }),
     ]);
 
-    return toPageResult(rows as any[], total, pagination);
+    return toPageResult(rows, total, pagination);
   },
 
   async archiveCandidate(id, tx) {

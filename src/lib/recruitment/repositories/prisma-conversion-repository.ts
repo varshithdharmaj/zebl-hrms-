@@ -16,7 +16,7 @@ export const prismaConversionRepository: ConversionRepository = {
         offerId: data.offerId,
         employeeId: data.employeeId,
         fieldMapVersion: data.fieldMapVersion,
-        mappedFields: data.mappedFields,
+        mappedFields: data.mappedFields as unknown as Prisma.InputJsonValue,
         overrideReason: data.overrideReason ?? null,
         convertedByUserId: data.convertedByUserId,
       },
@@ -128,20 +128,20 @@ export const prismaConversionRepository: ConversionRepository = {
     const row = await prisma.employeeConversionSnapshot.findUnique({
       where: { applicationId },
     });
-    return row ? (row as any) : null;
+    return row ? ({ ...row } as Record<string, unknown>) : null;
   },
 
   async findByCandidateId(candidateId) {
     const row = await prisma.employeeConversionSnapshot.findUnique({
       where: { candidateId },
     });
-    return row ? (row as any) : null;
+    return row ? ({ ...row } as Record<string, unknown>) : null;
   },
 
   async findByEmployeeId(employeeId) {
     const row = await prisma.employeeConversionSnapshot.findUnique({
       where: { employeeId },
     });
-    return row ? (row as any) : null;
+    return row ? ({ ...row } as Record<string, unknown>) : null;
   },
 };

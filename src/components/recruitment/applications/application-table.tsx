@@ -2,7 +2,7 @@
 
 import React, { useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ApplicationStatus, RecruitmentPipelineStage } from "@/generated/prisma/enums";
 import { CandidateAvatar } from "../candidates/candidate-avatar";
 import { CandidateEmptyState } from "../candidates/candidate-empty-state";
@@ -14,6 +14,7 @@ import {
   archiveApplicationAction,
   restoreApplicationAction,
 } from "@/actions/recruitment-applications";
+import type { ApplicationDetail } from "@/lib/recruitment/repositories/application-repository";
 import {
   User,
   Briefcase,
@@ -24,6 +25,11 @@ import {
   Star,
   Clock,
 } from "lucide-react";
+import {
+  buildRecruitmentEntityHref,
+  currentPathWithSearch,
+  isSafeRecruitmentReturnTo,
+} from "@/lib/recruitment/navigation/return-to";
 
 function formatDate(value: Date | string | null): string {
   if (!value) return "—";
@@ -36,15 +42,35 @@ function formatDate(value: Date | string | null): string {
   });
 }
 
+/** List-row fields this table reads from `ApplicationDetail` / listApplications. */
+export type ApplicationTableItem = Pick<
+  ApplicationDetail,
+  | "id"
+  | "candidateId"
+  | "assignedRecruiterUserId"
+  | "deletedAt"
+  | "status"
+  | "currentStage"
+  | "createdAt"
+  | "candidate"
+  | "jobOpening"
+>;
+
 export function ApplicationTable({
   applications,
   employeeOptions,
 }: {
-  applications: any[];
+  applications: readonly ApplicationTableItem[];
   employeeOptions: { id: number; name: string; user: { id: string; email: string } | null }[];
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
+  const listReturnTo = (() => {
+    const path = currentPathWithSearch(pathname, searchParams.toString());
+    return isSafeRecruitmentReturnTo(path) ? path : "/admin/recruitment/pipeline";
+  })();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -136,27 +162,48 @@ export function ApplicationTable({
               : "—";
 
             const isDeleted = !!app.deletedAt;
+            const candidateName = app.candidate?.fullName ?? "Unknown";
+            const candidateEmail = app.candidate?.email ?? "—";
+            const jobTitle = app.jobOpening?.title ?? "—";
+            const jobDepartment = app.jobOpening?.department ?? "—";
 
             return (
               <DataTableRow key={app.id} className={isDeleted ? "opacity-60 bg-muted/10" : ""}>
                 <DataTableCell>
                   <div className="flex items-center gap-3">
-                    <CandidateAvatar fullName={app.candidate.fullName} className="h-9 w-9" />
+                    <CandidateAvatar fullName={candidateName} className="h-9 w-9" />
                     <div>
                       <Link
-                        href={`/admin/recruitment/candidates/${app.candidateId}`}
+                        href={buildRecruitmentEntityHref(
+                          `/admin/recruitment/candidates/${app.candidateId}`,
+                          {
+                            returnTo: listReturnTo,
+                            applicationId: app.id,
+                            jobOpeningId: app.jobOpening?.id,
+                            currentStage: app.currentStage,
+                          }
+                        )}
                         className="font-semibold text-foreground hover:underline hover:text-primary block text-sm"
                       >
-                        {app.candidate.fullName}
+                        {candidateName}
                       </Link>
-                      <span className="text-xs text-muted-foreground block">{app.candidate.email}</span>
+                      <span className="text-xs text-muted-foreground block">{candidateEmail}</span>
                     </div>
                   </div>
                 </DataTableCell>
                 <DataTableCell>
                   <div>
-                    <span className="font-semibold text-foreground text-sm block">{app.jobOpening.title}</span>
-                    <span className="text-xs text-muted-foreground block">{app.jobOpening.department}</span>
+                    {app.jobOpening?.id ? (
+                      <Link
+                        href={`/admin/recruitment/jobs/${app.jobOpening.id}`}
+                        className="font-semibold text-foreground hover:underline hover:text-primary block text-sm"
+                      >
+                        {jobTitle}
+                      </Link>
+                    ) : (
+                      <span className="font-semibold text-foreground text-sm block">{jobTitle}</span>
+                    )}
+                    <span className="text-xs text-muted-foreground block">{jobDepartment}</span>
                   </div>
                 </DataTableCell>
                 <DataTableCell>
@@ -194,7 +241,16 @@ export function ApplicationTable({
                       className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
                       title="View Application"
                     >
-                      <Link href={`/admin/recruitment/applications/${app.id}`}>
+                      <Link
+                        href={buildRecruitmentEntityHref(
+                          `/admin/recruitment/applications/${app.id}`,
+                          {
+                            returnTo: listReturnTo,
+                            jobOpeningId: app.jobOpening?.id,
+                            currentStage: app.currentStage,
+                          }
+                        )}
+                      >
                         <Eye className="h-4 w-4" />
                       </Link>
                     </Button>
@@ -214,7 +270,7 @@ export function ApplicationTable({
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => handleArchive(app.id, app.candidate.fullName)}
+                          onClick={() => handleArchive(app.id, candidateName)}
                           className="h-8 w-8 rounded-lg text-muted-foreground hover:text-danger hover:bg-danger-muted/30"
                           title="Archive Application"
                           disabled={isPending}

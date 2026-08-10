@@ -8,28 +8,14 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar, ArrowRight, UserCheck, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import type {
+  ConversionHistoryItem,
+  PendingConversionListItem,
+} from "@/lib/recruitment/conversion/types";
 
 interface TabsViewProps {
-  pendingConversions: Array<{
-    id: string;
-    offerNumber?: string | null;
-    acceptedAt?: Date | string | null;
-    ctc?: number | string | null;
-    currency?: string | null;
-    createdBy?: { email?: string | null } | null;
-    application: {
-      candidate: {
-        id: string;
-        fullName: string;
-        email?: string | null;
-      };
-      jobOpening: {
-        id: string;
-        title: string;
-      };
-    };
-  }>;
-  history: unknown[];
+  pendingConversions: readonly PendingConversionListItem[];
+  history: readonly ConversionHistoryItem[];
 }
 
 export function ConversionTabsView({ pendingConversions, history }: TabsViewProps) {
@@ -74,12 +60,7 @@ export function ConversionTabsView({ pendingConversions, history }: TabsViewProp
                 {pendingConversions.map((offer) => {
                   const candidate = offer.application.candidate;
                   const job = offer.application.jobOpening;
-                  const ctc =
-                    offer.ctc == null
-                      ? null
-                      : typeof offer.ctc === "number"
-                        ? offer.ctc
-                        : Number(offer.ctc);
+                  const ctc = offer.ctc;
 
                   return (
                     <tr key={offer.id} className="hover:bg-slate-50/50 transition-colors">
@@ -149,7 +130,7 @@ export function ConversionTabsView({ pendingConversions, history }: TabsViewProp
           </Card>
         )
       ) : (
-        <ConversionHistoryCard history={history as never[]} />
+        <ConversionHistoryCard history={history} />
       )}
     </div>
   );

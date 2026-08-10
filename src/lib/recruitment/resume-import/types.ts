@@ -93,6 +93,21 @@ export type ResumeImportDraftContent = {
   metadata: {
     parserVersion?: string;
     note?: string;
+    /** Selective LLM semantic verification observability (no PII). */
+    semanticVerification?: {
+      attempted: boolean;
+      skipped: boolean;
+      skipReason?: string | null;
+      ambiguityReasons?: string[];
+      llmSuccess?: boolean | null;
+      llmError?: string | null;
+      decisionCount?: number;
+      accepted?: number;
+      rejected?: number;
+      unsupported?: number;
+      fallbackDeterministic?: boolean;
+      modelId?: string | null;
+    };
   };
 };
 

@@ -33,12 +33,9 @@ export default async function EmployeeInterviewDetailPage({
     notFound();
   }
 
-  const isPanelist = Array.isArray(interview.panelists)
-    ? interview.panelists.some(
-        (p: { employee?: { user?: { id?: string } } }) =>
-          p.employee?.user?.id === session.id
-      )
-    : false;
+  const isPanelist = interview.panelists.some(
+    (p) => p.employee?.user?.id === session.id
+  );
 
   if (!isPanelist) {
     notFound();

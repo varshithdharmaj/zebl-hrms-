@@ -47,7 +47,9 @@ export async function GET(request: Request) {
     search: url.searchParams.get("q") ?? undefined,
   };
 
-  const rows = await getPayrollAttendanceSummaries(period, filters);
+  const rows = await getPayrollAttendanceSummaries(period, filters, {
+    recompute: "force",
+  });
   const buffer = buildPayrollAttendanceExcel({
     periodLabel: period.label,
     generatedAt: new Date().toISOString(),

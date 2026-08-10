@@ -2,6 +2,11 @@ import { cache } from "react";
 import type { SessionUser } from "@/lib/session";
 import { createEmployeeConversionService } from "@/lib/recruitment/services/employee-conversion-service";
 
+export type {
+  ConversionHistoryItem,
+  PendingConversionListItem,
+} from "@/lib/recruitment/conversion/types";
+
 export const previewConversionCached = cache(async (session: SessionUser, offerId: string) => {
   const service = createEmployeeConversionService();
   return service.previewConversion(session, offerId);

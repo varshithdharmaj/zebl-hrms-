@@ -15,52 +15,52 @@ export type AnalyticsService = {
   getExecutiveKPIs(
     session: SessionUser,
     filters?: AnalyticsQueryFilters
-  ): Promise<ReturnType<AnalyticsRepository["getExecutiveKPIs"]>>;
+  ): Promise<Awaited<ReturnType<AnalyticsRepository["getExecutiveKPIs"]>>>;
 
   getHiringFunnel(
     session: SessionUser,
     filters?: AnalyticsQueryFilters
-  ): Promise<ReturnType<AnalyticsRepository["getHiringFunnel"]>>;
+  ): Promise<Awaited<ReturnType<AnalyticsRepository["getHiringFunnel"]>>>;
 
   getPipelineMetrics(
     session: SessionUser,
     filters?: AnalyticsQueryFilters
-  ): Promise<ReturnType<AnalyticsRepository["getPipelineMetrics"]>>;
+  ): Promise<Awaited<ReturnType<AnalyticsRepository["getPipelineMetrics"]>>>;
 
   getRecruiterPerformance(
     session: SessionUser,
     filters?: AnalyticsQueryFilters
-  ): Promise<ReturnType<AnalyticsRepository["getRecruiterPerformance"]>>;
+  ): Promise<Awaited<ReturnType<AnalyticsRepository["getRecruiterPerformance"]>>>;
 
   getDepartmentAnalytics(
     session: SessionUser,
     filters?: AnalyticsQueryFilters
-  ): Promise<ReturnType<AnalyticsRepository["getDepartmentAnalytics"]>>;
+  ): Promise<Awaited<ReturnType<AnalyticsRepository["getDepartmentAnalytics"]>>>;
 
   getInterviewAnalytics(
     session: SessionUser,
     filters?: AnalyticsQueryFilters
-  ): Promise<ReturnType<AnalyticsRepository["getInterviewAnalytics"]>>;
+  ): Promise<Awaited<ReturnType<AnalyticsRepository["getInterviewAnalytics"]>>>;
 
   getOfferAnalytics(
     session: SessionUser,
     filters?: AnalyticsQueryFilters
-  ): Promise<ReturnType<AnalyticsRepository["getOfferAnalytics"]>>;
+  ): Promise<Awaited<ReturnType<AnalyticsRepository["getOfferAnalytics"]>>>;
 
   getSourceAnalytics(
     session: SessionUser,
     filters?: AnalyticsQueryFilters
-  ): Promise<ReturnType<AnalyticsRepository["getSourceAnalytics"]>>;
+  ): Promise<Awaited<ReturnType<AnalyticsRepository["getSourceAnalytics"]>>>;
 
   getTimeMetrics(
     session: SessionUser,
     filters?: AnalyticsQueryFilters
-  ): Promise<ReturnType<AnalyticsRepository["getTimeMetrics"]>>;
+  ): Promise<Awaited<ReturnType<AnalyticsRepository["getTimeMetrics"]>>>;
 
   getTrendData(
     session: SessionUser,
     filters: AnalyticsQueryFilters & { days: number }
-  ): Promise<ReturnType<AnalyticsRepository["getTrendData"]>>;
+  ): Promise<Awaited<ReturnType<AnalyticsRepository["getTrendData"]>>>;
 };
 
 export function createAnalyticsService(

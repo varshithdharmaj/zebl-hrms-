@@ -9,7 +9,7 @@ export type ConversionRepository = {
       offerId: string;
       employeeId: number;
       fieldMapVersion: string;
-      mappedFields: Record<string, any>;
+      mappedFields: Record<string, unknown>;
       convertedByUserId: string;
       overrideReason?: string | null;
     },

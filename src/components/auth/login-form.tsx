@@ -85,7 +85,12 @@ export function LoginForm({ microsoftEnabled }: { microsoftEnabled: boolean }) {
             autoComplete="current-password"
           />
         </div>
-        <Button type="submit" variant={microsoftEnabled ? "outline" : "default"} className="w-full" disabled={pending}>
+        <Button
+          type="submit"
+          variant={microsoftEnabled ? "outline" : "default"}
+          className="w-full"
+          loading={pending}
+        >
           {pending ? "Signing in…" : "Sign in with email"}
         </Button>
       </form>

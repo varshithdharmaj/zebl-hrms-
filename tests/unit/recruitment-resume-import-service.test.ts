@@ -188,6 +188,43 @@ describe("ResumeImportService", () => {
       updateCandidate: vi.fn(async (id, patch) => {
         if (id === candidate.id) Object.assign(candidate, patch);
       }),
+      upsertExperience: vi.fn(async () => ({ id: "exp-new" })),
+      upsertEducation: vi.fn(async () => ({ id: "edu-new" })),
+      upsertSkill: vi.fn(async () => ({ id: "sk-new" })),
+      upsertProject: vi.fn(async (_id, data) => {
+        candidate.projects.push({
+          id: `proj-${candidate.projects.length + 1}`,
+          candidateId: "cand-1",
+          title: String(data.title),
+          summary: (data.summary as string) ?? null,
+          techStack: (data.techStack as string) ?? null,
+          url: (data.url as string) ?? null,
+          sortOrder: (data.sortOrder as number) ?? 0,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          description: (data.summary as string) ?? null,
+          technologies: (data.techStack as string) ?? null,
+          role: null,
+          duration: (data.duration as string) ?? null,
+        });
+        return { id: `proj-${candidate.projects.length}` };
+      }),
+      upsertCertification: vi.fn(async (_id, data) => {
+        candidate.certifications.push({
+          id: `cert-${candidate.certifications.length + 1}`,
+          candidateId: "cand-1",
+          name: String(data.name),
+          issuer: (data.issuer as string) ?? null,
+          issuedAt: data.issuedAt ? new Date(String(data.issuedAt)) : null,
+          expiresAt: null,
+          credentialId: (data.credentialId as string) ?? null,
+          createdAt: new Date(),
+          issueDate: null,
+          expiryDate: null,
+          credentialUrl: (data.credentialUrl as string) ?? null,
+        });
+        return { id: `cert-${candidate.certifications.length}` };
+      }),
       replaceSection: vi.fn(async (candidateId, section, rows) => {
         if (candidateId !== candidate.id) return;
         if (section === "skills") {
@@ -443,5 +480,48 @@ describe("ResumeImportService", () => {
       true
     );
     expect(review.sections.some((s) => s.section === "skills")).toBe(true);
+  });
+
+  it("applyMerge persists projects and certifications via upsert helpers", async () => {
+    const service = createResumeImportService(mockRepo);
+    const stub = buildStubResumeImportContent({ documentId: "doc-1" });
+    // Avoid scalar conflicts so merge can focus on list appends.
+    stub.mapped.personal.fullName = candidate.fullName;
+    stub.mapped.personal.firstName = candidate.firstName;
+    stub.mapped.personal.lastName = candidate.lastName;
+    stub.mapped.personal.email = candidate.email;
+    stub.mapped.personal.phone = candidate.phone;
+    stub.mapped.personal.location = candidate.location;
+    stub.mapped.professional.headline = candidate.headline;
+    stub.mapped.professional.professionalSummary = candidate.professionalSummary;
+    stub.mapped.professional.currentCompany = candidate.currentCompany;
+    stub.mapped.professional.currentTitle = candidate.currentTitle;
+    stub.mapped.professional.totalExperienceYears = candidate.totalExperienceYears;
+
+    const { id } = await service.createDraft(hrSession, {
+      candidateId: "cand-1",
+      documentId: "doc-1",
+      content: stub,
+    });
+
+    const result = await service.applyMerge(hrSession, {
+      draftId: id,
+      candidateId: "cand-1",
+      conflictSelections: {},
+    });
+
+    expect(mockRepo.upsertProject).toHaveBeenCalled();
+    expect(mockRepo.upsertCertification).toHaveBeenCalled();
+    expect(result.appended).toEqual(
+      expect.arrayContaining(["project", "certification"])
+    );
+    expect(candidate.projects.some((p) => p.title === "Recruitment Workspace")).toBe(
+      true
+    );
+    expect(
+      candidate.certifications.some((c) =>
+        /AWS Certified Developer/i.test(c.name)
+      )
+    ).toBe(true);
   });
 });

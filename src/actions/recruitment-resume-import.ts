@@ -12,6 +12,8 @@ import {
   mergeCandidateResumeSchema,
 } from "@/lib/validation/schemas/recruitment";
 import { createResumeImportService } from "@/lib/recruitment/services/resume-import-service";
+import { scheduleCandidateAiEnrichment } from "@/lib/recruitment/ai/schedule-enrichment";
+import { scheduleCandidateAiFieldRecovery } from "@/lib/recruitment/ai/schedule-recovery";
 import { mapUnknownToActionState } from "@/lib/recruitment/shared/result";
 import { isRecruitmentModuleEnabled } from "@/lib/recruitment/config/feature-flags";
 import type { ResumeMergeResult } from "@/lib/recruitment/resume-import";
@@ -59,6 +61,17 @@ export async function createResumeImportDraftAction(
     const { id } = await service.createDraft(session, {
       candidateId: parsed.data.candidateId,
       documentId: parsed.data.documentId ?? null,
+    });
+
+    scheduleCandidateAiEnrichment({
+      candidateId: parsed.data.candidateId,
+      sourceDraftId: id,
+      createdByUserId: session.id,
+    });
+    scheduleCandidateAiFieldRecovery({
+      candidateId: parsed.data.candidateId,
+      sourceDraftId: id,
+      createdByUserId: session.id,
     });
 
     revalidateImportPaths(parsed.data.candidateId, id);
@@ -136,6 +149,17 @@ export async function prepareCandidateResumeMergeAction(
 
     const service = createResumeImportService();
     const preview = await service.prepareMerge(session, parsed.data);
+
+    scheduleCandidateAiEnrichment({
+      candidateId: preview.candidateId,
+      sourceDraftId: preview.draftId,
+      createdByUserId: session.id,
+    });
+    scheduleCandidateAiFieldRecovery({
+      candidateId: preview.candidateId,
+      sourceDraftId: preview.draftId,
+      createdByUserId: session.id,
+    });
 
     revalidateImportPaths(preview.candidateId, preview.draftId);
     return {
