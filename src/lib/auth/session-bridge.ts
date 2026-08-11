@@ -20,9 +20,11 @@ export function buildSessionUser(user: UserWithEmployee): SessionUser {
     role: toAppUserRole(user.role),
     employeeId: user.employeeId,
     employeeName: user.employee?.name ?? null,
+    profilePhotoUrl: user.profilePhotoUrl ?? null,
     sessionVersion: user.sessionVersion,
     authProvider: user.authProvider,
     mustChangePassword: user.mustChangePassword,
+    recruitmentOpsAccess: user.recruitmentOpsAccess === true,
   };
 }
 

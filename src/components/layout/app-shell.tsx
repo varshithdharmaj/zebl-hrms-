@@ -19,6 +19,8 @@ export function AppShell({
    * does not block on eligibility (presentation-only).
    */
   deferMyTeamNav = false,
+  /** Recruitment test managers: Hiring Workspace only (no other /admin nav). */
+  recruitmentOpsOnly = false,
 }: {
   user: SessionUser;
   children: React.ReactNode;
@@ -29,6 +31,7 @@ export function AppShell({
   /** Employee: Interviews nav when recruitment module is enabled. */
   showPanelistInterviews?: boolean;
   deferMyTeamNav?: boolean;
+  recruitmentOpsOnly?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [myTeamVisible, setMyTeamVisible] = useState(
@@ -64,6 +67,7 @@ export function AppShell({
         showMyTeamGroup={myTeamVisible}
         showRecruitmentNav={showRecruitmentNav}
         showPanelistInterviews={showPanelistInterviews}
+        recruitmentOpsOnly={recruitmentOpsOnly}
       />
       <div
         className={cn(

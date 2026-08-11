@@ -6,4 +6,6 @@ export type RecruitmentActor = {
   email: string;
   role: AppUserRole;
   employeeId: number | null;
+  /** Permanent User.recruitmentOpsAccess — defaults false when omitted. */
+  recruitmentOpsAccess?: boolean;
 };

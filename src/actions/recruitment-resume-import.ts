@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import type { ActionState } from "@/actions/types";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { safeParseWithSchema } from "@/lib/validation/parse";
 import {
   createResumeImportDraftSchema,
@@ -52,7 +52,7 @@ export async function createResumeImportDraftAction(
     const parsed = safeParseWithSchema(createResumeImportDraftSchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
     }
@@ -92,7 +92,7 @@ export async function dismissResumeImportDraftAction(
     const parsed = safeParseWithSchema(resumeImportDraftIdSchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
     }
@@ -115,7 +115,7 @@ export async function applyResumeImportDraftAction(
     const parsed = safeParseWithSchema(applyResumeImportSchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
     }
@@ -142,7 +142,7 @@ export async function prepareCandidateResumeMergeAction(
     const parsed = safeParseWithSchema(prepareCandidateResumeMergeSchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
     }
@@ -188,7 +188,7 @@ export async function mergeCandidateResumeAction(
     const parsed = safeParseWithSchema(mergeCandidateResumeSchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
     }

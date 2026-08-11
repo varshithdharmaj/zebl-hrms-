@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import type { ActionState } from "@/actions/types";
-import { requireHROrSuperAdminSession, getSessionOrThrow } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession, getSessionOrThrow } from "@/lib/auth-guards";
 import { safeParseWithSchema } from "@/lib/validation/parse";
 import {
   createOfferSchema,
@@ -47,7 +47,7 @@ export async function createOfferAction(
     const parsed = safeParseWithSchema(createOfferSchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
@@ -75,7 +75,7 @@ export async function updateOfferAction(
     const parsed = safeParseWithSchema(updateOfferSchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
@@ -102,7 +102,7 @@ export async function sendOfferAction(
     const parsed = safeParseWithSchema(sendOfferSchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
@@ -129,7 +129,7 @@ export async function acceptOfferAction(
     const parsed = safeParseWithSchema(acceptOfferSchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
@@ -156,7 +156,7 @@ export async function declineOfferAction(
     const parsed = safeParseWithSchema(declineOfferSchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
@@ -183,7 +183,7 @@ export async function withdrawOfferAction(
     const parsed = safeParseWithSchema(withdrawOfferSchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
@@ -210,7 +210,7 @@ export async function expireOfferAction(
     const parsed = safeParseWithSchema(offerIdSchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
@@ -237,7 +237,7 @@ export async function duplicateOfferAction(
     const parsed = safeParseWithSchema(offerIdSchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
@@ -264,7 +264,7 @@ export async function createOfferRevisionAction(
     const parsed = safeParseWithSchema(createOfferRevisionSchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
@@ -295,7 +295,7 @@ export async function attachOfferPdfAction(
       return { error: "PDF file is required." };
     }
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
     }

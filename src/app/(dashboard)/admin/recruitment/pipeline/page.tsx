@@ -7,7 +7,7 @@ import { ApplicationFilters } from "@/components/recruitment/applications/applic
 import { ApplicationTable } from "@/components/recruitment/applications/application-table";
 import { PipelineBoard } from "@/components/recruitment/applications/pipeline-board";
 import { Button } from "@/components/ui/button";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { getApplicationCached, listApplicationsCached } from "@/lib/recruitment/application";
 import { getEmployeeOptions } from "@/lib/recruitment/candidate";
 import { listInterviewsCached } from "@/lib/recruitment/interview/queries";
@@ -29,7 +29,7 @@ export default async function RecruitmentPipelinePage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const session = await requireHROrSuperAdminSession();
+  const session = await requireRecruitmentAdminSession();
   const raw = await searchParams;
 
   const view = raw.view === "list" ? "list" : "board";

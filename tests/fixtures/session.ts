@@ -40,6 +40,33 @@ export function mockManagerSession(employeeId = 10): SessionUser {
     role: "employee",
     employeeId,
     employeeName: "Test Manager",
+    recruitmentOpsAccess: false,
+  };
+}
+
+/** Seeded Manager 1 — employee + hierarchy + recruitmentOpsAccess. */
+export function mockTestManager1Session(employeeId = 101): SessionUser {
+  return {
+    ...base,
+    id: "mgr1-test",
+    email: "mgr1.test@zebl.local",
+    role: "employee",
+    employeeId,
+    employeeName: "Test Manager One",
+    recruitmentOpsAccess: true,
+  };
+}
+
+/** Seeded Manager 2 — employee + hierarchy + recruitmentOpsAccess. */
+export function mockTestManager2Session(employeeId = 102): SessionUser {
+  return {
+    ...base,
+    id: "mgr2-test",
+    email: "mgr2.test@zebl.local",
+    role: "employee",
+    employeeId,
+    employeeName: "Test Manager Two",
+    recruitmentOpsAccess: true,
   };
 }
 
@@ -51,5 +78,6 @@ export function mockEmployeeSession(employeeId = 20): SessionUser {
     role: "employee",
     employeeId,
     employeeName: "Test Employee",
+    recruitmentOpsAccess: false,
   };
 }

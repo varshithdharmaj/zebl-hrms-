@@ -9,6 +9,7 @@ describe("buildEmployeeShellNav", () => {
     const workspace = groups.find((g) => g.group === "Workspace");
     expect(workspace?.items.map((i) => ({ href: i.href, label: i.label }))).toEqual([
       { href: "/employee/dashboard", label: "Dashboard" },
+      { href: "/employee/profile", label: "Profile" },
       { href: "/employee/attendance", label: "History" },
       { href: "/employee/leaves", label: "Leaves" },
       { href: "/employee/tickets", label: "My Tickets" },
@@ -58,5 +59,28 @@ describe("buildEmployeeShellNav", () => {
       .map((i) => i.label);
     expect(labels).not.toContain("Hiring");
     expect(labels).not.toContain("Reports");
+  });
+
+  it("includes Interviews only when showPanelistInterviews is true", () => {
+    const without = buildEmployeeShellNav(false, false)
+      .find((g) => g.group === "Workspace")
+      ?.items.map((i) => i.href);
+    expect(without).not.toContain("/employee/interviews");
+
+    const withPanel = buildEmployeeShellNav(false, true)
+      .find((g) => g.group === "Workspace")
+      ?.items.map((i) => ({ href: i.href, label: i.label }));
+    expect(withPanel?.[1]).toEqual({
+      href: "/employee/interviews",
+      label: "Interviews",
+    });
+  });
+
+  it("omits Interviews when Recruitment ops link is shown", () => {
+    const hrefs = buildEmployeeShellNav(false, true, true)
+      .find((g) => g.group === "Workspace")
+      ?.items.map((i) => i.href);
+    expect(hrefs).toContain("/admin/recruitment");
+    expect(hrefs).not.toContain("/employee/interviews");
   });
 });

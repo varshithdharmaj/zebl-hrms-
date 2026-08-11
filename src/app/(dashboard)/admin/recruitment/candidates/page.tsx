@@ -3,7 +3,7 @@ import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { CandidateFilters } from "@/components/recruitment/candidates/candidate-filters";
 import { CandidateTable } from "@/components/recruitment/candidates/candidate-table";
 import { Button } from "@/components/ui/button";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { listCandidatesCached, getEmployeeOptions } from "@/lib/recruitment/candidate";
 import { candidateListHref } from "@/lib/recruitment/candidate/list-href";
 import { candidateListFiltersSchema } from "@/lib/validation/schemas/recruitment";
@@ -14,7 +14,7 @@ export default async function RecruitmentCandidatesPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const session = await requireHROrSuperAdminSession();
+  const session = await requireRecruitmentAdminSession();
   const raw = await searchParams;
 
   const parsed = candidateListFiltersSchema.safeParse({

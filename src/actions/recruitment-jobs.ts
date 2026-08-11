@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { ActionState } from "@/actions/types";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { safeParseWithSchema } from "@/lib/validation/parse";
 import {
   archiveJobOpeningSchema,
@@ -85,7 +85,7 @@ export async function createJobOpeningAction(
   formData: FormData
 ): Promise<RecruitmentJobActionState> {
   try {
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
     const parsed = safeParseWithSchema(createJobOpeningSchema, createPayloadFromForm(formData));
     if (!parsed.ok) return { error: parsed.error };
 
@@ -103,7 +103,7 @@ export async function updateJobOpeningAction(
   formData: FormData
 ): Promise<RecruitmentJobActionState> {
   try {
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
     const payload = {
       ...createPayloadFromForm(formData),
       id: formString(formData, "id"),
@@ -124,7 +124,7 @@ export async function archiveJobOpeningAction(
   formData: FormData
 ): Promise<RecruitmentJobActionState> {
   try {
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
     const parsed = safeParseWithSchema(archiveJobOpeningSchema, {
       id: formString(formData, "id"),
     });
@@ -142,7 +142,7 @@ export async function closeJobOpeningAction(
   formData: FormData
 ): Promise<RecruitmentJobActionState> {
   try {
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
     const parsed = safeParseWithSchema(closeJobOpeningSchema, {
       id: formString(formData, "id"),
       reason: formString(formData, "reason"),
@@ -161,7 +161,7 @@ export async function reopenJobOpeningAction(
   formData: FormData
 ): Promise<RecruitmentJobActionState> {
   try {
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
     const parsed = safeParseWithSchema(reopenJobOpeningSchema, {
       id: formString(formData, "id"),
       toStatus: formString(formData, "toStatus") ?? JobOpeningStatus.open,
@@ -181,7 +181,7 @@ export async function changeJobOpeningStatusAction(
   formData: FormData
 ): Promise<RecruitmentJobActionState> {
   try {
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
     const parsed = safeParseWithSchema(changeJobStatusSchema, {
       id: formString(formData, "id"),
       toStatus: formString(formData, "toStatus"),
@@ -203,7 +203,7 @@ export async function changeJobOpeningStatusAction(
 
 export async function getJobOpeningAction(jobId: string) {
   try {
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
     const parsed = safeParseWithSchema(jobOpeningIdSchema, { id: jobId });
     if (!parsed.ok) return { error: parsed.error };
     const job = await JobOpeningService.get(session, parsed.data.id);
@@ -215,7 +215,7 @@ export async function getJobOpeningAction(jobId: string) {
 
 export async function listJobOpeningsAction(raw: unknown) {
   try {
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
     const { jobOpeningListFiltersSchema } = await import(
       "@/lib/validation/schemas/recruitment/jobs"
     );
@@ -243,7 +243,7 @@ export async function addHiringTeamMemberAction(
   formData: FormData
 ): Promise<RecruitmentJobActionState> {
   try {
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
     const parsed = safeParseWithSchema(hiringTeamMemberSchema, {
       jobOpeningId: formString(formData, "jobOpeningId"),
       employeeId: formString(formData, "employeeId"),
@@ -268,7 +268,7 @@ export async function removeHiringTeamMemberAction(
   formData: FormData
 ): Promise<RecruitmentJobActionState> {
   try {
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
     const parsed = safeParseWithSchema(hiringTeamMemberIdSchema, {
       memberId: formString(formData, "memberId"),
       jobOpeningId: formString(formData, "jobOpeningId"),

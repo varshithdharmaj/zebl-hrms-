@@ -9,6 +9,7 @@ export {
   validateProfileAvatarFile,
 } from "./file-validation";
 export {
+  coerceProfileImageUrl,
   profileAvatarHasCustomImage,
   resolveProfileAvatarSrc,
 } from "./display";

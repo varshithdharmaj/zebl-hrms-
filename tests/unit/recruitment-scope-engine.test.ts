@@ -48,6 +48,38 @@ describe("RecruitmentScopeEngine", () => {
     expect(hiringTeamFindMany).not.toHaveBeenCalled();
   });
 
+  it("gives unrestricted scope to users with recruitmentOpsAccess", async () => {
+    const opsManager: RecruitmentActor = {
+      userId: "u-mgr1",
+      email: "mgr1.test@zebl.local",
+      role: "employee",
+      employeeId: 101,
+      recruitmentOpsAccess: true,
+    };
+    const scope = await RecruitmentScopeEngine.resolveScope(opsManager);
+    expect(scope.mode).toBe("unrestricted");
+    expect(hiringTeamFindMany).not.toHaveBeenCalled();
+    await expect(RecruitmentScopeEngine.canManageJob(opsManager)).resolves.toBe(true);
+    await expect(RecruitmentScopeEngine.canManageCandidate(opsManager)).resolves.toBe(
+      true
+    );
+  });
+
+  it("does not grant unrestricted scope from email alone", async () => {
+    const lookalike: RecruitmentActor = {
+      userId: "u-fake",
+      email: "mgr1.test@zebl.local",
+      role: "employee",
+      employeeId: 999,
+      recruitmentOpsAccess: false,
+    };
+    hiringTeamFindMany.mockResolvedValue([]);
+    panelistFindMany.mockResolvedValue([]);
+    applicationFindMany.mockResolvedValue([]);
+    const scope = await RecruitmentScopeEngine.resolveScope(lookalike);
+    expect(scope.mode).toBe("assigned");
+  });
+
   it("allows HR to manage jobs/candidates/applications", async () => {
     await expect(RecruitmentScopeEngine.canManageJob(hrActor)).resolves.toBe(true);
     await expect(RecruitmentScopeEngine.canManageCandidate(hrActor)).resolves.toBe(true);

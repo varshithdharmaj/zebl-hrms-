@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ProfileAvatar } from "@/components/shared/profile-avatar";
 import { DashboardDateRangeFilter } from "@/components/employee/dashboard/dashboard-date-range-filter";
 import { cn } from "@/lib/utils";
 import type { HeroStatus, HeroTone } from "@/lib/attendance/hero-status";
@@ -89,6 +90,8 @@ function BadgePill({ label }: { label: string }) {
 export function AttendanceHero({
   firstName,
   fullName,
+  profilePhotoUrl = null,
+  profileHref = "/employee/profile",
   displayDate,
   dateIso,
   heroStatus,
@@ -97,6 +100,9 @@ export function AttendanceHero({
 }: {
   firstName: string;
   fullName: string | null;
+  profilePhotoUrl?: string | null;
+  /** Self-profile route for photo management (display-only avatar stays on the dashboard). */
+  profileHref?: string;
   displayDate: string;
   dateIso: string;
   /** null = the status computation failed; the hero renders a scoped error + retry. */
@@ -107,6 +113,7 @@ export function AttendanceHero({
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const tone = TONE_STYLES[heroStatus?.tone ?? "neutral"];
+  const avatarAlt = fullName ? `${fullName} profile photo` : "Your profile photo";
 
   const badgeLabels: string[] = heroStatus
     ? [
@@ -139,14 +146,31 @@ export function AttendanceHero({
             <time dateTime={dateIso}>{displayDate}</time>
           </div>
 
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-muted-foreground">{greeting},</p>
-            <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-              {firstName}
-              {fullName && fullName !== firstName ? (
-                <span className="text-muted-foreground"> · {fullName.split(" ").slice(1).join(" ")}</span>
-              ) : null}
-            </h1>
+          <div className="flex items-start gap-4">
+            <ProfileAvatar
+              imageUrl={profilePhotoUrl}
+              alt={avatarAlt}
+              editable={false}
+              size="md"
+              className="shrink-0"
+            />
+            <div className="min-w-0 space-y-2">
+              <p className="text-sm font-medium text-muted-foreground">{greeting},</p>
+              <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+                {firstName}
+                {fullName && fullName !== firstName ? (
+                  <span className="text-muted-foreground"> · {fullName.split(" ").slice(1).join(" ")}</span>
+                ) : null}
+              </h1>
+              <p>
+                <Link
+                  href={profileHref}
+                  className="text-sm font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                >
+                  Update profile photo
+                </Link>
+              </p>
+            </div>
           </div>
 
           {heroStatus ? (
@@ -271,9 +295,12 @@ export function AttendanceHeroSkeleton() {
       <div className="flex flex-col gap-8 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0 flex-1 space-y-5">
           <Skeleton className="h-6 w-40 rounded-full" />
-          <div className="space-y-2">
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-9 w-56" />
+          <div className="flex items-start gap-4">
+            <Skeleton className="h-24 w-24 shrink-0 rounded-full" />
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-9 w-56" />
+            </div>
           </div>
           <Skeleton className="h-8 w-48" />
           <div className="flex gap-8">

@@ -9,6 +9,7 @@ import {
   RecruitmentPermissionService,
   toRecruitmentActor,
 } from "@/lib/recruitment/permissions/permission-service";
+import { canAccessRecruitmentAdministration } from "@/lib/recruitment/permissions/recruitment-test-manager";
 import { RecruitmentScopeEngine } from "@/lib/recruitment/permissions/recruitment-scope-engine";
 import { prismaInterviewRepository } from "@/lib/recruitment/repositories/prisma-interview-repository";
 import type {
@@ -356,7 +357,7 @@ export function createInterviewService(
       const isPanelist = interview.panelists.some(
         (p) => p.employee.user?.id === session.id
       );
-      const isHrOrAdmin = ["hr", "super_admin"].includes(session.role);
+      const isHrOrAdmin = canAccessRecruitmentAdministration(session);
 
       if (!isPanelist && !isHrOrAdmin) {
         throw new RecruitmentDomainError("REC_UNAUTHORIZED", "You are not authorized to submit feedback for this interview.");

@@ -14,6 +14,7 @@ import { startOfDay, toISODate } from "@/lib/utils";
 export async function EmployeeDashboard({
   employeeId,
   employeeName,
+  profilePhotoUrl = null,
   selectedDate,
   startDate,
   endDate,
@@ -21,6 +22,7 @@ export async function EmployeeDashboard({
 }: {
   employeeId: number;
   employeeName: string | null;
+  profilePhotoUrl?: string | null;
   selectedDate?: string;
   startDate?: string;
   endDate?: string;
@@ -94,6 +96,7 @@ export async function EmployeeDashboard({
         <AttendanceHero
           firstName={firstName}
           fullName={employeeName}
+          profilePhotoUrl={profilePhotoUrl}
           displayDate={displayDate}
           dateIso={data.selectedDate}
           heroStatus={heroStatus}

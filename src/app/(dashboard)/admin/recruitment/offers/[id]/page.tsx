@@ -1,6 +1,6 @@
 import React from "react";
 import { notFound } from "next/navigation";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { getOfferCached } from "@/lib/recruitment/offer/queries";
 import { prismaTimelineProjectionRepository } from "@/lib/recruitment/repositories/prisma-timeline-repository";
@@ -112,7 +112,7 @@ export default async function OfferDetailPage({
   params: Promise<{ id: string }>;
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const session = await requireHROrSuperAdminSession();
+  const session = await requireRecruitmentAdminSession();
   const { id } = await params;
   const nav = parseRecruitmentNavSearch((await searchParams) ?? {});
 

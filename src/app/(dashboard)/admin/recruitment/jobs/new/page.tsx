@@ -1,6 +1,6 @@
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { JobOpeningForm } from "@/components/recruitment/jobs/job-opening-form";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import {
   listActivePipelineTemplatesCached,
   listEmployeeOptionsCached,
@@ -8,7 +8,7 @@ import {
 import { RecruitmentPermissionService } from "@/lib/recruitment/permissions/permission-service";
 
 export default async function NewJobOpeningPage() {
-  const session = await requireHROrSuperAdminSession();
+  const session = await requireRecruitmentAdminSession();
   const [employees, templates] = await Promise.all([
     listEmployeeOptionsCached(),
     listActivePipelineTemplatesCached(),

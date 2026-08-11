@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import type { ActionState } from "@/actions/types";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { safeParseWithSchema } from "@/lib/validation/parse";
 import {
   renameDocumentSchema,
@@ -57,7 +57,7 @@ export async function uploadCandidateDocumentAction(
   formData: FormData
 ): Promise<RecruitmentDocumentActionState> {
   try {
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
@@ -90,7 +90,7 @@ export async function replaceCandidateResumeAction(
   formData: FormData
 ): Promise<RecruitmentDocumentActionState> {
   try {
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
@@ -134,7 +134,7 @@ export async function renameCandidateDocumentAction(
     const parsed = safeParseWithSchema(renameDocumentSchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
@@ -166,7 +166,7 @@ export async function deleteCandidateDocumentAction(
     const parsed = safeParseWithSchema(documentIdSchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
@@ -198,7 +198,7 @@ export async function restoreCandidateDocumentAction(
     const parsed = safeParseWithSchema(documentIdSchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
@@ -230,7 +230,7 @@ export async function setPrimaryResumeAction(
     const parsed = safeParseWithSchema(documentIdSchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };

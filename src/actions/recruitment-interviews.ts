@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import type { ActionState } from "@/actions/types";
-import { requireHROrSuperAdminSession, getSessionOrThrow } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession, getSessionOrThrow } from "@/lib/auth-guards";
 import { safeParseWithSchema } from "@/lib/validation/parse";
 import {
   createInterviewSchema,
@@ -44,7 +44,7 @@ export async function createInterviewAction(
     if (!parsed.ok) return { error: parsed.error };
 
     // 2. Permission Check
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     // 3. Feature Flag Check
     if (!isRecruitmentModuleEnabled()) {
@@ -78,7 +78,7 @@ export async function updateInterviewAction(
     if (!parsed.ok) return { error: parsed.error };
 
     // 2. Permission Check
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     // 3. Feature Flag Check
     if (!isRecruitmentModuleEnabled()) {
@@ -112,7 +112,7 @@ export async function cancelInterviewAction(
     if (!parsed.ok) return { error: parsed.error };
 
     // 2. Permission Check
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     // 3. Feature Flag Check
     if (!isRecruitmentModuleEnabled()) {
@@ -146,7 +146,7 @@ export async function completeInterviewAction(
     if (!parsed.ok) return { error: parsed.error };
 
     // 2. Permission Check
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     // 3. Feature Flag Check
     if (!isRecruitmentModuleEnabled()) {
@@ -185,7 +185,7 @@ export async function markInterviewNoShowAction(
     const parsed = safeParseWithSchema(interviewIdSchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
@@ -253,7 +253,7 @@ export async function archiveInterviewAction(
     if (!parsed.ok) return { error: parsed.error };
 
     // 2. Permission Check
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     // 3. Feature Flag Check
     if (!isRecruitmentModuleEnabled()) {
@@ -285,7 +285,7 @@ export async function restoreInterviewAction(
     if (!parsed.ok) return { error: parsed.error };
 
     // 2. Permission Check
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     // 3. Feature Flag Check
     if (!isRecruitmentModuleEnabled()) {

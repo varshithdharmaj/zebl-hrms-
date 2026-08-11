@@ -1,5 +1,5 @@
 import type { SessionUser } from "@/lib/session";
-import { canAccessHRAdministration } from "@/lib/permissions";
+import { canAccessRecruitmentAdministration } from "@/lib/recruitment/permissions/recruitment-test-manager";
 import {
   getDepartmentAnalyticsCached,
   getHiringFunnelCached,
@@ -57,7 +57,7 @@ export async function buildReportBundle(
       ]);
 
     let recruiter: Awaited<ReturnType<typeof getRecruiterPerformanceCached>> = [];
-    if (canAccessHRAdministration(session.role)) {
+    if (canAccessRecruitmentAdministration(session)) {
       try {
         recruiter = await getRecruiterPerformanceCached(session, analyticsFilters);
       } catch {

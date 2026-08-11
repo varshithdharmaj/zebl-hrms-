@@ -3,7 +3,7 @@ import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { JobOpeningsFilters, jobListHref } from "@/components/recruitment/jobs/job-openings-filters";
 import { JobOpeningsTable } from "@/components/recruitment/jobs/job-openings-table";
 import { Button } from "@/components/ui/button";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { listJobOpeningsCached } from "@/lib/recruitment/job/queries";
 import { jobOpeningListFiltersSchema } from "@/lib/validation/schemas/recruitment/jobs";
 import { JobOpeningStatus } from "@/generated/prisma/enums";
@@ -14,7 +14,7 @@ export default async function RecruitmentJobsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const session = await requireHROrSuperAdminSession();
+  const session = await requireRecruitmentAdminSession();
   const raw = await searchParams;
 
   const parsed = jobOpeningListFiltersSchema.safeParse({

@@ -1,5 +1,4 @@
 import {
-  canAccessHRAdministration,
   canAccessPlatformAdministration,
   PermissionError,
   requirePermission,
@@ -7,6 +6,9 @@ import {
 import type { SessionUser } from "@/lib/session";
 import type { RecruitmentActor } from "@/lib/recruitment/types/actor";
 import { RecruitmentScopeEngine } from "@/lib/recruitment/permissions/recruitment-scope-engine";
+import {
+  canAccessRecruitmentAdministration,
+} from "@/lib/recruitment/permissions/recruitment-test-manager";
 import {
   isRecruitmentConversionEnabled,
   isRecruitmentModuleEnabled,
@@ -21,6 +23,7 @@ export function toRecruitmentActor(session: SessionUser): RecruitmentActor {
     email: session.email,
     role: session.role,
     employeeId: session.employeeId,
+    recruitmentOpsAccess: session.recruitmentOpsAccess === true,
   };
 }
 
@@ -59,8 +62,14 @@ export const RecruitmentPermissionService = {
     }
   },
 
+  /**
+   * Recruitment administration: HR/SA, or the two recruitment test managers.
+   * Not a general /admin gate — do not use outside Recruitment.
+   */
   requireHrAdministration(session: SessionUser): void {
-    requirePermission(session, canAccessHRAdministration);
+    if (!canAccessRecruitmentAdministration(session)) {
+      throw new PermissionError("Unauthorized");
+    }
   },
 
   requireSuperAdmin(session: SessionUser): void {
@@ -68,20 +77,20 @@ export const RecruitmentPermissionService = {
   },
 
   canEditCompensation(session: SessionUser): boolean {
-    return canAccessHRAdministration(session.role);
+    return canAccessRecruitmentAdministration(session);
   },
 
-  /** Job compensation band — SA/HR only (architecture ownership table). */
+  /** Job compensation band — SA/HR + recruitment test managers (ops validation). */
   canEditJobCompensation(session: SessionUser): boolean {
-    return canAccessHRAdministration(session.role);
+    return canAccessRecruitmentAdministration(session);
   },
 
   canViewJobCompensation(session: SessionUser): boolean {
-    return canAccessHRAdministration(session.role);
+    return canAccessRecruitmentAdministration(session);
   },
 
   canViewCompensation(session: SessionUser, isAssignedHiringManager: boolean): boolean {
-    if (canAccessHRAdministration(session.role)) return true;
+    if (canAccessRecruitmentAdministration(session)) return true;
     return isAssignedHiringManager;
   },
 
@@ -108,7 +117,7 @@ export const RecruitmentPermissionService = {
     const inScope =
       scope.mode === "unrestricted" || scope.candidateIds.includes(candidateId);
     if (!inScope) return false;
-    if (canAccessHRAdministration(session.role)) return true;
+    if (canAccessRecruitmentAdministration(session)) return true;
     return (
       scope.capabilities.isRecruiterOnJob || scope.capabilities.isHiringManager
     );

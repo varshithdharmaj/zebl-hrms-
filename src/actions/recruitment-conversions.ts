@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import type { ActionState } from "@/actions/types";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { safeParseWithSchema } from "@/lib/validation/parse";
 import { convertEmployeeSchema } from "@/lib/validation/schemas/recruitment";
 import { createEmployeeConversionService } from "@/lib/recruitment/services/employee-conversion-service";
@@ -34,7 +34,7 @@ export async function convertEmployeeAction(
     const parsed = safeParseWithSchema(convertEmployeeSchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
@@ -58,7 +58,7 @@ export async function previewConversionAction(
   offerId: string
 ): Promise<{ error?: string } | Awaited<ReturnType<ReturnType<typeof createEmployeeConversionService>["previewConversion"]>>> {
   try {
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
     }

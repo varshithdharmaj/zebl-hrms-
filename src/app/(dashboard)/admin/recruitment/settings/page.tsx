@@ -1,9 +1,9 @@
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { SectionCard } from "@/components/ui/section-card";
 
 export default async function RecruitmentSettingsPage() {
-  await requireHROrSuperAdminSession();
+  await requireRecruitmentAdminSession();
 
   return (
     <div className="space-y-6 lg:space-y-8">

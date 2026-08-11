@@ -1,13 +1,10 @@
 "use client";
 
-import { useId, useRef, type ChangeEvent } from "react";
+import { useEffect, useId, useRef, useState, type ChangeEvent } from "react";
 import { Camera, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import {
-  DEFAULT_PROFILE_AVATAR_SRC,
-  PROFILE_AVATAR_ACCEPT,
-} from "@/lib/profile-avatar/constants";
+import { PROFILE_AVATAR_ACCEPT } from "@/lib/profile-avatar/constants";
 import {
   profileAvatarHasCustomImage,
   resolveProfileAvatarSrc,
@@ -53,21 +50,28 @@ export function ProfileAvatar({
   const describedById = useId();
   const errorId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
+  const [remoteLoadFailed, setRemoteLoadFailed] = useState(false);
 
   const { state, selectFile, clear } = useLocalImagePreview({
     onImageSelected,
     onImageRemoved,
   });
 
+  useEffect(() => {
+    setRemoteLoadFailed(false);
+  }, [imageUrl]);
+
   const displaySrc = resolveProfileAvatarSrc({
     previewUrl: state.previewUrl,
     imageUrl,
     cleared: state.cleared,
+    remoteLoadFailed,
   });
   const hasCustomImage = profileAvatarHasCustomImage({
     previewUrl: state.previewUrl,
     imageUrl,
     cleared: state.cleared,
+    remoteLoadFailed,
   });
   const actionLabel = hasCustomImage ? "Change photo" : "Upload photo";
   const isBusy = state.isProcessing;
@@ -105,11 +109,11 @@ export function ProfileAvatar({
             "rounded-full object-cover border border-border bg-muted shadow-subtle",
             isBusy && "opacity-70"
           )}
-          onError={(event) => {
-            const img = event.currentTarget;
-            if (img.dataset.fallbackApplied === "1") return;
-            img.dataset.fallbackApplied = "1";
-            img.src = DEFAULT_PROFILE_AVATAR_SRC;
+          onError={() => {
+            // Keep fallback in React state — mutating img.src is overwritten by controlled `src={displaySrc}`.
+            if (!state.previewUrl) {
+              setRemoteLoadFailed(true);
+            }
           }}
         />
         {editable && (
@@ -160,7 +164,7 @@ export function ProfileAvatar({
             )}
           </div>
           <p id={describedById} className="max-w-[14rem] text-center text-[11px] text-muted-foreground">
-            JPEG, PNG, or WebP · max 2 MB. Changes stay on this device until upload is enabled.
+            JPEG, PNG, or WebP · max 500 KB. Changes stay on this device until upload is enabled.
           </p>
           <input
             ref={inputRef}

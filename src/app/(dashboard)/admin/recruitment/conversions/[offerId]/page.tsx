@@ -1,5 +1,5 @@
 import React from "react";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { previewConversionCached } from "@/lib/recruitment/conversion/queries";
 import { ConversionPreview } from "@/components/recruitment/conversions/conversion-preview";
 import { RecruitmentContextHeader } from "@/components/recruitment/shared/recruitment-context-header";
@@ -14,7 +14,7 @@ export default async function RecruitmentConversionDetailPage({
   params: Promise<{ offerId: string }>;
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const session = await requireHROrSuperAdminSession();
+  const session = await requireRecruitmentAdminSession();
   const { offerId } = await params;
   const nav = parseRecruitmentNavSearch((await searchParams) ?? {});
 

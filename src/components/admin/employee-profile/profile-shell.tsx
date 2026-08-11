@@ -16,6 +16,7 @@ import type { AppUserRole } from "@/lib/roles";
 import type { AccountStatus, AuthProvider } from "@/generated/prisma/enums";
 import { AccountManagementTab } from "@/components/admin/employee-profile/account-management-tab";
 import { ProfileAvatar } from "@/components/shared/profile-avatar";
+import { canEditEmployeeProfilePhoto } from "@/lib/permissions";
 
 export type ProfileEmployee = {
   id: number;
@@ -105,6 +106,7 @@ export function EmployeeProfileShell({
   overviewStats,
   currentUserId,
   currentUserRole,
+  currentUserEmployeeId = null,
 }: {
   employee: ProfileEmployee;
   attendance: AttendanceSummary;
@@ -121,8 +123,14 @@ export function EmployeeProfileShell({
   };
   currentUserId: string;
   currentUserRole: AppUserRole;
+  currentUserEmployeeId?: number | null;
 }) {
   const [activeTab, setActiveTab] = useState("overview");
+  const canEditPhoto = canEditEmployeeProfilePhoto({
+    actorRole: currentUserRole,
+    actorEmployeeId: currentUserEmployeeId,
+    targetEmployeeId: employee.id,
+  });
 
   return (
     <div className="space-y-6 lg:space-y-8">
@@ -131,7 +139,7 @@ export function EmployeeProfileShell({
           <ProfileAvatar
             imageUrl={employee.user?.profilePhotoUrl}
             alt={`${employee.name} profile photo`}
-            editable
+            editable={canEditPhoto}
             size="lg"
           />
         }

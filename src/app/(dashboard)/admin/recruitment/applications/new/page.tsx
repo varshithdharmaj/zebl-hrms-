@@ -1,7 +1,7 @@
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { ApplicationForm } from "@/components/recruitment/applications/application-form";
 import { RecruitmentContextHeader } from "@/components/recruitment/shared/recruitment-context-header";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { getEmployeeOptions } from "@/lib/recruitment/candidate";
 import { prisma } from "@/lib/prisma";
 import { buildRecruitmentBreadcrumbs } from "@/lib/recruitment/navigation/breadcrumbs";
@@ -16,7 +16,7 @@ export default async function NewApplicationPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireHROrSuperAdminSession();
+  await requireRecruitmentAdminSession();
   const raw = await searchParams;
   const nav = parseRecruitmentNavSearch(raw);
   const preselectedCandidateId = typeof raw.candidateId === "string" ? raw.candidateId : undefined;

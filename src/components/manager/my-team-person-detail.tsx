@@ -22,14 +22,24 @@ export function MyTeamPersonSkeleton() {
   );
 }
 
-export function MyTeamPersonView({ data }: { data: MyTeamPersonDetail }) {
+export function MyTeamPersonView({
+  data,
+  canEditPhoto = false,
+}: {
+  data: MyTeamPersonDetail;
+  canEditPhoto?: boolean;
+}) {
   const { person, leaveBalances, recentLeaves, attendance } = data;
 
   return (
     <div className="space-y-8">
       <WorkspacePageHeader
         leading={
-          <ProfileAvatar alt={`${person.name} profile photo`} editable={false} size="lg" />
+          <ProfileAvatar
+            alt={`${person.name} profile photo`}
+            editable={canEditPhoto}
+            size="lg"
+          />
         }
         title={person.name}
         description={`${person.employeeCode}${person.designation ? ` · ${person.designation}` : ""}`}

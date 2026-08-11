@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import type { ActionState } from "@/actions/types";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { safeParseWithSchema } from "@/lib/validation/parse";
 import {
   acceptCandidateAiRecoverySchema,
@@ -32,7 +32,7 @@ export async function generateCandidateAiRecoveryAction(
     const parsed = safeParseWithSchema(generateCandidateAiRecoverySchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
     }
@@ -70,7 +70,7 @@ export async function dismissCandidateAiRecoveryAction(
     const parsed = safeParseWithSchema(dismissCandidateAiRecoverySchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
     }
@@ -96,7 +96,7 @@ export async function acceptCandidateAiRecoveryAction(
     const parsed = safeParseWithSchema(acceptCandidateAiRecoverySchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
     }

@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { ApplicationDetailView } from "@/components/recruitment/applications/application-detail";
 import { RecruitmentContextHeader } from "@/components/recruitment/shared/recruitment-context-header";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { getApplicationCached } from "@/lib/recruitment/application";
 import { getEmployeeOptions } from "@/lib/recruitment/candidate";
 import { listInterviewsCached } from "@/lib/recruitment/interview/queries";
@@ -30,7 +30,7 @@ export default async function ApplicationDetailPage({
   params: Promise<{ id: string }>;
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const session = await requireHROrSuperAdminSession();
+  const session = await requireRecruitmentAdminSession();
   const { id } = await params;
   const nav = parseRecruitmentNavSearch((await searchParams) ?? {});
 

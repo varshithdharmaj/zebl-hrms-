@@ -1,4 +1,4 @@
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { getJobDashboardCountsCached } from "@/lib/recruitment/job/queries";
 import { getInterviewDashboardMetricsCached, listInterviewsCached } from "@/lib/recruitment/interview/queries";
 import { getOfferDashboardMetricsCached } from "@/lib/recruitment/offer/queries";
@@ -14,7 +14,7 @@ import { buildHiringFunnelCounts } from "@/lib/recruitment/dashboard/build-funne
 import { withTiming } from "@/lib/observability/timing";
 
 export default async function RecruitmentDashboardPage() {
-  const session = await requireHROrSuperAdminSession();
+  const session = await requireRecruitmentAdminSession();
   const [
     counts,
     interviewMetrics,

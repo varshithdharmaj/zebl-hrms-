@@ -1,5 +1,5 @@
 import React from "react";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { OfferForm } from "@/components/recruitment/offers/offer-form";
 import { RecruitmentContextHeader } from "@/components/recruitment/shared/recruitment-context-header";
@@ -17,7 +17,7 @@ export default async function NewOfferPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireHROrSuperAdminSession();
+  await requireRecruitmentAdminSession();
   const rawParams = await searchParams;
   const nav = parseRecruitmentNavSearch(rawParams);
 

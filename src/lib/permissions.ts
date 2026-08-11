@@ -54,6 +54,21 @@ export function canManageEmployee(role: AppUserRole): boolean {
 }
 
 /**
+ * UI authorization for profile-photo controls on an employee profile.
+ * HR/Super Admin may edit any employee photo; employees may edit only their own.
+ * Backend upload (future) must re-check this independently — `editable` is UI-only.
+ */
+export function canEditEmployeeProfilePhoto(input: {
+  actorRole: AppUserRole;
+  actorEmployeeId: number | null | undefined;
+  targetEmployeeId: number;
+}): boolean {
+  if (canManageEmployee(input.actorRole)) return true;
+  if (input.actorEmployeeId == null) return false;
+  return input.actorEmployeeId === input.targetEmployeeId;
+}
+
+/**
  * Account-level administration is target-aware: HR may administer employee accounts,
  * while only Super Admin may administer HR or Super Admin accounts.
  */

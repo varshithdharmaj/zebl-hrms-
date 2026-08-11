@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { RecruitmentCommunicationStatus, RecruitmentCommunicationType } from "@/generated/prisma/enums";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { Button } from "@/components/ui/button";
 import {
@@ -84,7 +84,7 @@ async function CommunicationCenterLoader({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const session = await requireHROrSuperAdminSession();
+  const session = await requireRecruitmentAdminSession();
   const raw = await searchParams;
 
   const tab = parseTab(raw.tab);

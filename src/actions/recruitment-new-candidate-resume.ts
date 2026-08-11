@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import type { ActionState } from "@/actions/types";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { isRecruitmentModuleEnabled } from "@/lib/recruitment/config/feature-flags";
 import { scheduleCandidateAiEnrichment } from "@/lib/recruitment/ai/schedule-enrichment";
 import { scheduleCandidateAiFieldRecovery } from "@/lib/recruitment/ai/schedule-recovery";
@@ -39,7 +39,7 @@ export async function parseResumeForNewCandidateAction(
   formData: FormData
 ): Promise<ParseNewCandidateResumeActionState> {
   try {
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
     }
@@ -83,7 +83,7 @@ export async function createCandidateFromResumeReviewAction(
   input: unknown
 ): Promise<CreateCandidateFromResumeActionState> {
   try {
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
     }

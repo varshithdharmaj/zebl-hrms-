@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -15,10 +16,10 @@ export function WorkspacePageHeader({
   description?: string;
   backHref?: string;
   backLabel?: string;
-  action?: React.ReactNode;
-  badge?: React.ReactNode;
+  action?: ReactNode;
+  badge?: ReactNode;
   /** Optional leading visual (e.g. profile avatar). */
-  leading?: React.ReactNode;
+  leading?: ReactNode;
 }) {
   return (
     <section className="rounded-xl border border-border bg-card p-6 shadow-subtle lg:p-7">

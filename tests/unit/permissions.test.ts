@@ -5,6 +5,7 @@ import {
   canAccessEmployeeShell,
   canAccessHRAdministration,
   canAccessPlatformAdministration,
+  canEditEmployeeProfilePhoto,
   canManageUserRoles,
   canAdministerEmployeeAccount,
   canModifyTargetUser,
@@ -73,5 +74,43 @@ describe("three-role permissions", () => {
     expect(canAdministerEmployeeAccount("super_admin", "employee")).toBe(true);
     expect(canAdministerEmployeeAccount("super_admin", "hr")).toBe(true);
     expect(canAdministerEmployeeAccount("super_admin", "super_admin")).toBe(true);
+  });
+
+  it("allows profile-photo edit for own employee or HR/admin targets", () => {
+    expect(
+      canEditEmployeeProfilePhoto({
+        actorRole: "employee",
+        actorEmployeeId: 20,
+        targetEmployeeId: 20,
+      })
+    ).toBe(true);
+    expect(
+      canEditEmployeeProfilePhoto({
+        actorRole: "employee",
+        actorEmployeeId: 20,
+        targetEmployeeId: 21,
+      })
+    ).toBe(false);
+    expect(
+      canEditEmployeeProfilePhoto({
+        actorRole: "employee",
+        actorEmployeeId: null,
+        targetEmployeeId: 20,
+      })
+    ).toBe(false);
+    expect(
+      canEditEmployeeProfilePhoto({
+        actorRole: "hr",
+        actorEmployeeId: null,
+        targetEmployeeId: 20,
+      })
+    ).toBe(true);
+    expect(
+      canEditEmployeeProfilePhoto({
+        actorRole: "super_admin",
+        actorEmployeeId: 1,
+        targetEmployeeId: 99,
+      })
+    ).toBe(true);
   });
 });

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import type { ActionState } from "@/actions/types";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { safeParseWithSchema } from "@/lib/validation/parse";
 import { submitHiringDecisionSchema } from "@/lib/validation/schemas/recruitment";
 import { createHiringDecisionService } from "@/lib/recruitment/services/hiring-decision-service";
@@ -31,7 +31,7 @@ export async function submitHiringDecisionAction(
     const parsed = safeParseWithSchema(submitHiringDecisionSchema, input);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };

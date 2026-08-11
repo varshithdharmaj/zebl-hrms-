@@ -7,6 +7,7 @@ import {
   PermissionError,
   requirePermission,
 } from "@/lib/permissions";
+import { canAccessRecruitmentAdministration } from "@/lib/recruitment/permissions/recruitment-test-manager";
 import type { AppUserRole } from "@/lib/roles";
 
 export async function getSessionOrThrow(): Promise<SessionUser> {
@@ -26,6 +27,19 @@ export async function requireSuperAdminSession(): Promise<SessionUser> {
 export async function requireHROrSuperAdminSession(): Promise<SessionUser> {
   const session = await getSessionOrThrow();
   requirePermission(session, canAccessHRAdministration);
+  return session;
+}
+
+/**
+ * Recruitment workspace gate: HR / Super Admin, or the two allowlisted
+ * recruitment test managers ({@link canAccessRecruitmentAdministration}).
+ * Does not admit general employees or other line managers.
+ */
+export async function requireRecruitmentAdminSession(): Promise<SessionUser> {
+  const session = await getSessionOrThrow();
+  if (!canAccessRecruitmentAdministration(session)) {
+    throw new PermissionError("Unauthorized");
+  }
   return session;
 }
 

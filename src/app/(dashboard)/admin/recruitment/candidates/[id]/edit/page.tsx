@@ -1,4 +1,4 @@
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { getCandidateCached, getEmployeeOptions } from "@/lib/recruitment/candidate";
 import { isRecruitmentDomainError } from "@/lib/recruitment/shared/errors";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
@@ -10,7 +10,7 @@ export default async function EditCandidatePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await requireHROrSuperAdminSession();
+  const session = await requireRecruitmentAdminSession();
   const { id } = await params;
 
   let candidate;

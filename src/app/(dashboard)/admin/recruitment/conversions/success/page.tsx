@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { prisma } from "@/lib/prisma";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ export default async function ConversionSuccessPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireHROrSuperAdminSession();
+  await requireRecruitmentAdminSession();
   const raw = await searchParams;
   const employeeIdRaw = Array.isArray(raw.employeeId) ? raw.employeeId[0] : raw.employeeId;
   const candidateIdRaw = Array.isArray(raw.candidateId) ? raw.candidateId[0] : raw.candidateId;

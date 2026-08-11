@@ -4,7 +4,7 @@ import {
   RecruitmentEmailTemplateType,
 } from "@/generated/prisma/enums";
 import type { SessionUser } from "@/lib/session";
-import { canAccessHRAdministration } from "@/lib/permissions";
+import { canAccessRecruitmentAdministration } from "@/lib/recruitment/permissions/recruitment-test-manager";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import type { CommunicationRepository } from "@/lib/recruitment/repositories/communication-repository";
@@ -42,7 +42,7 @@ import { normalizePagination } from "@/lib/recruitment/shared/pagination";
 
 async function assertCanManageTemplates(session: SessionUser) {
   RecruitmentPermissionService.requireModuleEnabled();
-  if (!canAccessHRAdministration(session.role)) {
+  if (!canAccessRecruitmentAdministration(session)) {
     throw new RecruitmentDomainError(
       "REC_UNAUTHORIZED",
       "Only HR or Super Admin can manage email templates."
@@ -54,7 +54,7 @@ async function assertCanManageTemplates(session: SessionUser) {
 async function assertCanWrite(session: SessionUser) {
   RecruitmentPermissionService.requireModuleEnabled();
   const scope = await RecruitmentScopeEngine.getScope(session);
-  if (canAccessHRAdministration(session.role)) return scope;
+  if (canAccessRecruitmentAdministration(session)) return scope;
   if (!scope.capabilities.isRecruiterOnJob) {
     throw new RecruitmentDomainError(
       "REC_UNAUTHORIZED",

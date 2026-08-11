@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { getEmployeeOptions } from "@/lib/recruitment/candidate";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { NewCandidateFlow } from "@/components/recruitment/candidates/new-candidate-flow";
@@ -8,7 +8,7 @@ import { buildRecruitmentBreadcrumbs } from "@/lib/recruitment/navigation/breadc
 import { CandidateLoadingSkeleton } from "@/components/recruitment/candidates/candidate-loading-skeleton";
 
 export default async function NewCandidatePage() {
-  await requireHROrSuperAdminSession();
+  await requireRecruitmentAdminSession();
   const employees = await getEmployeeOptions();
 
   return (

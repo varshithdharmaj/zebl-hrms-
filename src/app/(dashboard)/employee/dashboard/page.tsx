@@ -51,6 +51,7 @@ export default async function EmployeeDashboardPage({
       <EmployeeDashboard
         employeeId={session.employeeId}
         employeeName={session.employeeName}
+        profilePhotoUrl={session.profilePhotoUrl ?? null}
         selectedDate={params.date}
         startDate={range.from}
         endDate={range.to}

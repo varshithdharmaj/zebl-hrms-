@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { ComposeWorkspace } from "@/components/recruitment/communications/compose/compose-workspace";
 import { CommunicationLoadingSkeleton } from "@/components/recruitment/communications/communication-loading-skeleton";
 import { loadComposePageData } from "@/components/recruitment/communications/compose/load-compose-page-data";
@@ -15,7 +15,7 @@ async function NewComposeLoader({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const session = await requireHROrSuperAdminSession();
+  const session = await requireRecruitmentAdminSession();
   const params = await searchParams;
   const modeRaw = firstParam(params.mode);
   const mode =

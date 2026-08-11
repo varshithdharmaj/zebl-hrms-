@@ -245,6 +245,8 @@ model User {
   mustChangePassword  Boolean      @default(false) @map("must_change_password")
   lockedAt            DateTime?    @map("locked_at")
   lockedReason        String?      @map("locked_reason")
+  /** Recruitment admin ops without HR role — permanent capability (not general /admin). */
+  recruitmentOpsAccess Boolean     @default(false) @map("recruitment_ops_access")
   employeeId          Int?         @unique
   employee              Employee?               @relation(fields: [employeeId], references: [id])
   notificationPreference NotificationPreference?

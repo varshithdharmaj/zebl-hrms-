@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { ConversionTabsView } from "@/components/recruitment/conversions/conversion-tabs-view";
 import {
@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 
 export default async function PendingConversionsPage() {
-  const session = await requireHROrSuperAdminSession();
+  const session = await requireRecruitmentAdminSession();
 
   const [pendingConversions, history] = await Promise.all([
     listPendingConversionsCached(session),

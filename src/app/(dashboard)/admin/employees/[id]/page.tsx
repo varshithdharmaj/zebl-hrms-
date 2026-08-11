@@ -112,6 +112,7 @@ export default async function EmployeeProfilePage({
       overviewStats={overviewStats}
       currentUserId={session.id}
       currentUserRole={session.role}
+      currentUserEmployeeId={session.employeeId}
     />
   );
 }

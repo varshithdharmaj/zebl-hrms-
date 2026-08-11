@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { isRecruitmentModuleEnabled } from "@/lib/recruitment/config/feature-flags";
 import { createOfferService } from "@/lib/recruitment/services/offer-service";
 import { sanitizeDownloadFileName } from "@/lib/recruitment/shared/storage-paths";
@@ -7,7 +7,7 @@ import { RecruitmentDomainError } from "@/lib/recruitment/shared/errors";
 
 export async function GET(request: Request) {
   try {
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     if (!isRecruitmentModuleEnabled()) {
       return new NextResponse("Recruitment module is disabled.", { status: 403 });

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { JobOpeningForm } from "@/components/recruitment/jobs/job-opening-form";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import {
   getJobOpeningCached,
   listActivePipelineTemplatesCached,
@@ -15,7 +15,7 @@ export default async function EditJobOpeningPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await requireHROrSuperAdminSession();
+  const session = await requireRecruitmentAdminSession();
   const { id } = await params;
 
   let job;

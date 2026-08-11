@@ -8,10 +8,20 @@ export type SessionUser = {
   role: AppUserRole;
   employeeId: number | null;
   employeeName: string | null;
+  /**
+   * Present when the session is resolved from the DB (getSession).
+   * Not required in JWT-only Edge checks — omit or null there.
+   */
+  profilePhotoUrl?: string | null;
   sessionVersion: number;
   authProvider: AuthProvider;
   sessionId?: string;
   mustChangePassword?: boolean;
+  /**
+   * Permanent Recruitment ops capability (User.recruitmentOpsAccess).
+   * Legacy JWTs without the claim are treated as false.
+   */
+  recruitmentOpsAccess?: boolean;
 };
 
 export type SessionTokenPayload = SessionUser;
@@ -36,6 +46,7 @@ export async function createSessionToken(user: SessionUser, sessionId?: string):
     sessionVersion: user.sessionVersion,
     authProvider: user.authProvider,
     mustChangePassword: user.mustChangePassword ?? false,
+    recruitmentOpsAccess: user.recruitmentOpsAccess === true,
   })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -62,6 +73,7 @@ export async function verifySessionToken(token: string): Promise<SessionTokenPay
       authProvider,
       sessionId: typeof payload.jti === "string" ? payload.jti : undefined,
       mustChangePassword: payload.mustChangePassword === true,
+      recruitmentOpsAccess: payload.recruitmentOpsAccess === true,
     };
   } catch {
     return null;

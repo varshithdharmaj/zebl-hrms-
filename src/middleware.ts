@@ -3,6 +3,10 @@ import type { NextRequest } from "next/server";
 import { verifySessionToken, COOKIE_NAME } from "@/lib/session";
 import { getRoleHomePath } from "@/lib/routing";
 import { canAccessAdmin, canAccessEmployeeShell } from "@/lib/permissions";
+import {
+  isAdminRecruitmentPath,
+  isRecruitmentTestManager,
+} from "@/lib/recruitment/permissions/recruitment-test-manager";
 import { isSessionVersionStale } from "@/lib/session-version-cache";
 import type { AppUserRole } from "@/lib/roles";
 import {
@@ -76,7 +80,11 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname.startsWith("/admin") && !canAccessAdmin(session.role)) {
-    return redirectToRoleHome(request, session.role);
+    const recruitmentException =
+      isAdminRecruitmentPath(pathname) && isRecruitmentTestManager(session);
+    if (!recruitmentException) {
+      return redirectToRoleHome(request, session.role);
+    }
   }
 
   if (pathname.startsWith("/employee") && !canAccessEmployeeShell(session.role)) {

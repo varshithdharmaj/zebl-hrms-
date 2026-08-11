@@ -25,9 +25,9 @@ import {
   CalendarClock,
   Headset,
   Briefcase,
-  Calendar,
   FileCheck,
   UserCheck,
+  UserRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logoutAction } from "@/actions/auth";
@@ -41,12 +41,43 @@ import { isSidebarNavActive } from "@/lib/recruitment/navigation/sidebar-nav-act
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
 type NavGroup = { group: string; items: NavItem[] };
 
+const RECRUITMENT_WORKSPACE_ITEMS: NavItem[] = [
+  { href: "/admin/recruitment", label: "Recruitment Dashboard", icon: LayoutDashboard },
+  { href: "/admin/recruitment/jobs", label: "Jobs", icon: Briefcase },
+  { href: "/admin/recruitment/candidates", label: "Candidates", icon: Users },
+  { href: "/admin/recruitment/pipeline", label: "Pipeline", icon: ClipboardList },
+  { href: "/admin/recruitment/offers", label: "Offers", icon: FileCheck },
+  { href: "/admin/recruitment/conversions", label: "Conversions", icon: UserCheck },
+  { href: "/admin/recruitment/reports", label: "Reports", icon: ScrollText },
+];
+
+function recruitmentOpsOnlyNav(): NavGroup[] {
+  return [
+    {
+      group: "Hiring Workspace",
+      items: RECRUITMENT_WORKSPACE_ITEMS,
+    },
+    {
+      group: "Workspace",
+      items: [
+        { href: "/employee/dashboard", label: "Employee Home", icon: LayoutDashboard },
+        { href: "/employee/profile", label: "Profile", icon: UserRound },
+      ],
+    },
+  ];
+}
+
 function groupedNavForRole(
   role: AppUserRole,
   showMyTeamGroup: boolean,
   showRecruitmentNav: boolean,
-  showPanelistInterviews = false
+  showPanelistInterviews = false,
+  recruitmentOpsOnly = false
 ): NavGroup[] {
+  if (recruitmentOpsOnly) {
+    return recruitmentOpsOnlyNav();
+  }
+
   switch (role) {
     case "super_admin":
     case "hr":
@@ -68,16 +99,7 @@ function groupedNavForRole(
           ? [
               {
                 group: "Hiring Workspace",
-                items: [
-                  { href: "/admin/recruitment", label: "Recruitment Dashboard", icon: LayoutDashboard },
-                  { href: "/admin/recruitment/jobs", label: "Jobs", icon: Briefcase },
-                  { href: "/admin/recruitment/candidates", label: "Candidates", icon: Users },
-                  { href: "/admin/recruitment/pipeline", label: "Pipeline", icon: ClipboardList },
-                  { href: "/admin/recruitment/interviews", label: "Interviews", icon: Calendar },
-                  { href: "/admin/recruitment/offers", label: "Offers", icon: FileCheck },
-                  { href: "/admin/recruitment/conversions", label: "Conversions", icon: UserCheck },
-                  { href: "/admin/recruitment/reports", label: "Reports", icon: ScrollText },
-                ],
+                items: RECRUITMENT_WORKSPACE_ITEMS,
               },
             ]
           : []),
@@ -129,7 +151,11 @@ function groupedNavForRole(
       ];
     case "employee":
     default:
-      return buildEmployeeShellNav(showMyTeamGroup, showPanelistInterviews);
+      return buildEmployeeShellNav(
+        showMyTeamGroup,
+        showPanelistInterviews,
+        showRecruitmentNav
+      );
   }
 }
 
@@ -150,6 +176,7 @@ export function AppSidebar({
   showMyTeamGroup = false,
   showRecruitmentNav = false,
   showPanelistInterviews = false,
+  recruitmentOpsOnly = false,
 }: {
   role: AppUserRole;
   userName: string;
@@ -159,8 +186,10 @@ export function AppSidebar({
   showMyTeamGroup?: boolean;
   /** Admin: Recruitment nav (RECRUITMENT_MODULE_ENABLED). */
   showRecruitmentNav?: boolean;
-  /** Employee: panelist interview workspace when recruitment module is on. */
+  /** Employee: Interviews nav when assigned as a panelist (and recruitment is on). */
   showPanelistInterviews?: boolean;
+  /** Recruitment test managers: Hiring Workspace only. */
+  recruitmentOpsOnly?: boolean;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const onMobileOpen = () => setMobileOpen(true);
@@ -170,9 +199,12 @@ export function AppSidebar({
     role,
     showMyTeamGroup,
     showRecruitmentNav,
-    showPanelistInterviews
+    showPanelistInterviews,
+    recruitmentOpsOnly
   );
-  const home = getRoleHomePath(role);
+  const home = recruitmentOpsOnly
+    ? "/admin/recruitment"
+    : getRoleHomePath(role);
 
   return (
     <>
@@ -285,26 +317,55 @@ export function AppSidebar({
         </nav>
 
         <div className="border-t border-sidebar-border p-3">
-          <div
-            className={cn(
-              "mb-2 flex items-center gap-3 rounded-lg bg-sidebar-accent px-2.5 py-2 border border-border/60 transition-all duration-200",
-              collapsed ? "lg:justify-center lg:px-2" : ""
-            )}
-            title={collapsed ? `${userName} (${ROLE_LABELS[role]})` : undefined}
-          >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-foreground text-xs font-bold text-background">
-              {initials(userName)}
-            </span>
-            <div
+          {role === "employee" ? (
+            <Link
+              href="/employee/profile"
+              onClick={onMobileClose}
+              title={collapsed ? `${userName} · Profile` : undefined}
+              aria-label={`Open profile for ${userName}`}
               className={cn(
-                "min-w-0 flex-1 transition-opacity duration-200",
-                collapsed ? "lg:hidden lg:opacity-0" : "opacity-100"
+                "mb-2 flex items-center gap-3 rounded-lg bg-sidebar-accent px-2.5 py-2 border border-border/60 transition-all duration-200",
+                "hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+                collapsed ? "lg:justify-center lg:px-2" : ""
               )}
             >
-              <p className="truncate text-xs font-semibold text-foreground">{userName}</p>
-              <p className="truncate text-[0.6875rem] text-muted-foreground">{ROLE_LABELS[role]}</p>
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-foreground text-xs font-bold text-background">
+                {initials(userName)}
+              </span>
+              <div
+                className={cn(
+                  "min-w-0 flex-1 transition-opacity duration-200",
+                  collapsed ? "lg:hidden lg:opacity-0" : "opacity-100"
+                )}
+              >
+                <p className="truncate text-xs font-semibold text-foreground">{userName}</p>
+                <p className="truncate text-[0.6875rem] text-muted-foreground">
+                  Profile · {ROLE_LABELS[role]}
+                </p>
+              </div>
+            </Link>
+          ) : (
+            <div
+              className={cn(
+                "mb-2 flex items-center gap-3 rounded-lg bg-sidebar-accent px-2.5 py-2 border border-border/60 transition-all duration-200",
+                collapsed ? "lg:justify-center lg:px-2" : ""
+              )}
+              title={collapsed ? `${userName} (${ROLE_LABELS[role]})` : undefined}
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-foreground text-xs font-bold text-background">
+                {initials(userName)}
+              </span>
+              <div
+                className={cn(
+                  "min-w-0 flex-1 transition-opacity duration-200",
+                  collapsed ? "lg:hidden lg:opacity-0" : "opacity-100"
+                )}
+              >
+                <p className="truncate text-xs font-semibold text-foreground">{userName}</p>
+                <p className="truncate text-[0.6875rem] text-muted-foreground">{ROLE_LABELS[role]}</p>
+              </div>
             </div>
-          </div>
+          )}
           <form action={logoutAction}>
             <button
               type="submit"

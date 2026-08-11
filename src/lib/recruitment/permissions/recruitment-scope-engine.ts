@@ -6,6 +6,10 @@ import {
   canAccessHRAdministration,
   PermissionError,
 } from "@/lib/permissions";
+import {
+  canAccessRecruitmentAdministration,
+  hasRecruitmentOpsAccess,
+} from "@/lib/recruitment/permissions/recruitment-test-manager";
 import type { RecruitmentActor } from "@/lib/recruitment/types/actor";
 import type { RecruitmentScope } from "@/lib/recruitment/types/scope";
 import {
@@ -20,11 +24,15 @@ import { RecruitmentDomainError } from "@/lib/recruitment/shared/errors";
  * Pattern mirrors {@link PeopleScopeEngine}: resolve once per request (React cache),
  * never scatter managerId/employeeId filters in feature queries.
  *
- * Unrestricted for SA/HR via existing {@link canAccessHRAdministration}.
+ * Unrestricted for SA/HR and users with User.recruitmentOpsAccess via
+ * {@link canAccessRecruitmentAdministration}.
  * Assigned scope from HiringTeamMember + InterviewPanelist (+ application manager).
  */
 async function resolveScopeUncached(actor: RecruitmentActor): Promise<RecruitmentScope> {
-  if (canAccessHRAdministration(actor.role)) {
+  if (
+    canAccessHRAdministration(actor.role) ||
+    hasRecruitmentOpsAccess(actor)
+  ) {
     return unrestrictedRecruitmentScope();
   }
 
@@ -139,6 +147,7 @@ export const RecruitmentScopeEngine = {
       email: session.email,
       role: session.role,
       employeeId: session.employeeId,
+      recruitmentOpsAccess: session.recruitmentOpsAccess === true,
     };
     return resolveRecruitmentScope(actor);
   },
@@ -176,25 +185,25 @@ export const RecruitmentScopeEngine = {
   },
 
   async canManageJob(actor: RecruitmentActor, jobOpeningId?: string): Promise<boolean> {
-    if (!canAccessHRAdministration(actor.role)) return false;
+    if (!canAccessRecruitmentAdministration(actor)) return false;
     if (!jobOpeningId) return true;
     return RecruitmentScopeEngine.canViewJob(actor, jobOpeningId);
   },
 
   async canManageCandidate(actor: RecruitmentActor, candidateId?: string): Promise<boolean> {
-    if (!canAccessHRAdministration(actor.role)) return false;
+    if (!canAccessRecruitmentAdministration(actor)) return false;
     if (!candidateId) return true;
     return RecruitmentScopeEngine.canViewCandidate(actor, candidateId);
   },
 
   async canManageApplication(actor: RecruitmentActor, applicationId?: string): Promise<boolean> {
-    if (!canAccessHRAdministration(actor.role)) return false;
+    if (!canAccessRecruitmentAdministration(actor)) return false;
     if (!applicationId) return true;
     return RecruitmentScopeEngine.canViewApplication(actor, applicationId);
   },
 
   async canInterview(actor: RecruitmentActor, applicationId: string): Promise<boolean> {
-    if (canAccessHRAdministration(actor.role)) return true;
+    if (canAccessRecruitmentAdministration(actor)) return true;
     const scope = await resolveRecruitmentScope(actor);
     return (
       scope.capabilities.isInterviewer &&

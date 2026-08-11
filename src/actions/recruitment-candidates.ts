@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import type { ActionState } from "@/actions/types";
 import {
-  requireHROrSuperAdminSession,
+  requireRecruitmentAdminSession,
   getSessionOrThrow,
 } from "@/lib/auth-guards";
 import { safeParseWithSchema } from "@/lib/validation/parse";
@@ -104,7 +104,7 @@ export async function createCandidateAction(
     if (!parsed.ok) return { error: parsed.error };
 
     // 2. Permission Check
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     // 3. Feature Flag Check
     if (!isRecruitmentModuleEnabled()) {
@@ -138,7 +138,7 @@ export async function updateCandidateAction(
     if (!parsed.ok) return { error: parsed.error };
 
     // 2. Permission Check
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     // 3. Feature Flag Check
     if (!isRecruitmentModuleEnabled()) {
@@ -171,7 +171,7 @@ export async function archiveCandidateAction(
     if (!parsed.ok) return { error: parsed.error };
 
     // 2. Permission Check
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     // 3. Feature Flag Check
     if (!isRecruitmentModuleEnabled()) {
@@ -205,7 +205,7 @@ export async function restoreCandidateAction(
     if (!parsed.ok) return { error: parsed.error };
 
     // 2. Permission Check
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     // 3. Feature Flag Check
     if (!isRecruitmentModuleEnabled()) {
@@ -245,7 +245,7 @@ export async function mergeCandidateAction(
     if (!parsed.ok) return { error: parsed.error };
 
     // 2. Permission Check
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     // 3. Feature Flag Check
     if (!isRecruitmentModuleEnabled()) {
@@ -360,7 +360,7 @@ export async function addCandidateNoteAction(
     const parsed = safeParseWithSchema(addCandidateNoteSchema, payload);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };

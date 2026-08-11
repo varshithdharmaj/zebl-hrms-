@@ -1,11 +1,11 @@
 import { Suspense } from "react";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { ComposeWorkspace } from "@/components/recruitment/communications/compose/compose-workspace";
 import { CommunicationLoadingSkeleton } from "@/components/recruitment/communications/communication-loading-skeleton";
 import { loadComposePageData } from "@/components/recruitment/communications/compose/load-compose-page-data";
 
 async function EditDraftLoader({ id }: { id: string }) {
-  const session = await requireHROrSuperAdminSession();
+  const session = await requireRecruitmentAdminSession();
   const data = await loadComposePageData(session, id);
   return <ComposeWorkspace data={data} />;
 }

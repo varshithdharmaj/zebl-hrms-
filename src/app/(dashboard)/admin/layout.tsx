@@ -5,6 +5,10 @@ import { getSession } from "@/lib/auth";
 import { redirectToLogin } from "@/lib/auth/redirect-login";
 import { canAccessAdmin } from "@/lib/permissions";
 import { isRecruitmentModuleEnabled } from "@/lib/recruitment/config/feature-flags";
+import {
+  canAccessRecruitmentAdministration,
+  isRecruitmentTestManager,
+} from "@/lib/recruitment/permissions/recruitment-test-manager";
 
 export default async function AdminLayout({
   children,
@@ -12,13 +16,22 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   const session = await getSession();
-  if (!session || !canAccessAdmin(session.role)) return redirectToLogin();
+  if (!session) return redirectToLogin();
+
+  const isAdmin = canAccessAdmin(session.role);
+  const isRecruitmentOpsTestManager = isRecruitmentTestManager(session);
+  if (!isAdmin && !isRecruitmentOpsTestManager) return redirectToLogin();
+
+  const showRecruitmentNav =
+    isRecruitmentModuleEnabled() &&
+    (isAdmin || canAccessRecruitmentAdministration(session));
 
   return (
     <AppShell
       user={session}
       variant="wide"
-      showRecruitmentNav={isRecruitmentModuleEnabled()}
+      showRecruitmentNav={showRecruitmentNav}
+      recruitmentOpsOnly={!isAdmin && isRecruitmentOpsTestManager}
     >
       {/*
         Stable Suspense in the shared layout (not only leaf loading.tsx).

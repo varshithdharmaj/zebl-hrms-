@@ -1,6 +1,6 @@
 import React from "react";
 import { notFound } from "next/navigation";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { InterviewForm } from "@/components/recruitment/interviews/interview-form";
 import { RecruitmentContextHeader } from "@/components/recruitment/shared/recruitment-context-header";
@@ -13,7 +13,7 @@ export default async function EditInterviewPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await requireHROrSuperAdminSession();
+  const session = await requireRecruitmentAdminSession();
   const { id } = await params;
 
   const interview = await getInterviewCached(session, id);

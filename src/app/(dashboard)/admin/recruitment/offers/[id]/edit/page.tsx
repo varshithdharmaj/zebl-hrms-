@@ -1,6 +1,6 @@
 import React from "react";
 import { notFound } from "next/navigation";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { RecruitmentContextHeader } from "@/components/recruitment/shared/recruitment-context-header";
 import { getOfferCached } from "@/lib/recruitment/offer/queries";
@@ -81,7 +81,7 @@ export default async function EditOfferPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await requireHROrSuperAdminSession();
+  const session = await requireRecruitmentAdminSession();
   const { id } = await params;
 
   const offer = await getOfferCached(session, id);

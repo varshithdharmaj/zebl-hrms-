@@ -5,7 +5,7 @@ import { RecruitmentContextHeader } from "@/components/recruitment/shared/recrui
 import { buildRecruitmentBreadcrumbs } from "@/lib/recruitment/navigation/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { getJobOpeningCached } from "@/lib/recruitment/job/queries";
 import { RecruitmentPermissionService } from "@/lib/recruitment/permissions/permission-service";
 import { RecruitmentTimelineService } from "@/lib/recruitment/services/timeline-service";
@@ -16,7 +16,7 @@ export default async function JobOpeningDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await requireHROrSuperAdminSession();
+  const session = await requireRecruitmentAdminSession();
   const { id } = await params;
 
   let job;

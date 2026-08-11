@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import type { ActionState } from "@/actions/types";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { safeParseWithSchema } from "@/lib/validation/parse";
 import {
   createApplicationSchema,
@@ -51,7 +51,7 @@ export async function createApplicationAction(
     if (!parsed.ok) return { error: parsed.error };
 
     // 2. Permission Check
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     // 3. Feature Flag Check
     if (!isRecruitmentModuleEnabled()) {
@@ -86,7 +86,7 @@ export async function updateApplicationAction(
     if (!parsed.ok) return { error: parsed.error };
 
     // 2. Permission Check
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     // 3. Feature Flag Check
     if (!isRecruitmentModuleEnabled()) {
@@ -119,7 +119,7 @@ export async function moveApplicationStageAction(
     if (!parsed.ok) return { error: parsed.error };
 
     // 2. Permission Check
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     // 3. Feature Flag Check
     if (!isRecruitmentModuleEnabled()) {
@@ -152,7 +152,7 @@ export async function rejectApplicationAction(
     if (!parsed.ok) return { error: parsed.error };
 
     // 2. Permission Check
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     // 3. Feature Flag Check
     if (!isRecruitmentModuleEnabled()) {
@@ -185,7 +185,7 @@ export async function withdrawApplicationAction(
     if (!parsed.ok) return { error: parsed.error };
 
     // 2. Permission Check
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     // 3. Feature Flag Check
     if (!isRecruitmentModuleEnabled()) {
@@ -218,7 +218,7 @@ export async function reopenApplicationAction(
     if (!parsed.ok) return { error: parsed.error };
 
     // 2. Permission Check
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     // 3. Feature Flag Check
     if (!isRecruitmentModuleEnabled()) {
@@ -262,7 +262,7 @@ export async function archiveApplicationAction(
     if (!parsed.ok) return { error: parsed.error };
 
     // 2. Permission Check
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     // 3. Feature Flag Check
     if (!isRecruitmentModuleEnabled()) {
@@ -295,7 +295,7 @@ export async function restoreApplicationAction(
     if (!parsed.ok) return { error: parsed.error };
 
     // 2. Permission Check
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     // 3. Feature Flag Check
     if (!isRecruitmentModuleEnabled()) {
@@ -334,7 +334,7 @@ export async function updateApplicationAssessmentAction(
     const parsed = safeParseWithSchema(updateApplicationAssessmentSchema, payload);
     if (!parsed.ok) return { error: parsed.error };
 
-    const session = await requireHROrSuperAdminSession();
+    const session = await requireRecruitmentAdminSession();
 
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };

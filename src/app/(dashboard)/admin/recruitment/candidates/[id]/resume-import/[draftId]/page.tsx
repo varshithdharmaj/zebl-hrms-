@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { isRecruitmentModuleEnabled } from "@/lib/recruitment/config/feature-flags";
 import { createResumeImportService } from "@/lib/recruitment/services/resume-import-service";
 import { isRecruitmentDomainError } from "@/lib/recruitment/shared/errors";
@@ -13,7 +13,7 @@ export default async function ResumeImportDraftPage({
 }: {
   params: Promise<{ id: string; draftId: string }>;
 }) {
-  const session = await requireHROrSuperAdminSession();
+  const session = await requireRecruitmentAdminSession();
   const { id: candidateId, draftId } = await params;
 
   if (!isRecruitmentModuleEnabled()) {

@@ -6,7 +6,7 @@ import {
   RecruitmentTimelineEntityType,
 } from "@/generated/prisma/enums";
 import type { SessionUser } from "@/lib/session";
-import { canAccessHRAdministration } from "@/lib/permissions";
+import { canAccessRecruitmentAdministration } from "@/lib/recruitment/permissions/recruitment-test-manager";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
 import { enqueueNotification } from "@/lib/notifications/notification-queue";
 import {
@@ -53,7 +53,7 @@ async function assertCanWriteCommunication(session: SessionUser): Promise<Recrui
   RecruitmentPermissionService.requireModuleEnabled();
   const scope = await RecruitmentScopeEngine.getScope(session);
 
-  if (canAccessHRAdministration(session.role)) {
+  if (canAccessRecruitmentAdministration(session)) {
     return scope;
   }
 

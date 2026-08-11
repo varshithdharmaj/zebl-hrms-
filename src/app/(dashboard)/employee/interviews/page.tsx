@@ -4,7 +4,10 @@ import { notFound } from "next/navigation";
 import { getSessionOrThrow } from "@/lib/auth-guards";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { InterviewTable } from "@/components/recruitment/interviews/interview-table";
-import { listInterviewsCached } from "@/lib/recruitment/interview/queries";
+import {
+  hasPanelistInterviewAssignment,
+  listInterviewsCached,
+} from "@/lib/recruitment/interview/queries";
 import { InterviewStatus } from "@/generated/prisma/enums";
 import { isRecruitmentModuleEnabled } from "@/lib/recruitment/config/feature-flags";
 import { cn } from "@/lib/utils";
@@ -38,6 +41,9 @@ export default async function EmployeeInterviewsPage({
   }
 
   const session = await getSessionOrThrow();
+  if (!(await hasPanelistInterviewAssignment(session.employeeId))) {
+    notFound();
+  }
   const params = await searchParams;
   const view = resolveView(params.view);
 

@@ -1,5 +1,5 @@
 import { getSessionOrThrow } from "@/lib/auth-guards";
-import { canAccessHRAdministration } from "@/lib/permissions";
+import { canAccessRecruitmentAdministration } from "@/lib/recruitment/permissions/recruitment-test-manager";
 import { PermissionError } from "@/lib/permissions";
 import type { SessionUser } from "@/lib/session";
 import {
@@ -9,13 +9,13 @@ import {
 import { RecruitmentScopeEngine } from "@/lib/recruitment/permissions/recruitment-scope-engine";
 
 /**
- * HR, Super Admin, and scoped recruitment managers/recruiters may view reports.
+ * HR, Super Admin, recruitment test managers, and scoped recruitment managers/recruiters may view reports.
  */
 export async function requireRecruitmentReportSession(): Promise<SessionUser> {
   const session = await getSessionOrThrow();
   RecruitmentPermissionService.requireModuleEnabled();
 
-  if (canAccessHRAdministration(session.role)) {
+  if (canAccessRecruitmentAdministration(session)) {
     return session;
   }
 

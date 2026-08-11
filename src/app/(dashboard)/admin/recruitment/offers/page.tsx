@@ -4,7 +4,7 @@ import { OfferFilters } from "@/components/recruitment/offers/offer-filters";
 import { OfferTable } from "@/components/recruitment/offers/offer-table";
 import { OfferEmptyState } from "@/components/recruitment/offers/offer-empty-state";
 import { Button } from "@/components/ui/button";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { listOffersCached } from "@/lib/recruitment/offer/queries";
 import { offerListHref } from "@/lib/recruitment/offer/list-href";
 import { offerListFiltersSchema } from "@/lib/validation/schemas/recruitment";
@@ -17,7 +17,7 @@ export default async function RecruitmentOffersPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const session = await requireHROrSuperAdminSession();
+  const session = await requireRecruitmentAdminSession();
   const raw = await searchParams;
 
   const parsed = offerListFiltersSchema.safeParse({

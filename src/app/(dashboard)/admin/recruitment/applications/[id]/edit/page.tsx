@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { ApplicationForm } from "@/components/recruitment/applications/application-form";
 import { RecruitmentContextHeader } from "@/components/recruitment/shared/recruitment-context-header";
-import { requireHROrSuperAdminSession } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { getApplicationCached } from "@/lib/recruitment/application";
 import { getEmployeeOptions } from "@/lib/recruitment/candidate";
 import { prisma } from "@/lib/prisma";
@@ -13,7 +13,7 @@ export default async function EditApplicationPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const session = await requireHROrSuperAdminSession();
+  const session = await requireRecruitmentAdminSession();
   const { id } = await params;
 
   const app = await getApplicationCached(session, id);

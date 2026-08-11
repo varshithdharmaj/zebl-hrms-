@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
-import { canAccessEmployeeShell, PermissionError } from "@/lib/permissions";
+import { canAccessEmployeeShell, PermissionError, canEditEmployeeProfilePhoto } from "@/lib/permissions";
 import { getMyTeamPerson } from "@/lib/manager/team-people-query";
 import {
   MyTeamPersonSkeleton,
@@ -17,7 +17,12 @@ async function MyTeamPersonData({ employeeId }: { employeeId: number }) {
 
   try {
     const data = await getMyTeamPerson(session.employeeId, employeeId);
-    return <MyTeamPersonView data={data} />;
+    const canEditPhoto = canEditEmployeeProfilePhoto({
+      actorRole: session.role,
+      actorEmployeeId: session.employeeId,
+      targetEmployeeId: employeeId,
+    });
+    return <MyTeamPersonView data={data} canEditPhoto={canEditPhoto} />;
   } catch (err) {
     if (err instanceof PermissionError) {
       redirect("/employee/team/people");

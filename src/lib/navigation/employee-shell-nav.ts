@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   Headset,
   Briefcase,
+  UserRound,
   type LucideIcon,
 } from "lucide-react";
 
@@ -25,6 +26,7 @@ export type EmployeeNavGroup = {
 
 const WORKSPACE_ITEMS: EmployeeNavItem[] = [
   { href: "/employee/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/employee/profile", label: "Profile", icon: UserRound },
   { href: "/employee/attendance", label: "History", icon: History },
   { href: "/employee/leaves", label: "Leaves", icon: CalendarDays },
   { href: "/employee/tickets", label: "My Tickets", icon: Headset },
@@ -50,15 +52,24 @@ const SECURITY_ITEMS: EmployeeNavItem[] = [
  */
 export function buildEmployeeShellNav(
   showMyTeamGroup: boolean,
-  showPanelistInterviews = false
+  showPanelistInterviews = false,
+  showRecruitmentOpsLink = false
 ): EmployeeNavGroup[] {
-  const workspaceItems = showPanelistInterviews
-    ? [
-        ...WORKSPACE_ITEMS.slice(0, 1),
-        { href: "/employee/interviews", label: "Interviews", icon: Briefcase },
-        ...WORKSPACE_ITEMS.slice(1),
-      ]
-    : WORKSPACE_ITEMS;
+  const workspaceItems = [...WORKSPACE_ITEMS];
+  // Prefer full Recruitment workspace when present — avoid duplicate Interviews entry.
+  if (showRecruitmentOpsLink) {
+    workspaceItems.splice(1, 0, {
+      href: "/admin/recruitment",
+      label: "Recruitment",
+      icon: Briefcase,
+    });
+  } else if (showPanelistInterviews) {
+    workspaceItems.splice(1, 0, {
+      href: "/employee/interviews",
+      label: "Interviews",
+      icon: Briefcase,
+    });
+  }
 
   const groups: EmployeeNavGroup[] = [
     {
