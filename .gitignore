@@ -9,6 +9,7 @@ prisma/*.db-journal
 vercel-env.import
 .vercel
 src/generated/prisma
-storage/
+# Local FS blob root only (not src/lib/recruitment/storage source)
+/storage/
 
 tsconfig.tsbuildinfo
