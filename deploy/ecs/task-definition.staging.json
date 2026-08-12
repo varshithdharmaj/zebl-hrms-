@@ -24,7 +24,8 @@
         { "name": "RECRUITMENT_MODULE_ENABLED", "value": "true" },
         { "name": "RECRUITMENT_STORAGE_DRIVER", "value": "s3" },
         { "name": "AUTH_SSO_AUTO_LINK", "value": "false" },
-        { "name": "AUTH_SSO_AUTO_PROVISION", "value": "false" }
+        { "name": "AUTH_SSO_AUTO_PROVISION", "value": "false" },
+        { "name": "DATABASE_POOL_MAX", "value": "5" }
       ],
       "secrets": [
         {
@@ -101,7 +102,8 @@
         "timeout": 5,
         "retries": 3,
         "startPeriod": 40
-      }
+      },
+      "stopTimeout": 30
     }
   ]
 }

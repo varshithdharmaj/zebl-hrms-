@@ -34,6 +34,7 @@ Do **not** use local filesystem storage on multi-instance ECS.
 ```env
 # App / ECS task — pooled if using RDS Proxy / PgBouncer
 DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/zebl_ams?sslmode=require
+DATABASE_POOL_MAX=5
 
 # Migrations — direct (non-pooler) connection
 DIRECT_URL=postgresql://USER:PASSWORD@HOST:5432/zebl_ams?sslmode=require
@@ -100,6 +101,7 @@ APP_BASE_URL=https://ams-staging.example.com
 DATABASE_URL=...
 DIRECT_URL=...
 AUTH_SECRET=...                 # 32+ random chars
+DATABASE_POOL_MAX=5
 AUTH_SSO_AUTO_LINK=false
 AUTH_SSO_AUTO_PROVISION=false
 SMTP_HOST=email-smtp.<region>.amazonaws.com

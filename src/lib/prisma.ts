@@ -1,11 +1,31 @@
 import "server-only";
 
-// import { PrismaClient } from "@/generated/prisma/client"; // Cloudflare Workers
-import { PrismaClient } from "@/generated/prisma"; // Local Node.js / next dev
+import { PrismaClient } from "@/generated/prisma";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { cache } from "react";
+import { Pool } from "pg";
+import { resolveDatabasePoolMax, usesPgBouncer } from "@/lib/prisma-pool";
 
-const getClient = cache((): PrismaClient => {
+type PrismaGlobal = {
+  prisma?: PrismaClient;
+  pgPool?: Pool;
+  prismaShutdownRegistered?: boolean;
+};
+
+const globalForPrisma = globalThis as typeof globalThis & PrismaGlobal;
+
+function createPgPool(url: string): Pool {
+  const max = resolveDatabasePoolMax();
+  const pgbouncer = usesPgBouncer(url);
+  return new Pool({
+    connectionString: url,
+    max,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 10_000,
+    ...(pgbouncer ? { maxUses: 1 } : {}),
+  });
+}
+
+function createPrismaClient(): PrismaClient {
   const url = process.env.DATABASE_URL;
   if (!url || url.trim() === "") {
     throw new Error(
@@ -13,10 +33,15 @@ const getClient = cache((): PrismaClient => {
     );
   }
 
-  const adapter = new PrismaPg({
-    connectionString: url,
-    maxUses: 1,
+  const pool = globalForPrisma.pgPool ?? createPgPool(url);
+  globalForPrisma.pgPool = pool;
+
+  const adapter = new PrismaPg(pool, {
+    onPoolError: (err) => {
+      console.error("[prisma] pool error", err.message);
+    },
   });
+
   return new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
@@ -25,14 +50,30 @@ const getClient = cache((): PrismaClient => {
       timeout: 20_000,
     },
   });
-});
+}
 
-// Proxy defers PrismaClient creation to the first property access.
-// All call sites continue to use `prisma.user.findUnique(...)` unchanged.
-export const prisma = new Proxy({} as PrismaClient, {
-  get(_target, prop: string | symbol) {
-    const client = getClient();
-    const value = Reflect.get(client, prop, client);
-    return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(client) : value;
-  },
-});
+function registerShutdown(client: PrismaClient): void {
+  if (globalForPrisma.prismaShutdownRegistered) return;
+  if (typeof process === "undefined" || typeof process.once !== "function") return;
+  globalForPrisma.prismaShutdownRegistered = true;
+
+  const shutdown = () => {
+    void client.$disconnect().catch(() => undefined);
+    void globalForPrisma.pgPool?.end().catch(() => undefined);
+  };
+
+  process.once("SIGTERM", shutdown);
+  process.once("SIGINT", shutdown);
+}
+
+export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+globalForPrisma.prisma = prisma;
+registerShutdown(prisma);
+
+/**
+ * Same instance as {@link prisma}. Tests must not call `$disconnect()` —
+ * this client is process-wide and shared across parallel files.
+ */
+export function getPrismaClient(): PrismaClient {
+  return prisma;
+}
