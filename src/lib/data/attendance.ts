@@ -5,13 +5,18 @@ import { parsePayrollPeriodKey } from "@/lib/payroll/payroll-period";
 import { getPayrollSettings } from "@/lib/payroll/payroll-settings";
 import { aggregateAttendanceForRange } from "@/lib/attendance/aggregate-range";
 import { classifyAttendanceRecords, dateSpanOf } from "@/lib/attendance/history-classification";
+import { getEmployeeAttendanceRecordsForRange } from "@/lib/attendance/employee-attendance-year-cache";
 import {
   startOfDay,
   endOfDay,
   parseDateRange,
   toISODate,
 } from "@/lib/utils";
-import { PAGE_SIZE, RANGE_RECORD_LIMIT } from "@/lib/data/constants";
+import {
+  PAGE_SIZE,
+  RANGE_RECORD_LIMIT,
+  DASHBOARD_HISTORY_PREVIEW_LIMIT,
+} from "@/lib/data/constants";
 
 export async function getEmployeeDashboardData(
   employeeId: number,
@@ -45,25 +50,20 @@ export async function getEmployeeDashboardData(
         sessions: { orderBy: [{ checkIn: "asc" }, { id: "asc" }] },
       },
     }),
-    prisma.attendanceRecord.findMany({
-      where: {
-        employeeId,
-        attendanceDate: { gte: rangeStart, lt: toExclusive },
-      },
-      orderBy: { attendanceDate: "asc" },
-    }),
+    // Year-cached range load — shares DB work with YTD heatmap in the same request.
+    getEmployeeAttendanceRecordsForRange(employeeId, rangeStart, toExclusive),
   ]);
 
-  // Classified once for the whole period — the KPI aggregate and the History preview's
-  // recent-records slice both read off this same list, so there's no second round-trip
-  // for holiday/leave/override data covering the identical date range.
+  // Classified once for the whole period — KPIs use the full list; history preview is sliced below.
   const classifiedPeriodRecords = await classifyAttendanceRecords(
     employeeId,
     periodRecords,
     rangeStart,
     rangeEnd
   );
-  const classifiedRecentRecords = [...classifiedPeriodRecords].reverse().slice(0, RANGE_RECORD_LIMIT);
+  const classifiedRecentRecords = [...classifiedPeriodRecords]
+    .reverse()
+    .slice(0, DASHBOARD_HISTORY_PREVIEW_LIMIT);
   const aggregate = aggregateAttendanceForRange(classifiedPeriodRecords);
 
   const sessions =
@@ -115,6 +115,8 @@ export async function getEmployeeDashboardData(
     },
     periodRecords,
     recentRecords: classifiedRecentRecords,
+    /** Total classified rows in range — history UI uses this for "Showing X of Y" / View all. */
+    recentRecordsTotal: classifiedPeriodRecords.length,
   };
 }
 

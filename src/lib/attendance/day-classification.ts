@@ -31,6 +31,19 @@ export function isWorkedDayCategory(category: AttendanceDayCategory): boolean {
   return category === "PRESENT" || category === "WORKED_ON_WEEKLY_OFF" || category === "WORKED_ON_HOLIDAY";
 }
 
+/**
+ * Canonical "Present" for KPI / summary counts: any attended (worked) day.
+ * Distinct from heatmap *color bands* (below-target soft green vs Excellent).
+ * Optional second arg accepted so call sites can pass `(category, ratioTier)` uniformly.
+ */
+export function isPresentDay(
+  category: AttendanceDayCategory,
+  ratioTier?: AttendanceRatioTier | null
+): boolean {
+  void ratioTier;
+  return isWorkedDayCategory(category);
+}
+
 /** Checked in with enough data to judge, but below the expected-hours ratio. */
 export function isShortHoursTier(ratioTier: AttendanceRatioTier | null): boolean {
   return ratioTier === "very_low" || ratioTier === "partial" || ratioTier === "near_target";
@@ -39,6 +52,22 @@ export function isShortHoursTier(ratioTier: AttendanceRatioTier | null): boolean
 /** Met or exceeded the expected-hours ratio. */
 export function isTargetOrBetterTier(ratioTier: AttendanceRatioTier | null): boolean {
   return ratioTier === "target" || ratioTier === "overtime";
+}
+
+/** Worked day below expected hours (heatmap soft-green band / Short hours KPI). */
+export function isBelowTargetPresentDay(
+  category: AttendanceDayCategory,
+  ratioTier: AttendanceRatioTier | null
+): boolean {
+  return isWorkedDayCategory(category) && isShortHoursTier(ratioTier);
+}
+
+/** Worked day at/above expected hours (heatmap Excellent / target-met KPI). */
+export function isExcellentPresentDay(
+  category: AttendanceDayCategory,
+  ratioTier: AttendanceRatioTier | null
+): boolean {
+  return isWorkedDayCategory(category) && isTargetOrBetterTier(ratioTier);
 }
 
 export type AttendanceDayInput = {

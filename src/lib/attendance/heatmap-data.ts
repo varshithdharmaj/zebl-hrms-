@@ -1,7 +1,7 @@
-import { prisma } from "@/lib/prisma";
 import { startOfMonth, endOfMonth, startOfDay, isSameDay } from "@/lib/utils";
 import { getAttendanceSettings, getDateOverridesForRange } from "@/lib/attendance/attendance-settings";
 import { getHolidaysForRange, getApprovedLeaveForEmployeeRange } from "@/lib/leave/leave-calendar";
+import { getEmployeeAttendanceRecordsForRange } from "@/lib/attendance/employee-attendance-year-cache";
 import { getEffectiveAttendanceDayType, type AttendanceDayResult } from "@/lib/attendance/day-classification";
 
 export type AttendanceHeatmapMonth = {
@@ -48,11 +48,13 @@ export async function getEmployeeAttendanceHeatmapData(
   const startDate = new Date(currentYear, 0, 1);
   const endDate = new Date(today);
 
+  // endDate is inclusive (today). Year-cache API uses exclusive end — add one day.
+  const endExclusive = startOfDay(
+    new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate() + 1)
+  );
+
   const [records, holidays, approvedLeave, settings, overrides] = await Promise.all([
-    prisma.attendanceRecord.findMany({
-      where: { employeeId, attendanceDate: { gte: startDate, lte: endDate } },
-      orderBy: { attendanceDate: "asc" },
-    }),
+    getEmployeeAttendanceRecordsForRange(employeeId, startDate, endExclusive),
     getHolidaysForRange(startDate, endDate),
     getApprovedLeaveForEmployeeRange(employeeId, startDate, endDate),
     getAttendanceSettings(),

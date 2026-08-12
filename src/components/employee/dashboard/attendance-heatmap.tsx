@@ -71,7 +71,7 @@ export function buildTooltipText(day: AttendanceDayResult, expectedWorkMinutes: 
   if (isWorkedDayCategory(day.category)) {
     if (day.ratioTier) {
       parts.push(
-        isExcellentTier(day.ratioTier) ? "Excellent" : "Present",
+        isExcellentTier(day.ratioTier) ? "Excellent" : "Below target",
         RATIO_TIER_LABEL[day.ratioTier]
       );
     }
@@ -190,9 +190,9 @@ function HeatmapLegend() {
             <div>
               <div className="flex items-center gap-1.5 font-medium text-foreground">
                 <Check className="h-3 w-3 text-muted-foreground" aria-hidden />
-                Present
+                Below target
               </div>
-              <p className="text-muted-foreground">Worked, below expected hours</p>
+              <p className="text-muted-foreground">Attended, under expected hours</p>
             </div>
           </li>
           <li className="flex items-start gap-2 text-xs">
@@ -202,7 +202,7 @@ function HeatmapLegend() {
                 <Star className="h-3 w-3 text-muted-foreground" aria-hidden />
                 Excellent
               </div>
-              <p className="text-muted-foreground">Met or exceeded expected hours</p>
+              <p className="text-muted-foreground">Attended, met or exceeded expected hours</p>
             </div>
           </li>
           <li className="flex items-start gap-2 text-xs">
@@ -300,6 +300,10 @@ function MonthSummaryBar({ stats }: { stats: HeatmapMonthStats }) {
         <div className="flex gap-1">
           <dt>Excellent</dt>
           <dd className="font-medium text-foreground">{stats.excellentDays}</dd>
+        </div>
+        <div className="flex gap-1">
+          <dt>Below target</dt>
+          <dd className="font-medium text-foreground">{stats.belowTargetDays}</dd>
         </div>
         <div className="flex gap-1">
           <dt>Absent</dt>

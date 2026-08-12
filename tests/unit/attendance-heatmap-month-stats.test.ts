@@ -5,6 +5,8 @@ import {
   buildMonthWeekRanges,
   monthKeyFromDate,
 } from "@/lib/attendance/heatmap-month-stats";
+import { aggregateAttendanceForRange } from "@/lib/attendance/aggregate-range";
+import type { ClassifiedAttendanceRecord } from "@/lib/attendance/history-classification";
 
 function day(
   dateStr: string,
@@ -31,7 +33,7 @@ function day(
 }
 
 describe("buildHeatmapMonthStats", () => {
-  it("aggregates present, excellent, absent, leave and attendance %", () => {
+  it("aggregates present (attended), excellent, below-target, absent, leave", () => {
     const stats = buildHeatmapMonthStats([
       day("2026-07-01", "PRESENT", "near_target", 360),
       day("2026-07-02", "PRESENT", "target", 480),
@@ -42,11 +44,12 @@ describe("buildHeatmapMonthStats", () => {
 
     const july = stats.get("2026-07");
     expect(july).toBeTruthy();
-    expect(july!.presentDays).toBe(1);
+    expect(july!.presentDays).toBe(2);
     expect(july!.excellentDays).toBe(1);
+    expect(july!.belowTargetDays).toBe(1);
     expect(july!.absentDays).toBe(1);
     expect(july!.leaveDays).toBe(1);
-    // attended 2 / (2 present+excellent + 1 absent) = 67%
+    // attended 2 / (2 present + 1 absent) = 67%
     expect(july!.attendancePercent).toBe(67);
     expect(july!.averageWorkedMinutes).toBe(420);
   });
@@ -86,5 +89,47 @@ describe("buildMonthWeekRanges", () => {
 describe("monthKeyFromDate", () => {
   it("formats local YYYY-MM", () => {
     expect(monthKeyFromDate(new Date(2026, 6, 31))).toBe("2026-07");
+  });
+});
+
+describe("P0-1 Dashboard ↔ Heatmap Present parity", () => {
+  it("uses the same Present / Excellent / below-target counts for the same days", () => {
+    const days: AttendanceDayResult[] = [
+      day("2026-07-01", "PRESENT", "very_low", 120),
+      day("2026-07-02", "PRESENT", "partial", 300),
+      day("2026-07-03", "PRESENT", "near_target", 400),
+      day("2026-07-04", "PRESENT", "target", 480),
+      day("2026-07-05", "PRESENT", "overtime", 600),
+      day("2026-07-06", "WORKED_ON_HOLIDAY", "target", 480),
+      day("2026-07-07", "ABSENT"),
+      day("2026-07-08", "LEAVE"),
+      day("2026-07-09", "INSUFFICIENT_DATA"),
+    ];
+
+    const heatmap = buildHeatmapMonthStats(days).get("2026-07")!;
+
+    const records: ClassifiedAttendanceRecord[] = days.map((d, i) => ({
+      id: i + 1,
+      attendanceDate: d.date,
+      checkIn: "09:00",
+      checkOut: "18:00",
+      workedMinutes: d.workedMinutes,
+      overtimeMinutes: 0,
+      status: "Present",
+      category: d.category,
+      ratioTier: d.ratioTier,
+      expectedWorkMinutes: 480,
+      late: false,
+      earlyCheckout: false,
+      hasLeaveConflict: false,
+      remarks: null,
+    }));
+
+    const kpi = aggregateAttendanceForRange(records);
+
+    expect(kpi.presentDays).toBe(heatmap.presentDays);
+    expect(kpi.excellentDays).toBe(heatmap.excellentDays);
+    expect(kpi.shortHoursCount).toBe(heatmap.belowTargetDays);
+    expect(kpi.presentDays).toBe(kpi.excellentDays + kpi.shortHoursCount);
   });
 });

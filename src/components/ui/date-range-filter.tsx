@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CalendarDays, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,7 @@ export function DateRangeFilter({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
 
   const applied = useMemo(() => {
     const parsed = readDateRangeFromSearchParams(searchParams, {
@@ -112,7 +113,9 @@ export function DateRangeFilter({
     });
     next.delete("date");
     const qs = next.toString();
-    router.push(qs ? `${pathname}?${qs}` : pathname);
+    startTransition(() => {
+      router.push(qs ? `${pathname}?${qs}` : pathname);
+    });
   }
 
   function applyPreset(preset: Exclude<DateRangePreset, "custom">) {
@@ -148,6 +151,7 @@ export function DateRangeFilter({
       type="button"
       variant="outline"
       size="sm"
+      loading={isPending}
       className="inline-flex h-auto min-h-9 max-w-full items-center gap-2 rounded-xl border-border bg-card px-3 py-1.5 text-left"
       aria-haspopup="dialog"
       aria-expanded={open || mobileOpen}
@@ -187,6 +191,7 @@ export function DateRangeFilter({
       onApply={applyCustom}
       onCancel={cancelDraft}
       canApply={canApply}
+      isPending={isPending}
       maxDate={todayIso()}
     />
   );
@@ -231,6 +236,7 @@ function DateRangePanel({
   onApply,
   onCancel,
   canApply,
+  isPending = false,
   maxDate,
 }: {
   showPresets: boolean;
@@ -241,6 +247,7 @@ function DateRangePanel({
   onApply: () => void;
   onCancel: () => void;
   canApply: boolean;
+  isPending?: boolean;
   maxDate: string;
 }) {
   return (
@@ -298,8 +305,14 @@ function DateRangePanel({
         <Button type="button" variant="outline" size="sm" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="button" size="sm" disabled={!canApply} onClick={onApply}>
-          Apply
+        <Button
+          type="button"
+          size="sm"
+          disabled={!canApply}
+          loading={isPending}
+          onClick={onApply}
+        >
+          {isPending ? "Applying…" : "Apply"}
         </Button>
       </div>
     </div>

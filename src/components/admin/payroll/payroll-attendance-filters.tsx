@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,6 +34,7 @@ export function PayrollAttendanceFilters({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [isNavigating, startTransition] = useTransition();
   const [search, setSearch] = useState(defaultSearch ?? "");
   const [period, setPeriod] = useState(defaultPeriod);
   const [shift, setShift] = useState(
@@ -66,7 +67,9 @@ export function PayrollAttendanceFilters({
         else p.delete(key);
       }
 
-      router.push(`/admin/payroll-attendance?${p.toString()}`);
+      startTransition(() => {
+        router.push(`/admin/payroll-attendance?${p.toString()}`);
+      });
     },
     [router, searchParams, period, search, shift, shortfall, ot, late, absent, pending]
   );
@@ -78,18 +81,19 @@ export function PayrollAttendanceFilters({
   }
 
   return (
-    <div className="space-y-3.5">
+    <div className="space-y-3.5" aria-busy={isNavigating || undefined}>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="space-y-1 sm:col-span-2">
           <Label htmlFor="payroll-period" className="text-xs font-semibold text-slate-700">Payroll period</Label>
           <select
             id="payroll-period"
             value={period}
+            disabled={isNavigating}
             onChange={(e) => {
               setPeriod(e.target.value);
               push({ period: e.target.value });
             }}
-            className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1 text-xs font-medium text-slate-900 shadow-subtle focus:outline-none focus:ring-2 focus:ring-ring/40"
+            className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1 text-xs font-medium text-slate-900 shadow-subtle focus:outline-none focus:ring-2 focus:ring-ring/40 disabled:opacity-50"
           >
             {filterOptions.periods.map((opt) => (
               <option key={opt.key} value={opt.key}>
@@ -104,6 +108,7 @@ export function PayrollAttendanceFilters({
             id="payroll-search"
             placeholder="Name or code..."
             value={search}
+            disabled={isNavigating}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && push({})}
             className="h-9 text-xs"
@@ -114,8 +119,9 @@ export function PayrollAttendanceFilters({
           <select
             id="shift"
             value={shift}
+            disabled={isNavigating}
             onChange={(e) => onShiftChange(e.target.value)}
-            className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1 text-xs font-medium text-slate-900 shadow-subtle focus:outline-none focus:ring-2 focus:ring-ring/40"
+            className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1 text-xs font-medium text-slate-900 shadow-subtle focus:outline-none focus:ring-2 focus:ring-ring/40 disabled:opacity-50"
           >
             {OPERATIONAL_SHIFT_FILTERS.map((opt) => (
               <option key={opt.value || "all"} value={opt.value}>
@@ -132,6 +138,7 @@ export function PayrollAttendanceFilters({
             <input
               type="checkbox"
               checked={shortfall}
+              disabled={isNavigating}
               onChange={(e) => {
                 setShortfall(e.target.checked);
                 push({ shortfall: e.target.checked ? "1" : "" });
@@ -144,6 +151,7 @@ export function PayrollAttendanceFilters({
             <input
               type="checkbox"
               checked={ot}
+              disabled={isNavigating}
               onChange={(e) => {
                 setOt(e.target.checked);
                 push({ ot: e.target.checked ? "1" : "" });
@@ -156,6 +164,7 @@ export function PayrollAttendanceFilters({
             <input
               type="checkbox"
               checked={late}
+              disabled={isNavigating}
               onChange={(e) => {
                 setLate(e.target.checked);
                 push({ late: e.target.checked ? "1" : "" });
@@ -168,6 +177,7 @@ export function PayrollAttendanceFilters({
             <input
               type="checkbox"
               checked={absent}
+              disabled={isNavigating}
               onChange={(e) => {
                 setAbsent(e.target.checked);
                 push({ absent: e.target.checked ? "1" : "" });
@@ -180,6 +190,7 @@ export function PayrollAttendanceFilters({
             <input
               type="checkbox"
               checked={pending}
+              disabled={isNavigating}
               onChange={(e) => {
                 setPending(e.target.checked);
                 push({ pending: e.target.checked ? "1" : "" });
@@ -190,14 +201,19 @@ export function PayrollAttendanceFilters({
           </label>
         </div>
         <div className="flex gap-2">
-          <Button type="button" size="sm" onClick={() => push({})}>
-            Filter
+          <Button type="button" size="sm" onClick={() => push({})} loading={isNavigating}>
+            {isNavigating ? "Filtering…" : "Filter"}
           </Button>
           <Button
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => router.push("/admin/payroll-attendance")}
+            disabled={isNavigating}
+            onClick={() => {
+              startTransition(() => {
+                router.push("/admin/payroll-attendance");
+              });
+            }}
           >
             Reset
           </Button>

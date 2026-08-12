@@ -32,9 +32,9 @@ export const HEATMAP_COLOR = {
 } as const;
 
 /**
- * Worked-day intensity → visual swatch.
- * Below-target tiers share Present (soft green); target/overtime share Excellent (rich green).
- * Classifier tiers are unchanged — this is presentation only.
+ * Worked-day intensity → visual swatch (presentation only).
+ * Soft green = below expected hours; rich green = Excellent (target/overtime).
+ * Canonical Present count = all worked days (see aggregate-range / heatmap-month-stats).
  */
 export const RATIO_TIER_COLOR: Record<AttendanceRatioTier, string> = {
   very_low: HEATMAP_COLOR.present,

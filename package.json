@@ -21,6 +21,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:john-doe": "tsx prisma/scripts/seed-existing-john-doe.ts",
     "db:seed:test-managers": "tsx prisma/scripts/seed-test-managers.ts",
+    "db:seed:test-manager-one-attendance": "tsx prisma/scripts/seed-test-manager-one-attendance.ts",
     "demo:seed": "tsx prisma/demo-seed.ts",
     "demo:reset": "tsx prisma/demo-reset.ts",
     "seed:demo": "tsx --import ./prisma/recruitment-demo/register-hooks.mjs prisma/seed-demo.ts",

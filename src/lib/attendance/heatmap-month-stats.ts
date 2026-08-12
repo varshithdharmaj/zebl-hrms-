@@ -1,6 +1,7 @@
 import {
-  isTargetOrBetterTier,
-  isWorkedDayCategory,
+  isBelowTargetPresentDay,
+  isExcellentPresentDay,
+  isPresentDay,
   type AttendanceDayResult,
 } from "@/lib/attendance/day-classification";
 
@@ -10,15 +11,20 @@ export type HeatmapMonthStats = {
   monthIndex: number;
   /** e.g. "Jul 2026" */
   label: string;
-  /** Worked days below target (Present swatch). */
+  /**
+   * Canonical Present: any attended/worked day.
+   * Equals excellentDays + below-target worked days; matches KPI presentDays.
+   */
   presentDays: number;
   /** Worked days at target or overtime (Excellent swatch). */
   excellentDays: number;
+  /** Worked days below expected hours (soft-green swatch). */
+  belowTargetDays: number;
   absentDays: number;
   leaveDays: number;
   insufficientDays: number;
   /**
-   * Attended (present + excellent) / (attended + absent + insufficient) × 100.
+   * Attended (present) / (present + absent + insufficient) × 100.
    * Null when the denominator is 0 (month is only leave/holiday/weekly-off).
    */
   attendancePercent: number | null;
@@ -63,6 +69,7 @@ export function buildHeatmapMonthStats(days: AttendanceDayResult[]): Map<string,
         label: monthLabelFromKey(key),
         presentDays: 0,
         excellentDays: 0,
+        belowTargetDays: 0,
         absentDays: 0,
         leaveDays: 0,
         insufficientDays: 0,
@@ -74,9 +81,10 @@ export function buildHeatmapMonthStats(days: AttendanceDayResult[]): Map<string,
       map.set(key, stats);
     }
 
-    if (isWorkedDayCategory(day.category)) {
-      if (isTargetOrBetterTier(day.ratioTier)) stats.excellentDays += 1;
-      else stats.presentDays += 1;
+    if (isPresentDay(day.category, day.ratioTier)) {
+      stats.presentDays += 1;
+      if (isExcellentPresentDay(day.category, day.ratioTier)) stats.excellentDays += 1;
+      else if (isBelowTargetPresentDay(day.category, day.ratioTier)) stats.belowTargetDays += 1;
       stats.workedMinutesSum += day.workedMinutes;
       stats.workedDaysCount += 1;
     } else if (day.category === "ABSENT") {
@@ -90,8 +98,7 @@ export function buildHeatmapMonthStats(days: AttendanceDayResult[]): Map<string,
 
   const result = new Map<string, HeatmapMonthStats>();
   for (const [key, stats] of map) {
-    const attended = stats.presentDays + stats.excellentDays;
-    const denom = attended + stats.absentDays + stats.insufficientDays;
+    const denom = stats.presentDays + stats.absentDays + stats.insufficientDays;
     result.set(key, {
       monthKey: stats.monthKey,
       year: stats.year,
@@ -99,10 +106,11 @@ export function buildHeatmapMonthStats(days: AttendanceDayResult[]): Map<string,
       label: stats.label,
       presentDays: stats.presentDays,
       excellentDays: stats.excellentDays,
+      belowTargetDays: stats.belowTargetDays,
       absentDays: stats.absentDays,
       leaveDays: stats.leaveDays,
       insufficientDays: stats.insufficientDays,
-      attendancePercent: denom > 0 ? Math.round((attended / denom) * 100) : null,
+      attendancePercent: denom > 0 ? Math.round((stats.presentDays / denom) * 100) : null,
       averageWorkedMinutes:
         stats.workedDaysCount > 0 ? Math.round(stats.workedMinutesSum / stats.workedDaysCount) : null,
     });

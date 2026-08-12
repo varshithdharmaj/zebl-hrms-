@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,6 +29,7 @@ export function AttendanceFilters({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
   const [search, setSearch] = useState(defaultSearch ?? "");
   const [date, setDate] = useState(defaultDate ?? "");
   const [period, setPeriod] = useState(defaultPeriod);
@@ -72,7 +73,9 @@ export function AttendanceFilters({
       }
 
       const qs = p.toString();
-      router.push(qs ? `/admin/attendance?${qs}` : "/admin/attendance");
+      startTransition(() => {
+        router.push(qs ? `/admin/attendance?${qs}` : "/admin/attendance");
+      });
     },
     [router, searchParams, search, date, period, shift, shortfall, ot]
   );
@@ -88,7 +91,9 @@ export function AttendanceFilters({
     setShift("");
     setShortfall(false);
     setOt(false);
-    router.push("/admin/attendance");
+    startTransition(() => {
+      router.push("/admin/attendance");
+    });
   }
 
   function onShiftChange(next: string) {
@@ -98,7 +103,10 @@ export function AttendanceFilters({
   }
 
   return (
-    <div className="flex flex-col gap-3.5">
+    <div
+      className="flex flex-col gap-3.5"
+      aria-busy={isPending || undefined}
+    >
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
         <div className="min-w-[12rem] flex-1 space-y-1">
           <Label htmlFor="search" className="text-xs font-semibold text-slate-700">Employee</Label>
@@ -109,6 +117,7 @@ export function AttendanceFilters({
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && apply()}
             className="h-9 text-xs"
+            disabled={isPending}
           />
         </div>
         <div className="min-w-[10rem] space-y-1">
@@ -116,12 +125,13 @@ export function AttendanceFilters({
           <select
             id="period"
             value={period}
+            disabled={isPending}
             onChange={(e) => {
               setPeriod(e.target.value);
               if (e.target.value) setDate("");
               pushWithParams({ period: e.target.value, date: e.target.value ? "" : date });
             }}
-            className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1 text-xs font-medium text-slate-900 shadow-subtle focus:outline-none focus:ring-2 focus:ring-ring/40"
+            className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1 text-xs font-medium text-slate-900 shadow-subtle focus:outline-none focus:ring-2 focus:ring-ring/40 disabled:opacity-50"
           >
             <option value="">Any date / single day</option>
             {periodOptions.map((opt) => (
@@ -137,7 +147,7 @@ export function AttendanceFilters({
             id="date"
             type="date"
             value={date}
-            disabled={Boolean(period)}
+            disabled={Boolean(period) || isPending}
             onChange={(e) => setDate(e.target.value)}
             className="h-9 text-xs"
           />
@@ -147,8 +157,9 @@ export function AttendanceFilters({
           <select
             id="shift"
             value={shift}
+            disabled={isPending}
             onChange={(e) => onShiftChange(e.target.value)}
-            className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1 text-xs font-medium text-slate-900 shadow-subtle focus:outline-none focus:ring-2 focus:ring-ring/40"
+            className="flex h-9 w-full rounded-lg border border-input bg-card px-3 py-1 text-xs font-medium text-slate-900 shadow-subtle focus:outline-none focus:ring-2 focus:ring-ring/40 disabled:opacity-50"
           >
             {OPERATIONAL_SHIFT_FILTERS.map((opt) => (
               <option key={opt.value || "all"} value={opt.value}>
@@ -165,6 +176,7 @@ export function AttendanceFilters({
             <input
               type="checkbox"
               checked={shortfall}
+              disabled={isPending}
               onChange={(e) => {
                 setShortfall(e.target.checked);
                 pushWithParams({ shortfall: e.target.checked ? "1" : "" });
@@ -177,6 +189,7 @@ export function AttendanceFilters({
             <input
               type="checkbox"
               checked={ot}
+              disabled={isPending}
               onChange={(e) => {
                 setOt(e.target.checked);
                 pushWithParams({ ot: e.target.checked ? "1" : "" });
@@ -187,10 +200,16 @@ export function AttendanceFilters({
           </label>
         </div>
         <div className="flex gap-2">
-          <Button type="button" size="sm" onClick={apply}>
-            Filter
+          <Button type="button" size="sm" onClick={apply} loading={isPending}>
+            {isPending ? "Filtering…" : "Filter"}
           </Button>
-          <Button type="button" variant="outline" size="sm" onClick={clear}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={clear}
+            disabled={isPending}
+          >
             Reset
           </Button>
         </div>

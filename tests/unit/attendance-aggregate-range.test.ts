@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { aggregateAttendanceForRange } from "@/lib/attendance/aggregate-range";
+import {
+  aggregateAttendanceForRange,
+  assertPresentPartition,
+} from "@/lib/attendance/aggregate-range";
 import type { ClassifiedAttendanceRecord } from "@/lib/attendance/history-classification";
 import type { AttendanceDayCategory, AttendanceRatioTier } from "@/lib/attendance/day-classification";
 
@@ -32,6 +35,7 @@ describe("aggregateAttendanceForRange — empty range", () => {
     expect(aggregateAttendanceForRange([])).toEqual({
       workingDays: 0,
       presentDays: 0,
+      excellentDays: 0,
       shortHoursCount: 0,
       insufficientDataCount: 0,
       overtimeMinutes: 0,
@@ -40,32 +44,36 @@ describe("aggregateAttendanceForRange — empty range", () => {
   });
 });
 
-describe("aggregateAttendanceForRange — Present Days", () => {
-  it("counts a target-tier PRESENT day", () => {
-    const result = aggregateAttendanceForRange([rec("PRESENT", "target")]);
-    expect(result.presentDays).toBe(1);
-  });
-
-  it("counts an overtime-tier PRESENT day", () => {
-    const result = aggregateAttendanceForRange([rec("PRESENT", "overtime")]);
-    expect(result.presentDays).toBe(1);
-  });
-
-  it("counts worked-on-holiday and worked-on-weekly-off at target/overtime tier — a day worked is a day worked regardless of what kind of day it was", () => {
-    const result = aggregateAttendanceForRange([
-      rec("WORKED_ON_HOLIDAY", "target"),
-      rec("WORKED_ON_WEEKLY_OFF", "overtime"),
-    ]);
-    expect(result.presentDays).toBe(2);
-  });
-
-  it("does not count near_target, partial, or very_low as Present", () => {
+describe("aggregateAttendanceForRange — Present Days (attended)", () => {
+  it("counts below-target worked days as Present", () => {
     const result = aggregateAttendanceForRange([
       rec("PRESENT", "near_target"),
       rec("PRESENT", "partial"),
       rec("PRESENT", "very_low"),
     ]);
-    expect(result.presentDays).toBe(0);
+    expect(result.presentDays).toBe(3);
+    expect(result.shortHoursCount).toBe(3);
+    expect(result.excellentDays).toBe(0);
+  });
+
+  it("counts target and overtime worked days as Present and Excellent", () => {
+    const result = aggregateAttendanceForRange([
+      rec("PRESENT", "target"),
+      rec("PRESENT", "overtime"),
+    ]);
+    expect(result.presentDays).toBe(2);
+    expect(result.excellentDays).toBe(2);
+    expect(result.shortHoursCount).toBe(0);
+  });
+
+  it("counts worked-on-holiday/weekly-off as Present regardless of schedule", () => {
+    const result = aggregateAttendanceForRange([
+      rec("WORKED_ON_HOLIDAY", "target"),
+      rec("WORKED_ON_WEEKLY_OFF", "partial"),
+    ]);
+    expect(result.presentDays).toBe(2);
+    expect(result.excellentDays).toBe(1);
+    expect(result.shortHoursCount).toBe(1);
   });
 
   it("does not count leave, holiday, weekly off, absent, or insufficient data as Present", () => {
@@ -77,10 +85,11 @@ describe("aggregateAttendanceForRange — Present Days", () => {
       rec("INSUFFICIENT_DATA", null),
     ]);
     expect(result.presentDays).toBe(0);
+    expect(result.excellentDays).toBe(0);
   });
 });
 
-describe("aggregateAttendanceForRange — Short Hours", () => {
+describe("aggregateAttendanceForRange — Short Hours / Excellent partition", () => {
   it("counts very_low, partial, and near_target worked days as short hours", () => {
     const result = aggregateAttendanceForRange([
       rec("PRESENT", "very_low"),
@@ -90,7 +99,7 @@ describe("aggregateAttendanceForRange — Short Hours", () => {
     expect(result.shortHoursCount).toBe(3);
   });
 
-  it("does NOT count INSUFFICIENT_DATA as short hours — the exact bug this phase fixes", () => {
+  it("does NOT count INSUFFICIENT_DATA as short hours", () => {
     const result = aggregateAttendanceForRange([
       rec("PRESENT", "partial"),
       rec("INSUFFICIENT_DATA", null),
@@ -103,11 +112,24 @@ describe("aggregateAttendanceForRange — Short Hours", () => {
     const result = aggregateAttendanceForRange([rec("PRESENT", "target"), rec("PRESENT", "overtime")]);
     expect(result.shortHoursCount).toBe(0);
   });
+
+  it("Present === Excellent + Short hours", () => {
+    const result = aggregateAttendanceForRange([
+      rec("PRESENT", "target"),
+      rec("PRESENT", "overtime"),
+      rec("PRESENT", "near_target"),
+      rec("PRESENT", "partial"),
+    ]);
+    expect(assertPresentPartition(result)).toBe(true);
+  });
 });
 
 describe("aggregateAttendanceForRange — Insufficient Data", () => {
-  it("counts INSUFFICIENT_DATA separately from both present and short hours", () => {
-    const result = aggregateAttendanceForRange([rec("INSUFFICIENT_DATA", null), rec("INSUFFICIENT_DATA", null)]);
+  it("counts INSUFFICIENT_DATA separately from present and short hours", () => {
+    const result = aggregateAttendanceForRange([
+      rec("INSUFFICIENT_DATA", null),
+      rec("INSUFFICIENT_DATA", null),
+    ]);
     expect(result.insufficientDataCount).toBe(2);
     expect(result.presentDays).toBe(0);
     expect(result.shortHoursCount).toBe(0);
@@ -125,33 +147,29 @@ describe("aggregateAttendanceForRange — Overtime minutes", () => {
   });
 });
 
-describe("aggregateAttendanceForRange — mixed range, all categories together", () => {
-  it("produces internally consistent totals for a representative mixed range", () => {
+describe("aggregateAttendanceForRange — mixed range", () => {
+  it("produces internally consistent totals", () => {
     const records = [
-      rec("PRESENT", "target"), // present
-      rec("PRESENT", "overtime", 60), // present + overtime
-      rec("PRESENT", "near_target"), // short hours
-      rec("PRESENT", "partial"), // short hours
-      rec("INSUFFICIENT_DATA", null), // insufficient data only
+      rec("PRESENT", "target"),
+      rec("PRESENT", "overtime", 60),
+      rec("PRESENT", "near_target"),
+      rec("PRESENT", "partial"),
+      rec("INSUFFICIENT_DATA", null),
       rec("ABSENT", null),
       rec("LEAVE", null),
       rec("HOLIDAY", null),
       rec("WEEKLY_OFF", null),
-      rec("WORKED_ON_WEEKLY_OFF", "target"), // present
+      rec("WORKED_ON_WEEKLY_OFF", "target"),
     ];
     const result = aggregateAttendanceForRange(records);
 
     expect(result.workingDays).toBe(10);
-    expect(result.presentDays).toBe(3);
+    expect(result.presentDays).toBe(5);
+    expect(result.excellentDays).toBe(3);
     expect(result.shortHoursCount).toBe(2);
     expect(result.insufficientDataCount).toBe(1);
     expect(result.overtimeMinutes).toBe(60);
-    expect(result.attendancePercent).toBe(30); // 3/10
-
-    // The three buckets that partition "worked" categories must never overlap or
-    // silently drop a day — this is the exact contradiction the phase was about.
-    expect(result.presentDays + result.shortHoursCount + result.insufficientDataCount).toBeLessThanOrEqual(
-      result.workingDays
-    );
+    expect(result.attendancePercent).toBe(50); // 5/10
+    expect(assertPresentPartition(result)).toBe(true);
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CalendarDays, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,7 @@ export function DashboardDateRangeFilter({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
 
   const applied = useMemo(() => {
     const parsed = readDateRangeFromSearchParams(searchParams, {
@@ -99,7 +100,9 @@ export function DashboardDateRangeFilter({
     });
     next.delete("date");
     const qs = next.toString();
-    router.push(qs ? `${pathname}?${qs}` : pathname);
+    startTransition(() => {
+      router.push(qs ? `${pathname}?${qs}` : pathname);
+    });
   }
 
   function applyPreset(preset: Exclude<DateRangePreset, "custom">) {
@@ -133,6 +136,7 @@ export function DashboardDateRangeFilter({
       type="button"
       variant="outline"
       size="sm"
+      loading={isPending}
       className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border-border bg-card px-2.5 text-xs font-medium"
       aria-haspopup="dialog"
       aria-expanded={open || mobileOpen}
@@ -178,8 +182,8 @@ export function DashboardDateRangeFilter({
         <Button type="button" variant="outline" size="sm" onClick={cancelDraft}>
           Cancel
         </Button>
-        <Button type="button" size="sm" disabled={!canApply} onClick={applyCustom}>
-          Apply
+        <Button type="button" size="sm" disabled={!canApply} loading={isPending} onClick={applyCustom}>
+          {isPending ? "Applying…" : "Apply"}
         </Button>
       </div>
     </div>
@@ -199,6 +203,7 @@ export function DashboardDateRangeFilter({
               key={preset.id}
               type="button"
               onClick={() => applyPreset(preset.id)}
+              disabled={isPending}
               aria-pressed={active}
               className={cn(
                 "inline-flex h-8 items-center rounded-lg px-2.5 text-xs font-semibold transition-colors",

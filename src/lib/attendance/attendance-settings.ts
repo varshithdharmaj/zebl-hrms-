@@ -9,6 +9,23 @@ export type AttendanceSettingsSnapshot = WeeklySchedule & {
   expectedWorkMinutes: number;
 };
 
+function yearsTouching(start: Date, end: Date): number[] {
+  const startYear = start.getFullYear();
+  const endYear = end.getFullYear();
+  const years: number[] = [];
+  for (let y = startYear; y <= endYear; y += 1) {
+    years.push(y);
+  }
+  return years.length > 0 ? years : [startYear];
+}
+
+function yearBounds(year: number): { start: Date; end: Date } {
+  return {
+    start: new Date(year, 0, 1),
+    end: new Date(year, 11, 31, 23, 59, 59, 999),
+  };
+}
+
 async function ensureAttendanceSettingsRow() {
   const existing = await prisma.attendanceSettings.findUnique({ where: { id: DEFAULT_ID } });
   if (existing) return existing;
@@ -42,9 +59,25 @@ export const getAttendanceSettings = cache(async (): Promise<AttendanceSettingsS
   };
 });
 
-export async function getDateOverridesForRange(start: Date, end: Date) {
+/** Request-memoized overrides for a calendar year — period + YTD share one query. */
+const getDateOverridesForYear = cache(async (year: number) => {
+  const { start, end } = yearBounds(year);
   return prisma.attendanceDateOverride.findMany({
     where: { date: { gte: start, lte: end } },
     orderBy: { date: "asc" },
   });
+});
+
+export async function getDateOverridesForRange(start: Date, end: Date) {
+  const years = yearsTouching(start, end);
+  const byYear = await Promise.all(years.map((y) => getDateOverridesForYear(y)));
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+  return byYear
+    .flat()
+    .filter((o) => {
+      const t = o.date.getTime();
+      return t >= startMs && t <= endMs;
+    })
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
 }

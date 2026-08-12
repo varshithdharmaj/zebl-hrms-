@@ -30,7 +30,8 @@ export async function EmployeeDashboard({
 }) {
   const [data, balances, heatmap] = await Promise.all([
     getEmployeeDashboardData(employeeId, selectedDate, startDate, endDate),
-    getLeaveBalanceSummaries(employeeId, { processAccruals: false }),
+    // Same accrual-before-read path as /employee/leaves so remaining days match.
+    getLeaveBalanceSummaries(employeeId, { processAccruals: true }),
     // Isolated so a heatmap-only failure doesn't take down the rest of an already-fetched
     // dashboard (Hero, KPIs, history below all render fine independently of this).
     getEmployeeAttendanceHeatmapData(employeeId, heatmapMonth).catch(
@@ -128,7 +129,11 @@ export async function EmployeeDashboard({
         <AttendanceHeatmap month={heatmap} />
 
         {/* F. Attendance history */}
-        <HistorySection rangeLabel={data.period.rangeLabel} records={data.recentRecords} />
+        <HistorySection
+          rangeLabel={data.period.rangeLabel}
+          records={data.recentRecords}
+          totalCount={data.recentRecordsTotal}
+        />
       </div>
 
       <aside className="hr-dashboard__rail">
