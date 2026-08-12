@@ -428,7 +428,8 @@ export function CandidateUploadDialog({
               <Button
                 size="sm"
                 onClick={handleUpload}
-                disabled={isPending || files.length === 0}
+                loading={isPending}
+                disabled={files.length === 0}
                 className="font-semibold shadow-subtle"
               >
                 {isPending

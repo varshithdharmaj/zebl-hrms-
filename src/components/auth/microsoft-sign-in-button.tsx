@@ -23,13 +23,15 @@ export function MicrosoftSignInButton({
       type="button"
       variant="default"
       className="w-full bg-[#2f2f2f] hover:bg-[#1f1f1f] text-white"
-      disabled={loading}
+      loading={loading}
       onClick={() => {
         setLoading(true);
         window.location.href = href;
       }}
     >
-      {loading ? "Redirecting to Microsoft…" : (
+      {loading ? (
+        "Redirecting to Microsoft…"
+      ) : (
         <span className="flex items-center justify-center gap-2">
           <MicrosoftIcon />
           Sign in with Microsoft

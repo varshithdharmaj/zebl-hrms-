@@ -128,8 +128,8 @@ export function ReportFilters({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" onClick={apply} disabled={isPending}>
-          Apply filters
+        <Button size="sm" onClick={apply} loading={isPending}>
+          {isPending ? "Applying…" : "Apply filters"}
         </Button>
         <Button
           size="sm"

@@ -234,7 +234,8 @@ export function AddCandidateFieldDialog({
                 size="sm"
                 className="text-xs font-semibold"
                 onClick={handleSave}
-                disabled={isPending || !selected}
+                loading={isPending}
+                disabled={!selected}
               >
                 {isPending ? "Saving…" : "Save"}
               </Button>

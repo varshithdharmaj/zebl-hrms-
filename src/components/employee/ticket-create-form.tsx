@@ -187,8 +187,8 @@ export function TicketCreateForm() {
         </div>
 
         <div className="flex gap-3 pt-2">
-          <Button type="submit" disabled={pending}>
-            {pending ? "Submitting..." : "Submit Ticket"}
+          <Button type="submit" loading={pending}>
+            {pending ? "Submitting…" : "Submit Ticket"}
           </Button>
           <Button type="button" variant="outline" asChild>
             <Link href="/employee/tickets">Cancel</Link>

@@ -292,7 +292,7 @@ export function AppSidebar({
                     title={collapsed ? item.label : undefined}
                     aria-current={active ? "page" : undefined}
                     className={cn(
-                      "flex items-center gap-3 rounded-lg py-2 text-sm font-medium transition-all duration-200",
+                      "relative flex items-center gap-3 rounded-lg py-2 text-sm font-medium transition-all duration-200",
                       collapsed ? "lg:justify-center lg:px-2 px-3" : "px-3",
                       active
                         ? "bg-sidebar-accent text-foreground font-semibold"
@@ -308,7 +308,7 @@ export function AppSidebar({
                     >
                       {item.label}
                     </span>
-                    {!collapsed && <NavLinkPendingHint />}
+                    <NavLinkPendingHint collapsed={collapsed} />
                   </Link>
                 );
               })}

@@ -72,7 +72,7 @@ export function ApprovalConfirmation({
           </p>
           {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
           <div className="mt-4 flex flex-wrap gap-3">
-            <Button type="button" disabled={loading} onClick={() => void submitApproval()}>
+            <Button type="button" loading={loading} onClick={() => void submitApproval()}>
               {loading ? "Processing…" : "Confirm approval"}
             </Button>
             <Button type="button" variant="outline" disabled={loading} onClick={() => setConfirmed(false)}>

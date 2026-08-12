@@ -147,10 +147,10 @@ export function FeedbackForm({ interviewId, applicationId, onSuccess }: Feedback
       <div className="flex items-center justify-end gap-2 border-t border-border pt-4">
         <Button
           type="submit"
-          disabled={isPending}
+          loading={isPending}
           className="font-semibold text-xs h-9 rounded-lg shadow-subtle w-full sm:w-auto"
         >
-          {isPending ? "Submitting..." : "Submit Feedback Scorecard"}
+          {isPending ? "Submitting…" : "Submit Feedback Scorecard"}
         </Button>
       </div>
     </form>

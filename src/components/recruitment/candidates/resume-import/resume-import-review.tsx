@@ -335,7 +335,7 @@ export function ResumeImportReview({
               >
                 Dismiss draft
               </Button>
-              <Button size="sm" disabled={isPending} onClick={handleApply}>
+              <Button size="sm" onClick={handleApply} loading={isPending}>
                 {isPending ? "Applying…" : "Apply accepted"}
               </Button>
             </>

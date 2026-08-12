@@ -74,7 +74,7 @@ export function RejectionDialog({
               placeholder="Explain why this request is rejected…"
             />
           </div>
-          <Button type="submit" variant="destructive" disabled={pending} className="w-full">
+          <Button type="submit" variant="destructive" loading={pending} className="w-full">
             {pending ? "Rejecting…" : "Confirm rejection"}
           </Button>
         </form>

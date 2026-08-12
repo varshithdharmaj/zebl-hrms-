@@ -74,7 +74,7 @@ export function RejectionForm({
           type="button"
           variant="destructive"
           className="mt-4 w-full sm:w-auto"
-          disabled={loading}
+          loading={loading}
           onClick={() => void submit()}
         >
           {loading ? "Submitting…" : "Confirm rejection"}

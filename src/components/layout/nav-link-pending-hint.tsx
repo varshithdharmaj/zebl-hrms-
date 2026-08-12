@@ -1,6 +1,7 @@
 "use client";
 
 import { useLinkStatus } from "next/link";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -8,15 +9,16 @@ import { cn } from "@/lib/utils";
  * Leaf `loading.tsx` Suspense is often not revealed during client transitions;
  * this gives immediate feedback on the clicked sidebar link.
  */
-export function NavLinkPendingHint() {
+export function NavLinkPendingHint({ collapsed = false }: { collapsed?: boolean }) {
   const { pending } = useLinkStatus();
 
   return (
-    <span
+    <Loader2
       aria-hidden
       className={cn(
-        "ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-current",
-        pending ? "animate-pulse opacity-70 motion-reduce:animate-none" : "opacity-0"
+        "shrink-0 animate-spin text-current motion-reduce:animate-none",
+        collapsed ? "absolute right-1.5 top-1.5 h-2.5 w-2.5" : "ml-auto h-3.5 w-3.5",
+        pending ? "opacity-80" : "pointer-events-none opacity-0"
       )}
     />
   );

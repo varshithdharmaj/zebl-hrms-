@@ -207,8 +207,8 @@ export function TicketDetail({
                   maxLength={5000}
                 />
               </div>
-              <Button type="submit" disabled={pending}>
-                {pending ? "Sending..." : "Send Reply"}
+              <Button type="submit" loading={pending}>
+                {pending ? "Sending…" : "Send Reply"}
               </Button>
             </form>
           )}

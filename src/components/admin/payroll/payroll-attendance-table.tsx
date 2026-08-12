@@ -69,10 +69,10 @@ function HrDecisionForm({ row }: { row: PayrollTableRow }) {
           type="submit"
           size="sm"
           variant="outline"
-          disabled={pending}
+          loading={pending}
           className="h-7 shrink-0 px-2 text-[0.6875rem] font-semibold"
         >
-          {pending ? "…" : "Save"}
+          {pending ? "Saving…" : "Save"}
         </Button>
       </div>
       <Input

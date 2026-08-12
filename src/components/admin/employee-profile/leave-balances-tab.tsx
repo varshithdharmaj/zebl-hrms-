@@ -75,7 +75,7 @@ export function LeaveBalancesTab({
             <Label htmlFor="note">Reason</Label>
             <Input id="note" name="note" required placeholder="Reason for adjustment" />
           </div>
-          <Button type="submit" disabled={pending}>
+          <Button type="submit" loading={pending}>
             {pending ? "Applying…" : "Apply"}
           </Button>
         </form>

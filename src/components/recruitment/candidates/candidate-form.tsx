@@ -556,7 +556,7 @@ export function CandidateForm({
       </div>
 
       <div className="flex flex-wrap gap-3 pt-4">
-        <Button type="submit" disabled={pending} className="h-10 px-6 font-semibold shadow-subtle">
+        <Button type="submit" loading={pending} className="h-10 px-6 font-semibold shadow-subtle">
           {pending ? "Saving…" : mode === "create" ? "Create candidate" : "Save changes"}
         </Button>
         <Button type="button" variant="outline" asChild className="h-10 px-6 font-semibold shadow-subtle">

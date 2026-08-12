@@ -25,7 +25,7 @@ import {
   reopenApplicationAction,
 } from "@/actions/recruitment-applications";
 import type { ApplicationDetail } from "@/lib/recruitment/repositories/application-repository";
-import type { InterviewDetail } from "@/lib/recruitment/repositories/interview-repository";
+import type { InterviewListItem } from "@/lib/recruitment/repositories/interview-repository";
 import type { OfferByApplication } from "@/lib/recruitment/repositories/offer-repository";
 import {
   User,
@@ -70,7 +70,7 @@ export function ApplicationDetailView({
 }: {
   application: ApplicationDetail;
   employeeOptions: { id: number; name: string; user: { id: string; email: string } | null }[];
-  interviews?: readonly InterviewDetail[];
+  interviews?: readonly InterviewListItem[];
   offers?: readonly OfferByApplication[];
   currentDecision?: HiringDecisionRecord | null;
   requireDecisionForOffer?: boolean;

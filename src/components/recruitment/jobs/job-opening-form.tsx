@@ -399,7 +399,7 @@ export function JobOpeningForm({
       )}
 
       <div className="flex flex-wrap gap-3">
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" loading={pending}>
           {pending ? "Saving…" : mode === "create" ? "Create job opening" : "Save changes"}
         </Button>
         <Button type="button" variant="outline" asChild>

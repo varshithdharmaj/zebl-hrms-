@@ -30,8 +30,8 @@ function ApproveButton({ leaveId, version }: { leaveId: number; version: number 
     <form action={formAction} className="inline">
       <input type="hidden" name="leaveId" value={leaveId} />
       <input type="hidden" name="version" value={version} />
-      <Button type="submit" size="sm" disabled={pending}>
-        {pending ? "…" : "Approve"}
+      <Button type="submit" size="sm" loading={pending}>
+        {pending ? "Approving…" : "Approve"}
       </Button>
       {state.error && <p className="mt-1 text-xs text-danger">{state.error}</p>}
     </form>
@@ -136,7 +136,12 @@ export function ManagerApprovalInbox({ items }: { items: PendingApprovalItem[] }
           </Button>
           <form action={bulkApproveAction} className="inline">
             <input type="hidden" name="items" value={JSON.stringify(bulkItems)} />
-            <Button type="submit" size="sm" disabled={bulkPending || selected.size === 0}>
+            <Button
+              type="submit"
+              size="sm"
+              loading={bulkPending}
+              disabled={selected.size === 0}
+            >
               {bulkPending ? "Approving…" : `Approve selected (${selected.size})`}
             </Button>
           </form>

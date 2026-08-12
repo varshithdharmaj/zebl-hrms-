@@ -269,7 +269,7 @@ export function CandidateTable({
               variant="outline"
               size="sm"
               onClick={handleBulkArchive}
-              disabled={isPending}
+              loading={isPending}
               className="flex items-center gap-1.5 font-medium shadow-subtle hover:text-danger hover:border-danger/30"
             >
               <Archive className="h-4 w-4" />
@@ -279,7 +279,7 @@ export function CandidateTable({
               variant="outline"
               size="sm"
               onClick={handleBulkRestore}
-              disabled={isPending}
+              loading={isPending}
               className="flex items-center gap-1.5 font-medium shadow-subtle hover:text-emerald-600 hover:border-emerald-600/30"
             >
               <RotateCcw className="h-4 w-4" />

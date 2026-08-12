@@ -73,7 +73,7 @@ export function HrSettingsForm({
         </label>
       </SectionCard>
 
-      <Button type="submit" disabled={pending}>
+      <Button type="submit" loading={pending}>
         {pending ? "Saving…" : "Save settings"}
       </Button>
       {state.success && <p className="text-sm text-success">{state.success}</p>}

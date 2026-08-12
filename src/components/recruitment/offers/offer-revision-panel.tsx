@@ -144,7 +144,7 @@ export function OfferRevisionPanel({
             size="sm"
             className="font-semibold"
             onClick={handleRevise}
-            disabled={isPending}
+            loading={isPending}
           >
             {isPending ? "Saving…" : "Save Revision"}
           </Button>

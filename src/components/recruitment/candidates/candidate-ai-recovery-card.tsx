@@ -174,10 +174,11 @@ export function CandidateAiRecoveryCard({
               variant="outline"
               size="sm"
               className="ml-auto text-xs font-semibold"
-              disabled={isPending || !sourceDraftId}
+              loading={isPending}
+              disabled={!sourceDraftId}
               onClick={runGenerate}
             >
-              {content ? "Regenerate" : "Generate"}
+              {isPending ? "Generating…" : content ? "Regenerate" : "Generate"}
             </Button>
           ) : null}
         </div>
@@ -245,7 +246,7 @@ export function CandidateAiRecoveryCard({
                         variant="outline"
                         size="sm"
                         className="h-7 text-[11px] font-semibold"
-                        disabled={isPending}
+                        loading={isPending}
                         onClick={() =>
                           runAccept(
                             proposal.id,

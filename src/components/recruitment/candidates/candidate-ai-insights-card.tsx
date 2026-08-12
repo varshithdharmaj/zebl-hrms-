@@ -152,10 +152,11 @@ export function CandidateAiInsightsCard({
               variant="outline"
               size="sm"
               className="ml-auto text-xs font-semibold"
-              disabled={isPending || !sourceDraftId}
+              loading={isPending}
+              disabled={!sourceDraftId}
               onClick={runGenerate}
             >
-              {enrichment ? "Regenerate" : "Generate"}
+              {isPending ? "Generating…" : enrichment ? "Regenerate" : "Generate"}
             </Button>
           ) : null}
         </div>
@@ -209,7 +210,7 @@ export function CandidateAiInsightsCard({
                       variant="outline"
                       size="sm"
                       className="h-7 text-[11px] font-semibold"
-                      disabled={isPending}
+                      loading={isPending}
                       onClick={() => runAccept({ acceptHeadline: true })}
                     >
                       {headlineFilled ? "Replace headline" : "Accept headline"}
@@ -259,7 +260,7 @@ export function CandidateAiInsightsCard({
                       variant="outline"
                       size="sm"
                       className="h-7 text-[11px] font-semibold"
-                      disabled={isPending}
+                      loading={isPending}
                       onClick={() => runAccept({ acceptSummary: true })}
                     >
                       {summaryFilled ? "Replace summary" : "Accept summary"}
@@ -324,17 +325,17 @@ export function CandidateAiInsightsCard({
             {canManage && status === "pending_review" ? (
               <div className="flex flex-wrap gap-2 pt-1">
                 {canAccept ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="text-xs font-semibold"
-                    disabled={isPending}
-                    onClick={() =>
-                      runAccept({ acceptSummary: true, acceptHeadline: true })
-                    }
-                  >
-                    Accept summary & headline
-                  </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="text-xs font-semibold"
+                      loading={isPending}
+                      onClick={() =>
+                        runAccept({ acceptSummary: true, acceptHeadline: true })
+                      }
+                    >
+                      Accept summary & headline
+                    </Button>
                 ) : null}
                 <Button
                   type="button"

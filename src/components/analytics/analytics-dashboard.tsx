@@ -21,7 +21,7 @@ export function AnalyticsDashboard({ snapshot }: { snapshot: ExecutiveDashboardP
     return (
       <SectionCard title="No analytics data" description="Run aggregation to populate the dashboard">
         <form action={action}>
-          <Button type="submit" disabled={pending}>
+          <Button type="submit" loading={pending}>
             {pending ? "Running…" : "Run analytics now"}
           </Button>
         </form>
@@ -39,7 +39,7 @@ export function AnalyticsDashboard({ snapshot }: { snapshot: ExecutiveDashboardP
         </p>
         <div className="flex flex-wrap gap-2">
           <form action={action}>
-            <Button type="submit" variant="outline" size="sm" disabled={pending}>
+            <Button type="submit" variant="outline" size="sm" loading={pending}>
               {pending ? "Refreshing…" : "Refresh analytics"}
             </Button>
           </form>

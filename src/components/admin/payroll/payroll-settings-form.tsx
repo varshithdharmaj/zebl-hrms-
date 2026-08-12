@@ -123,7 +123,7 @@ export function PayrollSettingsForm({ settings }: { settings: PayrollSettingsSna
         />
       </SectionCard>
 
-      <Button type="submit" disabled={pending}>
+      <Button type="submit" loading={pending}>
         {pending ? "Saving…" : "Save payroll settings"}
       </Button>
       {state.success && <p className="text-sm text-success">{state.success}</p>}

@@ -94,7 +94,7 @@ export function TeamsSettingsForm({ settings }: { settings: IntegrationSettings 
           />
         </div>
 
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" loading={pending}>
           {pending ? "Saving…" : "Save integration settings"}
         </Button>
       </form>

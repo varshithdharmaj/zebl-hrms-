@@ -268,7 +268,7 @@ export function MessageBubble({
                 size="sm"
                 variant="outline"
                 className="h-8 gap-1.5"
-                disabled={isPending}
+                loading={isPending}
                 onClick={() => {
                   const raw = window.prompt(
                     "New schedule time",
@@ -296,7 +296,7 @@ export function MessageBubble({
                 size="sm"
                 variant="outline"
                 className="h-8 gap-1.5"
-                disabled={isPending}
+                loading={isPending}
                 onClick={() => {
                   startTransition(async () => {
                     await cancelScheduleAction({}, { id: message.id });

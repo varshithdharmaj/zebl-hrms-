@@ -64,7 +64,7 @@ export function JobOpeningActions({
           <form action={statusAction}>
             <input type="hidden" name="id" value={jobId} />
             <input type="hidden" name="toStatus" value="open" />
-            <Button type="submit" size="sm" disabled={pending}>
+            <Button type="submit" size="sm" loading={pending}>
               Open
             </Button>
           </form>
@@ -75,7 +75,7 @@ export function JobOpeningActions({
             <input type="hidden" name="id" value={jobId} />
             <input type="hidden" name="toStatus" value="on_hold" />
             <input type="hidden" name="reason" value="Placed on hold" />
-            <Button type="submit" variant="secondary" size="sm" disabled={pending}>
+            <Button type="submit" variant="secondary" size="sm" loading={pending}>
               Hold
             </Button>
           </form>
@@ -85,7 +85,7 @@ export function JobOpeningActions({
           <form action={statusAction}>
             <input type="hidden" name="id" value={jobId} />
             <input type="hidden" name="toStatus" value="filled" />
-            <Button type="submit" variant="secondary" size="sm" disabled={pending}>
+            <Button type="submit" variant="secondary" size="sm" loading={pending}>
               Mark filled
             </Button>
           </form>
@@ -101,7 +101,7 @@ export function JobOpeningActions({
               className="h-8 rounded-md border border-border bg-background px-2 text-sm"
               aria-label="Close reason"
             />
-            <Button type="submit" variant="destructive" size="sm" disabled={pending}>
+            <Button type="submit" variant="destructive" size="sm" loading={pending}>
               Close
             </Button>
           </form>
@@ -111,7 +111,7 @@ export function JobOpeningActions({
           <form action={reopenAction}>
             <input type="hidden" name="id" value={jobId} />
             <input type="hidden" name="toStatus" value="open" />
-            <Button type="submit" size="sm" disabled={pending}>
+            <Button type="submit" size="sm" loading={pending}>
               Reopen
             </Button>
           </form>
@@ -120,7 +120,7 @@ export function JobOpeningActions({
         {!archived && (
           <form action={archiveAction}>
             <input type="hidden" name="id" value={jobId} />
-            <Button type="submit" variant="outline" size="sm" disabled={pending}>
+            <Button type="submit" variant="outline" size="sm" loading={pending}>
               Archive
             </Button>
           </form>

@@ -65,9 +65,9 @@ function ControlledAlertDialog({
                 onClick={() => {
                   onAction();
                 }}
-                disabled={isPending}
+                loading={isPending}
               >
-                {isPending ? "Processing..." : actionLabel}
+                {isPending ? "Processing…" : actionLabel}
               </Button>
             </div>
           </div>

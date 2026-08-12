@@ -229,7 +229,7 @@ export function HiringDecisionForm({
               type="button"
               size="sm"
               className="font-semibold shadow-subtle"
-              disabled={isPending}
+              loading={isPending}
               onClick={submit}
             >
               {isPending

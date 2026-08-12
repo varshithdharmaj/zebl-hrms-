@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Bell } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NotificationCenterItem } from "@/lib/notifications/notification-center";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface NotificationCenterResponse {
   items: NotificationCenterItem[];
@@ -67,21 +68,32 @@ export function __resetNotificationCenterCacheForTests() {
   centerCache = null;
 }
 
+type LoadState = "loading" | "ready" | "error";
+
 export function NotificationCenterButton() {
+  const cached = readCenterCache();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationCenterItem[]>(() =>
-    mapItems(readCenterCache()?.items)
+    mapItems(cached?.items)
+  );
+  const [loadState, setLoadState] = useState<LoadState>(() =>
+    cached ? "ready" : "loading"
   );
 
   // Initial load once per mount tree; dual mobile/desktop instances share in-flight + TTL cache.
   useEffect(() => {
     let cancelled = false;
+    if (!readCenterCache()) setLoadState("loading");
     void loadNotificationCenter()
       .then((d) => {
-        if (!cancelled) setItems(mapItems(d.items));
+        if (cancelled) return;
+        setItems(mapItems(d.items));
+        setLoadState("ready");
       })
       .catch(() => {
-        if (!cancelled) setItems([]);
+        if (cancelled) return;
+        setItems([]);
+        setLoadState("error");
       });
     return () => {
       cancelled = true;
@@ -93,19 +105,26 @@ export function NotificationCenterButton() {
     if (!open) return;
     if (readCenterCache()) return;
     let cancelled = false;
+    setLoadState((prev) => (prev === "ready" && items.length > 0 ? prev : "loading"));
     void loadNotificationCenter()
       .then((d) => {
-        if (!cancelled) setItems(mapItems(d.items));
+        if (cancelled) return;
+        setItems(mapItems(d.items));
+        setLoadState("ready");
       })
       .catch(() => {
         /* keep prior items on refresh failure */
+        if (!cancelled && items.length === 0) setLoadState("error");
       });
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, items.length]);
 
   const count = items.filter((i) => i.severity !== "info").length;
+  const showLoading = loadState === "loading";
+  const showEmpty = loadState === "ready" && items.length === 0;
+  const showError = loadState === "error" && items.length === 0;
 
   return (
     <div className="relative">
@@ -115,6 +134,7 @@ export function NotificationCenterButton() {
         className="relative rounded-lg border border-border p-2 hover:bg-muted"
         aria-label="Notifications"
         aria-expanded={open}
+        aria-busy={showLoading || undefined}
       >
         <Bell className="h-4 w-4" />
         {count > 0 && (
@@ -135,8 +155,21 @@ export function NotificationCenterButton() {
             <div className="border-b border-border px-4 py-3">
               <p className="text-sm font-semibold">Notifications</p>
             </div>
-            <ul className="max-h-64 overflow-y-auto">
-              {items.length === 0 ? (
+            <ul className="max-h-64 overflow-y-auto" aria-busy={showLoading || undefined}>
+              {showLoading ? (
+                <li className="space-y-3 px-4 py-4" role="status" aria-label="Loading notifications">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="space-y-1.5">
+                      <Skeleton className="h-4 w-40" />
+                      <Skeleton className="h-3 w-56" />
+                    </div>
+                  ))}
+                </li>
+              ) : showError ? (
+                <li className="px-4 py-6 text-sm text-muted-foreground">
+                  Could not load notifications.
+                </li>
+              ) : showEmpty ? (
                 <li className="px-4 py-6 text-sm text-muted-foreground">All clear.</li>
               ) : (
                 items.map((item) => (

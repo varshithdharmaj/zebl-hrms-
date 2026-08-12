@@ -233,8 +233,8 @@ export function ApplicationForm({
         <Button variant="outline" asChild disabled={pending}>
           <Link href="/admin/recruitment/pipeline">Cancel</Link>
         </Button>
-        <Button type="submit" disabled={pending} className="font-semibold shadow-subtle">
-          {pending ? "Saving..." : mode === "create" ? "Create Application" : "Save Changes"}
+        <Button type="submit" loading={pending} className="font-semibold shadow-subtle">
+          {pending ? "Saving…" : mode === "create" ? "Create Application" : "Save Changes"}
         </Button>
       </div>
     </form>

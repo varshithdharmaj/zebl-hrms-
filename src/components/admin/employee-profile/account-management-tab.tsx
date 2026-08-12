@@ -160,7 +160,7 @@ function ProvisionEmployeeLoginCard({
             </label>
           </>
         )}
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" loading={pending}>
           {pending
             ? mode === "link"
               ? "Linking…"

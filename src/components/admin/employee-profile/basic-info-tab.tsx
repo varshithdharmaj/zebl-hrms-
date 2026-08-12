@@ -178,7 +178,7 @@ export function BasicInfoTab({
             Login: <span className="font-medium text-foreground">{employee.user.email}</span>
           </p>
         )}
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" loading={pending}>
           {pending ? "Saving…" : "Save changes"}
         </Button>
       </form>

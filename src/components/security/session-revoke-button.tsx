@@ -57,7 +57,7 @@ export function SessionRevokeButton({
           <Button
             type="button"
             variant="destructive"
-            disabled={pending}
+            loading={pending}
             onClick={() => {
               startTransition(async () => {
                 const fd = new FormData();
@@ -100,7 +100,7 @@ export function LogoutAllSessionsButton() {
           <Button
             type="button"
             variant="destructive"
-            disabled={pending}
+            loading={pending}
             onClick={() => {
               startTransition(async () => {
                 await logoutAllOwnSessionsAction();

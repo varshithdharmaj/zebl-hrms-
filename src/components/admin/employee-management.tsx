@@ -201,7 +201,7 @@ function CreateEmployeeDialog({
             <Label htmlFor="password">Password</Label>
             <Input id="password" name="password" type="password" minLength={8} />
           </div>
-          <Button type="submit" disabled={pending} className="w-full">
+          <Button type="submit" loading={pending} className="w-full">
             {pending ? "Creating…" : "Create employee"}
           </Button>
         </form>

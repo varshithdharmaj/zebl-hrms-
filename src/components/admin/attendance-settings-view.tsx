@@ -101,7 +101,7 @@ function WeeklyScheduleForm({
         </div>
 
         {canEdit && (
-          <Button type="submit" disabled={pending}>
+          <Button type="submit" loading={pending}>
             {pending ? "Saving…" : "Save schedule"}
           </Button>
         )}
@@ -141,7 +141,7 @@ function AddOverrideForm() {
         <Label htmlFor="override-reason">Reason (optional)</Label>
         <Input id="override-reason" name="reason" placeholder="e.g. Client deliverable" disabled={pending} />
       </div>
-      <Button type="submit" disabled={pending}>
+      <Button type="submit" loading={pending}>
         {pending ? "Adding…" : "Add override"}
       </Button>
       {state.error && <p className="w-full text-sm text-danger">{state.error}</p>}
@@ -165,8 +165,8 @@ function OverrideRowItem({ override }: { override: OverrideRow }) {
       <DataTableCell>
         <form action={formAction}>
           <input type="hidden" name="id" value={override.id} />
-          <Button type="submit" size="sm" variant="ghost" disabled={pending} aria-label="Remove override">
-            <Trash2 className="h-4 w-4 text-danger" />
+          <Button type="submit" size="sm" variant="ghost" loading={pending} aria-label="Remove override">
+            {pending ? null : <Trash2 className="h-4 w-4 text-danger" />}
           </Button>
         </form>
         {state.error && <p className="mt-1 text-xs text-danger">{state.error}</p>}

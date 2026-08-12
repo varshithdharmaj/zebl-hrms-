@@ -112,7 +112,7 @@ export function ApplicationAssessmentForm({
           type="button"
           size="sm"
           className="font-semibold shadow-subtle"
-          disabled={isPending}
+          loading={isPending}
           onClick={save}
         >
           {isPending ? "Saving…" : "Save Assessment"}

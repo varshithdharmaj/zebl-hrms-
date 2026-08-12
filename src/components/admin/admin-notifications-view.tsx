@@ -143,7 +143,7 @@ function NotificationRow({ notification }: { notification: Notification }) {
         {notification.status === "failed" && (
           <form action={action}>
             <input type="hidden" name="notificationId" value={notification.id} />
-            <Button type="submit" size="sm" variant="outline" disabled={pending}>
+            <Button type="submit" size="sm" variant="outline" loading={pending}>
               Retry
             </Button>
             {state.error && <p className="text-xs text-danger">{state.error}</p>}

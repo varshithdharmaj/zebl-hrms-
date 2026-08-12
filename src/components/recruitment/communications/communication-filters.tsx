@@ -103,7 +103,7 @@ export function CommunicationFilters({
         <input type="hidden" name="type" value={filters.type || "all"} />
       </div>
 
-      <Button type="submit" variant="outline" className="h-10" disabled={isPending}>
+      <Button type="submit" variant="outline" className="h-10" loading={isPending}>
         {isPending ? "Searching…" : "Search"}
       </Button>
     </form>

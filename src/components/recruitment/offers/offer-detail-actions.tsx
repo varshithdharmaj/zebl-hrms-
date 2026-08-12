@@ -289,9 +289,9 @@ export function OfferDetailActions({
         size="sm"
         className="font-semibold text-xs rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100"
         onClick={handleDuplicate}
-        disabled={isPending}
+        loading={isPending}
       >
-        Duplicate Offer
+        {isPending ? "Duplicating…" : "Duplicate Offer"}
       </Button>
     </div>
   );

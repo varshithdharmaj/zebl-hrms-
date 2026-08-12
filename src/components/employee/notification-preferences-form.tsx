@@ -78,7 +78,7 @@ export function NotificationPreferencesForm({
           />
         </div>
 
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" loading={pending}>
           {pending ? "Saving…" : "Save preferences"}
         </Button>
       </form>
