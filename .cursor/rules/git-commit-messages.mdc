@@ -1,0 +1,47 @@
+---
+description: Write clear, reviewable git commit messages (why over what)
+alwaysApply: true
+---
+
+# Git commit messages
+
+When the user asks to commit, write messages a reviewer can scan without opening the diff.
+
+## Subject (required)
+
+- Imperative, present tense: `Add`, `Fix`, `Cap`, `Scope` — not `Added` / `Fixes` / `Updated files`
+- One line, ~72 characters, no trailing period
+- Lead with **why** or **user-visible outcome**, not a file list
+- Optional Conventional Commits prefix when it matches this repo: `feat:`, `fix:`, `perf:`, `test:`, `docs:`, `chore:`
+- Scope in parentheses when it narrows the area: `fix(leave):`, `perf(recruitment):`
+
+## Body (when the diff is not obvious)
+
+- Blank line after the subject
+- 1–4 short lines: motivation, constraint, or risk (migration, env, rollout)
+- Do not repeat the subject or paste a file dump
+
+## Split commits
+
+- One logical change per commit (auth gate ≠ Prisma pool ≠ leave idempotency)
+- Do not squash unrelated work into `Update stuff` or `WIP`
+- Skip secrets (`.env`, credentials). Warn if the user asks to include them
+- Skip scratch files (`scripts/_tmp-*`, `*.tsbuildinfo`) unless the user asks
+
+## Examples
+
+```
+# ❌ BAD
+Update prisma and auth
+fix bugs
+WIP
+```
+
+```
+# ✅ GOOD
+fix(db): cap Prisma pool per ECS task to protect RDS connections
+
+feat(auth): block local users until they change a required password
+
+fix(leave): make ledger writes idempotent under concurrent approval
+```

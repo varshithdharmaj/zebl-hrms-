@@ -1,0 +1,38 @@
+# Git / VCS
+.git
+.github
+.gitignore
+
+# Dependencies & build output (deps stage runs npm ci)
+node_modules
+.next
+out
+dist
+coverage
+*.tsbuildinfo
+
+# Env / secrets — never bake into the image
+.env
+.env.*
+!.env.example
+
+# Tests, docs, local tooling
+tests
+docs
+*.md
+!README.md
+.cursor
+.vscode
+.idea
+*.log
+npm-debug.log*
+
+# Dev-only / audit scripts
+scripts/_tmp-*
+scripts/load-test
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*~

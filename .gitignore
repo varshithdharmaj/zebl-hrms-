@@ -13,3 +13,5 @@ src/generated/prisma
 /storage/
 
 tsconfig.tsbuildinfo
+.env.*
+!.env.example
