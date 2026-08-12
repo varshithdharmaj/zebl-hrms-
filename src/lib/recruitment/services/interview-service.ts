@@ -15,6 +15,7 @@ import { prismaInterviewRepository } from "@/lib/recruitment/repositories/prisma
 import type {
   InterviewDetail,
   InterviewListFilters,
+  InterviewListItem,
   InterviewRepository,
 } from "@/lib/recruitment/repositories/interview-repository";
 import type { SearchFilters } from "@/lib/recruitment/types/pagination";

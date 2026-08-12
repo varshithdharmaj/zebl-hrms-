@@ -15,6 +15,8 @@ import type {
   InterviewDetail,
   InterviewDetailRow,
   InterviewListFilters,
+  InterviewListItem,
+  InterviewListRow,
   InterviewRepository,
 } from "@/lib/recruitment/repositories/interview-repository";
 import type {
@@ -48,6 +50,40 @@ const detailInclude = {
   },
   attachments: {
     where: { deletedAt: null },
+  },
+} as const;
+
+/** Lean include for list/search/calendar — omits feedback + attachments (detail-only). */
+const listInclude = {
+  application: {
+    select: {
+      id: true,
+      candidateId: true,
+      jobOpeningId: true,
+      candidate: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+        },
+      },
+      jobOpening: {
+        select: {
+          id: true,
+          title: true,
+          location: true,
+        },
+      },
+    },
+  },
+  panelists: {
+    select: {
+      id: true,
+      employeeId: true,
+      employee: {
+        select: { id: true, name: true },
+      },
+    },
   },
 } as const;
 
@@ -93,6 +129,32 @@ function mapInterviewRow(row: InterviewDetailRow): InterviewDetail {
         : jobOpening,
     },
   };
+}
+
+/** Map lean list rows — feedback/attachments are detail-only. */
+function mapListInterviewRow(row: InterviewListRow): InterviewListItem {
+  const { application, panelists, ...rest } = row;
+  return {
+    ...rest,
+    panelists,
+    feedback: [],
+    attachments: [],
+    application: application ?? null,
+  };
+}
+
+function readDateFilter(
+  filters: InterviewListFilters | SearchFilters | undefined,
+  key: "scheduledStartFrom" | "scheduledStartTo"
+): Date | undefined {
+  if (!filters) return undefined;
+  const value = (filters as InterviewListFilters)[key];
+  if (value instanceof Date) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }
+  return undefined;
 }
 
 function readStringFilter(
@@ -167,6 +229,14 @@ function filtersWhere(
         title: { contains: trimmed, mode: "insensitive" },
       },
     ];
+  }
+  const scheduledStartFrom = readDateFilter(filters, "scheduledStartFrom");
+  const scheduledStartTo = readDateFilter(filters, "scheduledStartTo");
+  if (scheduledStartFrom || scheduledStartTo) {
+    where.scheduledStart = {
+      ...(scheduledStartFrom ? { gte: scheduledStartFrom } : {}),
+      ...(scheduledStartTo ? { lte: scheduledStartTo } : {}),
+    };
   }
   return where;
 }
@@ -268,7 +338,7 @@ export const prismaInterviewRepository: InterviewRepository = {
       prisma.interview.count({ where }),
       prisma.interview.findMany({
         where,
-        include: detailInclude,
+        include: listInclude,
         skip: paginationSkip(pagination),
         take: pagination.pageSize,
         orderBy: { [sortField]: sortDirection },
@@ -276,7 +346,7 @@ export const prismaInterviewRepository: InterviewRepository = {
     ]);
 
     return toPageResult(
-      rows.map((row) => mapInterviewRow(row)),
+      rows.map((row) => mapListInterviewRow(row)),
       total,
       pagination
     );
@@ -290,7 +360,7 @@ export const prismaInterviewRepository: InterviewRepository = {
       prisma.interview.count({ where }),
       prisma.interview.findMany({
         where,
-        include: detailInclude,
+        include: listInclude,
         skip: paginationSkip(pagination),
         take: pagination.pageSize,
         orderBy: { scheduledStart: "asc" },
@@ -298,7 +368,7 @@ export const prismaInterviewRepository: InterviewRepository = {
     ]);
 
     return toPageResult(
-      rows.map((row) => mapInterviewRow(row)),
+      rows.map((row) => mapListInterviewRow(row)),
       total,
       pagination
     );
@@ -307,27 +377,25 @@ export const prismaInterviewRepository: InterviewRepository = {
   async listByApplication(applicationId) {
     const rows = await prisma.interview.findMany({
       where: { applicationId, deletedAt: null },
-      include: detailInclude,
+      include: listInclude,
       orderBy: { scheduledStart: "asc" },
     });
-    return rows.map((row) => mapInterviewRow(row));
+    return rows.map((row) => mapListInterviewRow(row));
   },
 
   async listByScheduleRange(args) {
     const pagination = normalizePagination(args.pagination);
     const where = mergeWhere(args.scope, {
       ...args.filters,
-      scheduledStart: {
-        gte: args.rangeStart,
-        lte: args.rangeEnd,
-      },
+      scheduledStartFrom: args.rangeStart,
+      scheduledStartTo: args.rangeEnd,
     } as InterviewListFilters);
 
     const [total, rows] = await prisma.$transaction([
       prisma.interview.count({ where }),
       prisma.interview.findMany({
         where,
-        include: detailInclude,
+        include: listInclude,
         skip: paginationSkip(pagination),
         take: pagination.pageSize,
         orderBy: { scheduledStart: "asc" },
@@ -335,7 +403,7 @@ export const prismaInterviewRepository: InterviewRepository = {
     ]);
 
     return toPageResult(
-      rows.map((row) => mapInterviewRow(row)),
+      rows.map((row) => mapListInterviewRow(row)),
       total,
       pagination
     );

@@ -113,7 +113,15 @@ function filtersWhere(filters?: OfferListFilters): Prisma.OfferWhereInput {
   if (filters?.department && filters.department !== "all") {
     where.department = filters.department;
   }
-  if (filters?.jobOpeningId && filters.jobOpeningId !== "all") {
+  if (filters?.candidateId) {
+    const applicationFilter: Prisma.ApplicationWhereInput = {
+      candidateId: filters.candidateId,
+    };
+    if (filters.jobOpeningId && filters.jobOpeningId !== "all") {
+      applicationFilter.jobOpeningId = filters.jobOpeningId;
+    }
+    where.application = applicationFilter;
+  } else if (filters?.jobOpeningId && filters.jobOpeningId !== "all") {
     where.application = { jobOpeningId: filters.jobOpeningId };
   }
   if (filters?.applicationId) {

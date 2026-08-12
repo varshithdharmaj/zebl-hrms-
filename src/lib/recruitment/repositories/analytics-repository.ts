@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@/generated/prisma/client";
 import {
   ApplicationStatus,
   CandidateSource,
@@ -130,7 +131,17 @@ function buildDateFilter(dateRange?: AnalyticsDateFilter): {
   return filter;
 }
 
-function buildScopeFilter(scope: RecruitmentScope) {
+/**
+ * Application-scoped filter for analytics queries.
+ * Mirrors `scopeWhere` in prisma-application-repository:
+ * - unrestricted (HR/SA) → no recruitment scope predicate
+ * - assigned → OR over application / candidate / job ID sets
+ *   (empty assigned sets still yield zero rows via `in: []`)
+ */
+export function buildScopeFilter(
+  scope: RecruitmentScope
+): Prisma.ApplicationWhereInput {
+  if (scope.mode === "unrestricted") return {};
   return {
     OR: [
       { id: { in: [...scope.applicationIds] } },

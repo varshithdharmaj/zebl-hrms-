@@ -10,6 +10,11 @@ import { listInterviewsCached } from "@/lib/recruitment/interview/queries";
 import { InterviewStatus } from "@/generated/prisma/enums";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  buildInterviewCalendarHref,
+  calendarMonthRange,
+  resolveCalendarMonthYear,
+} from "@/lib/recruitment/interview/calendar-range";
 
 type InterviewView = "upcoming" | "completed" | "cancelled" | "no_show";
 type LayoutView = "calendar" | "list";
@@ -38,6 +43,10 @@ function statusForView(view: InterviewView): InterviewStatus {
   }
 }
 
+function interviewsListHref(view: InterviewView, layout: LayoutView): string {
+  return `/admin/recruitment/interviews?view=${view}&layout=${layout}`;
+}
+
 export default async function RecruitmentInterviewsPage({
   searchParams,
 }: {
@@ -48,8 +57,8 @@ export default async function RecruitmentInterviewsPage({
   const view = resolveView(params.view);
   const layout = resolveLayout(params.layout);
   const canManage = canAccessHRAdministration(session.role);
+  const calendarMonthYear = resolveCalendarMonthYear(params.month, params.year);
 
-  // Fetch only the layout the user is viewing — both queries used heavy detail includes.
   const tableResult =
     layout === "list"
       ? await listInterviewsCached(
@@ -60,13 +69,18 @@ export default async function RecruitmentInterviewsPage({
         )
       : { items: [], total: 0, page: 1, pageSize: 50, totalPages: 0 };
 
+  const calendarRange = calendarMonthRange(calendarMonthYear.year, calendarMonthYear.month);
   const calendarResult =
     layout === "calendar"
       ? await listInterviewsCached(
           session,
-          {},
+          {
+            scheduledStartFrom: calendarRange.scheduledStartFrom,
+            scheduledStartTo: calendarRange.scheduledStartTo,
+          },
           { page: 1, pageSize: 100 },
-          { field: "scheduledStart", direction: "asc" }
+          { field: "scheduledStart", direction: "asc" },
+          { maxPageSize: 100 }
         )
       : { items: [], total: 0, page: 1, pageSize: 100, totalPages: 0 };
 
@@ -103,7 +117,16 @@ export default async function RecruitmentInterviewsPage({
           {tabs.map((tab) => (
             <Link
               key={tab.id}
-              href={`/admin/recruitment/interviews?view=${tab.id}&layout=${layout}`}
+              href={
+                layout === "calendar"
+                  ? buildInterviewCalendarHref({
+                      view: tab.id,
+                      layout,
+                      month: calendarMonthYear.month,
+                      year: calendarMonthYear.year,
+                    })
+                  : interviewsListHref(tab.id, layout)
+              }
               className={cn(
                 "rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors",
                 view === tab.id
@@ -119,7 +142,16 @@ export default async function RecruitmentInterviewsPage({
           {layoutTabs.map((tab) => (
             <Link
               key={tab.id}
-              href={`/admin/recruitment/interviews?view=${view}&layout=${tab.id}`}
+              href={
+                tab.id === "calendar"
+                  ? buildInterviewCalendarHref({
+                      view,
+                      layout: tab.id,
+                      month: calendarMonthYear.month,
+                      year: calendarMonthYear.year,
+                    })
+                  : interviewsListHref(view, tab.id)
+              }
               className={cn(
                 "rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors",
                 layout === tab.id
@@ -134,9 +166,15 @@ export default async function RecruitmentInterviewsPage({
       </div>
 
       {layout === "calendar" ? (
-        <InterviewCalendar interviews={calendarResult.items as never[]} />
+        <InterviewCalendar
+          interviews={calendarResult.items}
+          month={calendarMonthYear.month}
+          year={calendarMonthYear.year}
+          view={view}
+          layout={layout}
+        />
       ) : (
-        <InterviewTable interviews={tableResult.items as never[]} />
+        <InterviewTable interviews={tableResult.items} />
       )}
     </div>
   );

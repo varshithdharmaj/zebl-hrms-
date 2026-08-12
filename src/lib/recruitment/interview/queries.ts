@@ -28,12 +28,13 @@ export const listInterviewsCached = cache(
     session: SessionUser,
     filters: InterviewListFilters | SearchFilters | undefined,
     pagination: { page: number; pageSize: number },
-    sort?: SortOptions
+    sort?: SortOptions,
+    options?: { maxPageSize?: number }
   ) => {
     const service = createInterviewService();
     return service.listInterviews(session, {
       filters,
-      pagination: normalizePagination(pagination),
+      pagination: normalizePagination(pagination, { maxPageSize: options?.maxPageSize }),
       sort,
     });
   }

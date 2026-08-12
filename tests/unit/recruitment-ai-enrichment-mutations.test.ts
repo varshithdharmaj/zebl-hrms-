@@ -87,6 +87,8 @@ const authMocks = vi.hoisted(() => ({
 vi.mock("@/lib/auth-guards", () => ({
   requireHROrSuperAdminSession: (...args: unknown[]) =>
     authMocks.requireHROrSuperAdminSession(...args),
+  requireRecruitmentAdminSession: (...args: unknown[]) =>
+    authMocks.requireHROrSuperAdminSession(...args),
 }));
 
 vi.mock("next/cache", () => ({

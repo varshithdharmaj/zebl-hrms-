@@ -1,11 +1,26 @@
 import Link from "next/link";
 import { getSessionOrThrow } from "@/lib/auth-guards";
-import { canAccessHRAdministration } from "@/lib/permissions";
-import { getCandidateCached, getEmployeeOptions } from "@/lib/recruitment/candidate";
+import { canAccessHRAdministration, PermissionError } from "@/lib/permissions";
+import {
+  getCandidateOverviewCached,
+  getCandidateTimelineCached,
+  getResumeParseDraftCached,
+  listCandidateDocumentsCached,
+  listResumeParseDraftsCached,
+} from "@/lib/recruitment/candidate";
+import { parseCandidateWorkspaceTab } from "@/lib/recruitment/candidate/workspace-tab";
+import {
+  mapWorkspaceApplicationRow,
+  type CandidateWorkspaceApplicationRow,
+} from "@/lib/recruitment/candidate/workspace-applications";
 import { listInterviewsCached } from "@/lib/recruitment/interview/queries";
-import { listApplicationsCached } from "@/lib/recruitment/application/queries";
+import {
+  countCandidateApplicationsCached,
+  getApplicationCached,
+  listApplicationsCached,
+} from "@/lib/recruitment/application/queries";
+import { listOffersCached } from "@/lib/recruitment/offer/queries";
 import { RecruitmentPermissionService } from "@/lib/recruitment/permissions/permission-service";
-import { RecruitmentTimelineService } from "@/lib/recruitment/services/timeline-service";
 import { isRecruitmentDomainError } from "@/lib/recruitment/shared/errors";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { CandidateDetailView } from "@/components/recruitment/candidates/candidate-detail";
@@ -19,14 +34,16 @@ import {
 } from "@/lib/recruitment/navigation/return-to";
 import { ProfileAvatar } from "@/components/shared/profile-avatar";
 import { Button } from "@/components/ui/button";
-import { prisma } from "@/lib/prisma";
-import { AiInsightType } from "@/generated/prisma/enums";
 import { createCandidateAiEnrichmentService, isEnrichmentFresh } from "@/lib/recruitment/services/candidate-ai-enrichment-service";
 import {
   createCandidateAiRecoveryService,
   isRecoveryFresh,
 } from "@/lib/recruitment/services/candidate-ai-recovery-service";
 import { parseResumeImportDraftContent } from "@/lib/recruitment/resume-import/draft-content";
+import type { TimelineItem } from "@/lib/recruitment/types/timeline";
+import type { CandidateDocumentView } from "@/lib/recruitment/candidate/types";
+import type { InterviewListItem } from "@/lib/recruitment/repositories/interview-repository";
+import type { OfferDetail } from "@/lib/recruitment/repositories/offer-repository";
 
 export default async function CandidateDetailPage({
   params,
@@ -38,6 +55,7 @@ export default async function CandidateDetailPage({
   const session = await getSessionOrThrow();
   const { id } = await params;
   const query = searchParams ? await searchParams : {};
+  const tab = parseCandidateWorkspaceTab(query);
   const nav = parseRecruitmentNavSearch(query);
   const canManageCandidate = canAccessHRAdministration(session.role);
   const notice = typeof query.notice === "string" ? query.notice : undefined;
@@ -48,10 +66,23 @@ export default async function CandidateDetailPage({
   const backHref = resolveRecruitmentReturnTo(nav.returnTo, "/admin/recruitment/candidates");
   const backLabel = returnToLabel(nav.returnTo, "Back to candidates");
 
-  let candidate;
+  let candidateOverview;
   try {
-    candidate = await getCandidateCached(session, id);
+    candidateOverview = await getCandidateOverviewCached(session, id);
   } catch (error) {
+    if (error instanceof PermissionError) {
+      return (
+        <div className="space-y-6 lg:space-y-8">
+          <WorkspacePageHeader
+            title="Access Denied"
+            description="You do not have permissions to view this candidate profile."
+            backHref="/admin/recruitment/candidates"
+            backLabel="Back to candidates"
+          />
+          <CandidateErrorView type="permission_denied" />
+        </div>
+      );
+    }
     if (isRecruitmentDomainError(error)) {
       if (error.code === "REC_NOT_FOUND") {
         return (
@@ -96,66 +127,80 @@ export default async function CandidateDetailPage({
     );
   }
 
+  const candidateId = candidateOverview.id;
   const enrichmentService = createCandidateAiEnrichmentService();
   const recoveryService = createCandidateAiRecoveryService();
 
-  const [
-    timeline,
-    employees,
-    interviewsResult,
-    offers,
-    applicationsResult,
-    canWriteDiscussion,
-    enrichment,
-    recovery,
-    resumeDrafts,
-  ] = await Promise.all([
-      RecruitmentTimelineService.buildTimeline({
-        candidateId: candidate.id,
-        limit: 50,
-      }),
-      getEmployeeOptions(),
-      listInterviewsCached(
+  let applications: CandidateWorkspaceApplicationRow[] = [];
+  let applicationCount = 0;
+
+  if (tab === "overview" || tab === "applications") {
+    const applicationsResult = await listApplicationsCached(
+      session,
+      { candidateId },
+      { page: 1, pageSize: 50 },
+      { field: "createdAt", direction: "desc" }
+    );
+    applications = applicationsResult.items.map((item) => mapWorkspaceApplicationRow(item));
+    applicationCount = applications.length;
+  } else {
+    applicationCount = await countCandidateApplicationsCached(session, candidateId);
+    if (nav.applicationId) {
+      try {
+        const app = await getApplicationCached(session, nav.applicationId);
+        if (app && String(app.candidateId) === candidateId) {
+          applications = [mapWorkspaceApplicationRow(app)];
+        }
+      } catch {
+        // Out-of-scope or missing application — breadcrumb context omitted.
+      }
+    }
+  }
+
+  let timeline: readonly TimelineItem[] = [];
+  let documents: CandidateDocumentView[] = [];
+  let interviews: InterviewListItem[] = [];
+  let offers: OfferDetail[] = [];
+  let canWriteDiscussion = false;
+  let enrichment: Awaited<ReturnType<typeof enrichmentService.listLatestEnrichment>> = {
+    insight: null,
+    content: null,
+  };
+  let recovery: Awaited<ReturnType<typeof recoveryService.listLatestRecovery>> = {
+    insight: null,
+    content: null,
+  };
+  let resumeDrafts: Array<{ id: string; contentJson: unknown }> = [];
+
+  if (tab === "overview") {
+    [canWriteDiscussion, enrichment, recovery, resumeDrafts] = await Promise.all([
+      RecruitmentPermissionService.canWriteCandidateDiscussion(session, candidateId),
+      enrichmentService.listLatestEnrichment(candidateId),
+      recoveryService.listLatestRecovery(candidateId),
+      listResumeParseDraftsCached(session, candidateId, 5),
+    ]);
+  } else if (tab === "applications") {
+    const [interviewsResult, offersResult] = await Promise.all([
+      listInterviewsCached(session, { candidateId }, { page: 1, pageSize: 50 }),
+      listOffersCached(
         session,
-        { candidateId: candidate.id },
-        { page: 1, pageSize: 50 }
-      ),
-      prisma.offer.findMany({
-        where: {
-          application: {
-            candidateId: candidate.id,
-          },
-        },
-        include: {
-          application: {
-            include: {
-              jobOpening: true,
-            },
-          },
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      }),
-      listApplicationsCached(
-        session,
-        { candidateId: candidate.id },
+        { candidateId },
         { page: 1, pageSize: 50 },
         { field: "createdAt", direction: "desc" }
       ),
-      RecruitmentPermissionService.canWriteCandidateDiscussion(session, candidate.id),
-      enrichmentService.listLatestEnrichment(candidate.id),
-      recoveryService.listLatestRecovery(candidate.id),
-      prisma.candidateAiInsight.findMany({
-        where: {
-          candidateId: candidate.id,
-          insightType: AiInsightType.resume_parse,
-        },
-        orderBy: { createdAt: "desc" },
-        take: 5,
-        select: { id: true, contentJson: true },
-      }),
     ]);
+    interviews = interviewsResult.items;
+    offers = offersResult.items;
+  } else if (tab === "documents") {
+    documents = await listCandidateDocumentsCached(session, candidateId);
+  } else if (tab === "activity") {
+    timeline = await getCandidateTimelineCached(session, candidateId, 50);
+  }
+
+  const candidate = {
+    ...candidateOverview,
+    documents,
+  };
 
   const sourceDraftId =
     enrichment.content?.sourceDraftId ??
@@ -174,11 +219,12 @@ export default async function CandidateDetailPage({
   if (enrichment.content?.sourceDraftId) {
     const draftRow =
       resumeDrafts.find((row) => row.id === enrichment.content?.sourceDraftId) ??
-      (await prisma.candidateAiInsight.findUnique({
-        where: { id: enrichment.content.sourceDraftId },
-        select: { id: true, contentJson: true, candidateId: true },
-      }));
-    if (draftRow && (!("candidateId" in draftRow) || draftRow.candidateId === candidate.id)) {
+      (await getResumeParseDraftCached(
+        session,
+        candidateId,
+        enrichment.content.sourceDraftId
+      ));
+    if (draftRow) {
       try {
         enrichmentMapped = parseResumeImportDraftContent(draftRow.contentJson).mapped;
       } catch {
@@ -204,22 +250,6 @@ export default async function CandidateDetailPage({
       candidate,
       resumeTextHash: recovery.content.resumeTextHash,
     });
-
-  const interviews = interviewsResult.items;
-  const applications = applicationsResult.items.map((item) => ({
-    id: String(item.id),
-    status: String(item.status ?? ""),
-    currentStage: String(item.currentStage ?? ""),
-    jobOpeningId: String(
-      item.jobOpeningId ??
-        (item as { jobOpening?: { id?: string } }).jobOpening?.id ??
-        ""
-    ),
-    jobTitle: String(
-      (item as { jobOpening?: { title?: string } }).jobOpening?.title ?? "Job"
-    ),
-    createdAt: item.createdAt as Date | string,
-  }));
 
   const originatingApp = nav.applicationId
     ? applications.find((app) => app.id === nav.applicationId)
@@ -270,9 +300,10 @@ export default async function CandidateDetailPage({
 
       <CandidateDetailView
         candidate={candidate}
+        initialTab={tab}
         timeline={timeline}
-        employeeOptions={employees}
         applications={applications}
+        applicationCount={applicationCount}
         interviews={interviews.map((item) => ({
           id: String(item.id),
           title: String(item.title ?? "Interview"),

@@ -21,6 +21,7 @@ export type OfferListFilters = {
   department?: string;
   jobOpeningId?: string;
   applicationId?: string;
+  candidateId?: string;
   recruiterUserId?: string;
   q?: string;
   includeArchived?: boolean;

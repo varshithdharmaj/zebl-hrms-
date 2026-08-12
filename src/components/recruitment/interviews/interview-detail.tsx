@@ -41,6 +41,9 @@ export function InterviewDetailView({
 }: InterviewDetailViewProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [pendingAction, setPendingAction] = React.useState<
+    "cancel" | "complete" | "noShow" | null
+  >(null);
   const [error, setError] = React.useState<string | null>(null);
   const [showFeedbackForm, setShowFeedbackForm] = React.useState(false);
   const application = interview.application;
@@ -51,6 +54,7 @@ export function InterviewDetailView({
   const handleCancel = () => {
     if (!confirm("Are you sure you want to cancel this interview?")) return;
     setError(null);
+    setPendingAction("cancel");
     startTransition(async () => {
       const res = await cancelInterviewAction(
         {},
@@ -58,6 +62,7 @@ export function InterviewDetailView({
       );
       if (res.error) {
         setError(res.error);
+        setPendingAction(null);
       } else {
         router.refresh();
       }
@@ -67,6 +72,7 @@ export function InterviewDetailView({
   const handleComplete = () => {
     if (!confirm("Are you sure you want to mark this interview as completed?")) return;
     setError(null);
+    setPendingAction("complete");
     startTransition(async () => {
       const res = await completeInterviewAction(
         {},
@@ -74,6 +80,7 @@ export function InterviewDetailView({
       );
       if (res.error) {
         setError(res.error);
+        setPendingAction(null);
       } else {
         router.refresh();
       }
@@ -83,6 +90,7 @@ export function InterviewDetailView({
   const handleNoShow = () => {
     if (!confirm("Mark this interview as no-show? The candidate did not attend.")) return;
     setError(null);
+    setPendingAction("noShow");
     startTransition(async () => {
       const res = await markInterviewNoShowAction(
         {},
@@ -90,6 +98,7 @@ export function InterviewDetailView({
       );
       if (res.error) {
         setError(res.error);
+        setPendingAction(null);
       } else {
         router.refresh();
       }
@@ -184,27 +193,30 @@ export function InterviewDetailView({
                 variant="outline"
                 size="sm"
                 onClick={handleCancel}
+                loading={isPending && pendingAction === "cancel"}
                 disabled={isPending}
                 className="font-semibold text-xs rounded-lg text-red-700 hover:bg-red-50 hover:text-red-800 border-red-200 shadow-subtle"
               >
-                Cancel Interview
+                {isPending && pendingAction === "cancel" ? "Cancelling…" : "Cancel Interview"}
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleNoShow}
+                loading={isPending && pendingAction === "noShow"}
                 disabled={isPending}
                 className="font-semibold text-xs rounded-lg text-amber-700 hover:bg-amber-50 hover:text-amber-800 border-amber-200 shadow-subtle"
               >
-                Mark No Show
+                {isPending && pendingAction === "noShow" ? "Marking…" : "Mark No Show"}
               </Button>
               <Button
                 size="sm"
                 onClick={handleComplete}
+                loading={isPending && pendingAction === "complete"}
                 disabled={isPending}
                 className="font-semibold text-xs rounded-lg shadow-subtle"
               >
-                Mark as Completed
+                {isPending && pendingAction === "complete" ? "Completing…" : "Mark as Completed"}
               </Button>
             </>
           ) : null}

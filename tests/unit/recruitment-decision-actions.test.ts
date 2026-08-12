@@ -25,6 +25,7 @@ vi.mock("next/cache", () => ({
 
 vi.mock("@/lib/auth-guards", () => ({
   requireHROrSuperAdminSession: () => requireHROrSuperAdminSession(),
+  requireRecruitmentAdminSession: () => requireHROrSuperAdminSession(),
 }));
 
 vi.mock("@/lib/recruitment/config/feature-flags", () => ({

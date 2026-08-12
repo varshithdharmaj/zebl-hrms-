@@ -476,4 +476,10 @@ export const prismaApplicationRepository: ApplicationRepository = {
 
     return result;
   },
+
+  async countByCandidate(scope, candidateId) {
+    return prisma.application.count({
+      where: mergeWhere(scope, { candidateId }),
+    });
+  },
 };

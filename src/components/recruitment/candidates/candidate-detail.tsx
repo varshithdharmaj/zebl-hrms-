@@ -1,10 +1,14 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
+import React, { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { CandidateDetail } from "@/lib/recruitment/candidate/types";
 import type { TimelineItem } from "@/lib/recruitment/types/timeline";
+import {
+  buildCandidateWorkspaceTabHref,
+  type CandidateWorkspaceTab,
+} from "@/lib/recruitment/candidate/workspace-tab";
 import { AppTabs } from "@/components/ui/app-tabs";
 import { CandidateStatusBadge } from "./candidate-status-badge";
 import { CandidateSourceBadge } from "./candidate-source-badge";
@@ -80,7 +84,7 @@ function formatDateTime(value: Date | string | null | undefined): string {
   });
 }
 
-type WorkspaceTab = "overview" | "applications" | "documents" | "activity";
+type WorkspaceTab = CandidateWorkspaceTab;
 
 type CandidateApplicationRow = {
   id: string;
@@ -100,21 +104,23 @@ type CandidateNavContext = {
 
 export function CandidateDetailView({
   candidate,
-  timeline,
-  employeeOptions,
+  timeline = [],
+  employeeOptions = [],
   interviews = [],
   offers = [],
   applications = [],
+  applicationCount,
   canWriteDiscussion = false,
   canManageCandidate = false,
   aiEnrichment,
   aiRecovery,
   bannerNotice = null,
   navContext,
+  initialTab = "overview",
 }: {
   candidate: CandidateDetail;
-  timeline: readonly TimelineItem[];
-  employeeOptions: { id: number; name: string; user: { id: string; email: string } | null }[];
+  timeline?: readonly TimelineItem[];
+  employeeOptions?: { id: number; name: string; user: { id: string; email: string } | null }[];
   interviews?: ReadonlyArray<{
     id: string;
     title: string;
@@ -133,6 +139,7 @@ export function CandidateDetailView({
     } | null;
   }>;
   applications?: CandidateApplicationRow[];
+  applicationCount?: number;
   canWriteDiscussion?: boolean;
   canManageCandidate?: boolean;
   aiEnrichment?: {
@@ -152,8 +159,11 @@ export function CandidateDetailView({
   /** One-shot recoverable notice (e.g. resume attach failed after create). */
   bannerNotice?: string | null;
   navContext?: CandidateNavContext;
+  initialTab?: WorkspaceTab;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const createApplicationHref = `/admin/recruitment/applications/new?candidateId=${encodeURIComponent(candidate.id)}`;
   const applicationHref = (app: CandidateApplicationRow) =>
     buildRecruitmentEntityHref(`/admin/recruitment/applications/${app.id}`, {
@@ -167,8 +177,9 @@ export function CandidateDetailView({
       jobOpeningId: app.jobOpeningId || undefined,
       currentStage: app.currentStage,
     });
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>("overview");
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>(initialTab);
   const [isPending, startTransition] = useTransition();
+  const [, startTabTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [noteBody, setNoteBody] = useState("");
@@ -183,6 +194,10 @@ export function CandidateDetailView({
     isDestructive?: boolean;
   } | null>(null);
 
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
+
   const employeeMap = React.useMemo(() => {
     const map = new Map<string, string>();
     for (const emp of employeeOptions) {
@@ -191,9 +206,15 @@ export function CandidateDetailView({
     return map;
   }, [employeeOptions]);
 
-  const recruiterName = candidate.primaryRecruiterUserId
-    ? employeeMap.get(candidate.primaryRecruiterUserId) ?? "—"
-    : "—";
+  const recruiterName = candidate.primaryRecruiterName?.trim()
+    ? candidate.primaryRecruiterName
+    : candidate.primaryRecruiterUserId
+      ? employeeMap.get(candidate.primaryRecruiterUserId) ?? "—"
+      : "—";
+
+  const documentTabCount = candidate.documentCount ?? candidate.documents.length;
+
+  const applicationTabCount = applicationCount ?? applications.length;
 
   const activityTimeline = timeline.map((item) => ({
     id: `timeline:${item.id}`,
@@ -202,6 +223,18 @@ export function CandidateDetailView({
     eventType: item.eventType,
     summary: item.summary,
   }));
+
+  const handleTabChange = (id: string) => {
+    const nextTab = id as WorkspaceTab;
+    const currentQuery: Record<string, string | string[] | undefined> = {};
+    searchParams.forEach((value, key) => {
+      currentQuery[key] = value;
+    });
+    const href = buildCandidateWorkspaceTabHref(pathname, currentQuery, nextTab);
+    startTabTransition(() => {
+      router.push(href);
+    });
+  };
 
   const runArchive = () => {
     setAlertConfig({
@@ -291,12 +324,12 @@ export function CandidateDetailView({
       <AppTabs
         tabs={[
           { id: "overview", label: "Overview" },
-          { id: "applications", label: "Applications", count: applications.length },
-          { id: "documents", label: "Documents", count: candidate.documents.length },
+          { id: "applications", label: "Applications", count: applicationTabCount },
+          { id: "documents", label: "Documents", count: documentTabCount },
           { id: "activity", label: "Activity" },
         ]}
         active={activeTab}
-        onChange={(id) => setActiveTab(id as WorkspaceTab)}
+        onChange={handleTabChange}
       />
 
       {activeTab === "documents" && (
@@ -915,7 +948,7 @@ export function CandidateDetailView({
                         variant="outline"
                         size="sm"
                         onClick={runArchive}
-                        disabled={isPending}
+                        loading={isPending}
                         className="w-full justify-center font-semibold text-muted-foreground hover:border-danger/30 hover:text-danger"
                       >
                         <Archive className="mr-1.5 h-4 w-4" />
@@ -926,7 +959,7 @@ export function CandidateDetailView({
                         variant="outline"
                         size="sm"
                         onClick={runRestore}
-                        disabled={isPending}
+                        loading={isPending}
                         className="w-full justify-center font-semibold"
                       >
                         <RotateCcw className="mr-1.5 h-4 w-4" />

@@ -182,6 +182,11 @@ describe("updateCandidateAction single-field add", () => {
         role: "hr",
         email: "hr@example.com",
       })),
+      requireRecruitmentAdminSession: vi.fn(async () => ({
+        userId: "user-hr",
+        role: "hr",
+        email: "hr@example.com",
+      })),
       getSessionOrThrow: vi.fn(async () => ({
         userId: "user-hr",
         role: "hr",

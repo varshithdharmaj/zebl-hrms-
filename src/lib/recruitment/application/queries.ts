@@ -27,6 +27,13 @@ export const listApplicationsCached = cache(
   }
 );
 
+export const countCandidateApplicationsCached = cache(
+  async (session: SessionUser, candidateId: string) => {
+    const service = createApplicationService();
+    return service.countCandidateApplications(session, candidateId);
+  }
+);
+
 export const getDashboardMetricsCached = cache(
   async (session: SessionUser, filters?: ApplicationListFilters | SearchFilters) => {
     const service = createApplicationService();

@@ -13,6 +13,12 @@ vi.mock("@/lib/auth-guards", () => ({
     role: "hr",
     employeeId: 1,
   }),
+  requireRecruitmentAdminSession: async () => ({
+    id: "user-hr",
+    email: "hr@example.com",
+    role: "hr",
+    employeeId: 1,
+  }),
 }));
 
 vi.mock("@/lib/recruitment/config/feature-flags", () => ({

@@ -55,6 +55,17 @@ function parseEnumOptional<T extends string>(
     : undefined;
 }
 
+const noteAuthorInclude = {
+  author: {
+    select: {
+      email: true,
+      role: true,
+      profilePhotoUrl: true,
+      employee: { select: { name: true } },
+    },
+  },
+} as const;
+
 const detailInclude = {
   personal: true,
   experiences: { orderBy: { sortOrder: "asc" } },
@@ -79,18 +90,36 @@ const detailInclude = {
   },
 } as const;
 
-const noteAuthorInclude = {
-  author: {
+/** Lean include for candidate workspace overview — omits documents; bounds notes. */
+export const OVERVIEW_NOTES_LIMIT = 50;
+
+const overviewInclude = {
+  personal: true,
+  experiences: { orderBy: { sortOrder: "asc" } },
+  educations: { orderBy: { sortOrder: "asc" } },
+  skills: true,
+  projects: { orderBy: { sortOrder: "asc" } },
+  certifications: true,
+  notes: {
+    where: { deletedAt: null },
+    orderBy: { createdAt: "desc" as const },
+    take: OVERVIEW_NOTES_LIMIT,
+    include: noteAuthorInclude,
+  },
+  primaryRecruiter: {
     select: {
-      email: true,
-      role: true,
-      profilePhotoUrl: true,
       employee: { select: { name: true } },
+    },
+  },
+  _count: {
+    select: {
+      documents: { where: { deletedAt: null } },
     },
   },
 } as const;
 
 type CandidateDetailRow = Prisma.CandidateGetPayload<{ include: typeof detailInclude }>;
+type CandidateOverviewRow = Prisma.CandidateGetPayload<{ include: typeof overviewInclude }>;
 type CandidateListRow = Prisma.CandidateGetPayload<object>;
 type CandidateDocumentRow = Prisma.CandidateDocumentGetPayload<object>;
 type CandidateNoteRow = Prisma.CandidateNoteGetPayload<{ include: typeof noteAuthorInclude }>;
@@ -295,6 +324,29 @@ function mapDetail(row: CandidateDetailRow): CandidateDetail {
     certifications: (row.certifications || []).map(mapCertification),
     documents: (row.documents || []).map(mapDocument),
     notes: (row.notes || []).map(mapNote),
+  };
+}
+
+function mapOverview(row: CandidateOverviewRow): CandidateDetail {
+  const {
+    primaryRecruiter,
+    _count,
+    notes,
+    ...candidateScalars
+  } = row;
+
+  const detailRow = {
+    ...candidateScalars,
+    documents: [],
+    notes,
+  } as CandidateDetailRow;
+
+  const detail = mapDetail(detailRow);
+  return {
+    ...detail,
+    documents: [],
+    documentCount: _count.documents,
+    primaryRecruiterName: primaryRecruiter?.employee?.name?.trim() || null,
   };
 }
 
@@ -659,6 +711,14 @@ export const prismaCandidateRepository: CandidateRepository = {
       include: detailInclude,
     });
     return row ? mapDetail(row) : null;
+  },
+
+  async getCandidateOverview(id) {
+    const row = await prisma.candidate.findFirst({
+      where: { id },
+      include: overviewInclude,
+    });
+    return row ? mapOverview(row) : null;
   },
 
   async findByEmail(email) {
@@ -1034,7 +1094,7 @@ export const prismaCandidateRepository: CandidateRepository = {
 
   async listCandidateDocuments(candidateId) {
     const rows = await prisma.candidateDocument.findMany({
-      where: { candidateId },
+      where: { candidateId, deletedAt: null },
       orderBy: { createdAt: "desc" },
     });
     return rows.map(mapDocument);
@@ -1130,6 +1190,43 @@ export const prismaCandidateRepository: CandidateRepository = {
         ...(status ? { status } : {}),
       },
       orderBy: { createdAt: "desc" },
+    });
+    return rows;
+  },
+
+  async findReviewableInsights(candidateId, filters) {
+    const insightType = parseEnumOptional(filters.insightType, Object.values(AiInsightType));
+    if (!insightType) return [];
+
+    const statuses = filters.statuses
+      .map((value) => parseEnumOptional(value, Object.values(AiInsightStatus)))
+      .filter((value): value is AiInsightStatus => value != null);
+
+    if (statuses.length === 0) return [];
+
+    const take = Math.min(Math.max(filters.take ?? 10, 1), 50);
+
+    return prisma.candidateAiInsight.findMany({
+      where: {
+        candidateId,
+        insightType,
+        status: { in: statuses },
+      },
+      orderBy: { createdAt: "desc" },
+      take,
+    });
+  },
+
+  async findResumeParseDrafts(candidateId, take = 5) {
+    const limit = Math.min(Math.max(take, 1), 20);
+    const rows = await prisma.candidateAiInsight.findMany({
+      where: {
+        candidateId,
+        insightType: AiInsightType.resume_parse,
+      },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      select: { id: true, contentJson: true },
     });
     return rows;
   },

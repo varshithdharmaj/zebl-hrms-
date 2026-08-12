@@ -15,6 +15,14 @@ vi.mock("@/lib/auth-guards", () => ({
     employeeName: "HR",
     sessionVersion: 1,
   })),
+  requireRecruitmentAdminSession: vi.fn(async () => ({
+    id: "user-hr",
+    email: "hr@example.com",
+    role: "hr",
+    employeeId: 1,
+    employeeName: "HR",
+    sessionVersion: 1,
+  })),
 }));
 
 vi.mock("@/lib/recruitment/job/job-opening-service", () => ({

@@ -141,4 +141,5 @@ export type ApplicationRepository = {
     scope: RecruitmentScope,
     filters?: ApplicationListFilters
   ): Promise<Record<string, number>>;
+  countByCandidate(scope: RecruitmentScope, candidateId: string): Promise<number>;
 };

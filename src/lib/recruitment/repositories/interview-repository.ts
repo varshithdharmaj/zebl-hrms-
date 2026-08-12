@@ -7,9 +7,9 @@ import type { RecruitmentScope } from "@/lib/recruitment/types/scope";
 import type {
   PageResult,
   RepositoryTx,
-  ScopedListArgs,
   ScopedSearchArgs,
 } from "@/lib/recruitment/repositories/types";
+import type { PaginationInput, SearchFilters, SortOptions } from "@/lib/recruitment/types/pagination";
 
 export type InterviewDetailRow = Prisma.InterviewGetPayload<{
   include: {
@@ -59,6 +59,48 @@ type MappedInterviewApplication = Omit<InterviewApplication, "candidate" | "jobO
 
 export type InterviewDetail = Omit<InterviewDetailRow, "application"> & {
   application: MappedInterviewApplication | null;
+};
+
+/** Lean row shape for list/search/schedule queries — omits feedback + attachments. */
+export type InterviewListRow = Prisma.InterviewGetPayload<{
+  include: {
+    application: {
+      select: {
+        id: true;
+        candidateId: true;
+        jobOpeningId: true;
+        candidate: {
+          select: { id: true; fullName: true; email: true };
+        };
+        jobOpening: {
+          select: { id: true; title: true; location: true };
+        };
+      };
+    };
+    panelists: {
+      select: {
+        id: true;
+        employeeId: true;
+        employee: { select: { id: true; name: true } };
+      };
+    };
+  };
+}>;
+
+type InterviewListApplication = NonNullable<InterviewListRow["application"]>;
+type InterviewListCandidate = NonNullable<InterviewListApplication["candidate"]>;
+type InterviewListJobOpening = NonNullable<InterviewListApplication["jobOpening"]>;
+
+export type InterviewListItem = Omit<InterviewListRow, "application" | "panelists"> & {
+  application:
+    | (Omit<InterviewListApplication, "candidate" | "jobOpening"> & {
+        candidate: InterviewListCandidate | null;
+        jobOpening: InterviewListJobOpening | null;
+      })
+    | null;
+  panelists: InterviewListRow["panelists"];
+  feedback: readonly [];
+  attachments: readonly [];
 };
 
 export type InterviewFeedbackRow = Prisma.InterviewFeedbackGetPayload<{
@@ -120,6 +162,17 @@ export type InterviewListFilters = {
   /** Restrict to interviews for applications of this candidate. */
   candidateId?: string;
   q?: string;
+  /** Inclusive lower bound on scheduledStart (calendar / range queries). */
+  scheduledStartFrom?: Date | string;
+  /** Inclusive upper bound on scheduledStart (calendar / range queries). */
+  scheduledStartTo?: Date | string;
+};
+
+export type InterviewListArgs = {
+  scope: RecruitmentScope;
+  filters?: InterviewListFilters | SearchFilters;
+  pagination: PaginationInput;
+  sort?: SortOptions;
 };
 
 export type InterviewRepository = {
@@ -128,12 +181,12 @@ export type InterviewRepository = {
   archiveInterview(id: string, tx?: RepositoryTx): Promise<void>;
   restoreInterview(id: string, tx?: RepositoryTx): Promise<void>;
   getInterview(id: string): Promise<InterviewDetail | null>;
-  listInterviews(args: ScopedListArgs): Promise<PageResult<InterviewDetail>>;
-  searchInterviews(args: ScopedSearchArgs): Promise<PageResult<InterviewDetail>>;
-  listByApplication(applicationId: string): Promise<readonly InterviewDetail[]>;
+  listInterviews(args: InterviewListArgs): Promise<PageResult<InterviewListItem>>;
+  searchInterviews(args: ScopedSearchArgs): Promise<PageResult<InterviewListItem>>;
+  listByApplication(applicationId: string): Promise<readonly InterviewListItem[]>;
   listByScheduleRange(
-    args: ScopedListArgs & { rangeStart: Date; rangeEnd: Date }
-  ): Promise<PageResult<InterviewDetail>>;
+    args: InterviewListArgs & { rangeStart: Date; rangeEnd: Date }
+  ): Promise<PageResult<InterviewListItem>>;
   replacePanelists(
     interviewId: string,
     employeeIds: readonly number[],

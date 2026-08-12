@@ -1,5 +1,6 @@
 import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { getCandidateCached, getEmployeeOptions } from "@/lib/recruitment/candidate";
+import { PermissionError } from "@/lib/permissions";
 import { isRecruitmentDomainError } from "@/lib/recruitment/shared/errors";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { CandidateForm } from "@/components/recruitment/candidates/candidate-form";
@@ -17,6 +18,19 @@ export default async function EditCandidatePage({
   try {
     candidate = await getCandidateCached(session, id);
   } catch (error) {
+    if (error instanceof PermissionError) {
+      return (
+        <div className="space-y-6 lg:space-y-8">
+          <WorkspacePageHeader
+            title="Access Denied"
+            description="You do not have permissions to edit this candidate profile."
+            backHref="/admin/recruitment/candidates"
+            backLabel="Back to candidates"
+          />
+          <CandidateErrorView type="permission_denied" />
+        </div>
+      );
+    }
     if (isRecruitmentDomainError(error)) {
       if (error.code === "REC_NOT_FOUND") {
         return (

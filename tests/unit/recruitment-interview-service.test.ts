@@ -311,7 +311,7 @@ describe("InterviewService", () => {
       strengths: "Strong fundamentals.",
     });
 
-    expect(result).toBe("feed-1");
+    expect(result).toEqual({ id: "feed-1" });
     expect(mockRepo.submitFeedback).toHaveBeenCalled();
   });
 

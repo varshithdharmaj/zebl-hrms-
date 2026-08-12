@@ -9,6 +9,41 @@ export const getCandidateCached = cache(async (session: SessionUser, candidateId
   return service.getCandidate(session, candidateId);
 });
 
+export const getCandidateOverviewCached = cache(
+  async (session: SessionUser, candidateId: string) => {
+    const service = createCandidateService();
+    return service.getCandidateOverview(session, candidateId);
+  }
+);
+
+export const listCandidateDocumentsCached = cache(
+  async (session: SessionUser, candidateId: string) => {
+    const service = createCandidateService();
+    return service.listCandidateDocuments(session, candidateId);
+  }
+);
+
+export const getCandidateTimelineCached = cache(
+  async (session: SessionUser, candidateId: string, limit = 50) => {
+    const service = createCandidateService();
+    return service.getCandidateTimeline(session, candidateId, limit);
+  }
+);
+
+export const listResumeParseDraftsCached = cache(
+  async (session: SessionUser, candidateId: string, take = 5) => {
+    const service = createCandidateService();
+    return service.listResumeParseDrafts(session, candidateId, take);
+  }
+);
+
+export const getResumeParseDraftCached = cache(
+  async (session: SessionUser, candidateId: string, draftId: string) => {
+    const service = createCandidateService();
+    return service.getResumeParseDraft(session, candidateId, draftId);
+  }
+);
+
 export const listCandidatesCached = cache(
   async (
     session: SessionUser,

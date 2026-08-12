@@ -657,6 +657,14 @@ export function createApplicationService(
       });
     },
 
+    async countCandidateApplications(
+      session: SessionUser,
+      candidateId: string
+    ): Promise<number> {
+      const scope = await RecruitmentScopeEngine.getScope(session);
+      return repository.countByCandidate(scope, candidateId);
+    },
+
     async getDashboardMetrics(
       session: SessionUser,
       filters?: ApplicationListFilters | SearchFilters

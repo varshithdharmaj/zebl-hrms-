@@ -30,6 +30,7 @@ export type CandidateRepository = {
   softDeleteCandidate(id: string, tx?: RepositoryTx): Promise<void>;
   setStatus(id: string, status: CandidateStatus, tx?: RepositoryTx): Promise<void>;
   getCandidate(id: string): Promise<CandidateDetail | null>;
+  getCandidateOverview(id: string): Promise<CandidateDetail | null>;
   findByEmail(email: string): Promise<CandidateDetail | null>;
   findByPhone(phone: string): Promise<CandidateDetail | null>;
   listCandidates(
@@ -120,6 +121,18 @@ export type CandidateRepository = {
     candidateId: string,
     filters?: { insightType?: string; status?: string }
   ): Promise<CandidateAiInsight[]>;
+  findReviewableInsights(
+    candidateId: string,
+    filters: {
+      insightType: string;
+      statuses: readonly string[];
+      take?: number;
+    }
+  ): Promise<CandidateAiInsight[]>;
+  findResumeParseDrafts(
+    candidateId: string,
+    take?: number
+  ): Promise<Array<{ id: string; contentJson: unknown }>>;
   updateInsightStatus(
     insightId: string,
     status: string,

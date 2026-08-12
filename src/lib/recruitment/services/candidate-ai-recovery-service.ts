@@ -428,16 +428,11 @@ export function createCandidateAiRecoveryService(
       insight: Record<string, unknown> | null;
       content: ResumeFieldRecoveryInsightContent | null;
     }> {
-      const rows = await repository.listInsights(candidateId, {
+      const rows = await repository.findReviewableInsights(candidateId, {
         insightType: AiInsightType.resume_field_recovery,
+        statuses: [AiInsightStatus.pending_review, AiInsightStatus.accepted],
       });
       for (const row of rows) {
-        if (
-          row.status !== AiInsightStatus.pending_review &&
-          row.status !== AiInsightStatus.accepted
-        ) {
-          continue;
-        }
         const parsed = parseRecoveryInsightContent(row.contentJson);
         if (!parsed.ok) continue;
         return { insight: row, content: parsed.data };

@@ -340,6 +340,10 @@ export type CandidateDetail = {
   certifications: CandidateCertificationView[];
   documents: CandidateDocumentView[];
   notes: CandidateNoteView[];
+  /** Populated by overview projection — display name for primary recruiter. */
+  primaryRecruiterName?: string | null;
+  /** Populated by overview projection — active document count without loading rows. */
+  documentCount?: number;
 };
 
 export type CandidateListItem = {

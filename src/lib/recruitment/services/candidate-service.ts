@@ -1,4 +1,4 @@
-import { CandidateStatus, CandidateSource } from "@/generated/prisma/enums";
+import { CandidateStatus, CandidateSource, AiInsightType } from "@/generated/prisma/enums";
 import type { SessionUser } from "@/lib/session";
 import { PermissionError } from "@/lib/permissions";
 import {
@@ -28,6 +28,7 @@ import type {
   CandidateCreateData,
   CandidateUpdateData,
   CandidateDetail,
+  CandidateDocumentView,
   CandidateListItem,
   CandidateListFilters,
   CandidateSort,
@@ -479,6 +480,95 @@ export function createCandidateService(repository: CandidateRepository = prismaC
       }
 
       return candidate;
+    },
+
+    async getCandidateOverview(session: SessionUser, id: string): Promise<CandidateDetail> {
+      RecruitmentPermissionService.requireModuleEnabled();
+      const actor = toRecruitmentActor(session);
+
+      const allowed = await RecruitmentScopeEngine.canViewCandidate(actor, id);
+      if (!allowed) {
+        throw new PermissionError("Candidate outside recruitment scope.");
+      }
+
+      const candidate = await repository.getCandidateOverview(id);
+      if (!candidate) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Candidate not found.");
+      }
+
+      return candidate;
+    },
+
+    async listCandidateDocuments(
+      session: SessionUser,
+      candidateId: string
+    ): Promise<CandidateDocumentView[]> {
+      RecruitmentPermissionService.requireModuleEnabled();
+      const actor = toRecruitmentActor(session);
+
+      const allowed = await RecruitmentScopeEngine.canViewCandidate(actor, candidateId);
+      if (!allowed) {
+        throw new PermissionError("Candidate outside recruitment scope.");
+      }
+
+      return repository.listCandidateDocuments(candidateId);
+    },
+
+    async getCandidateTimeline(
+      session: SessionUser,
+      candidateId: string,
+      limit = 50
+    ) {
+      RecruitmentPermissionService.requireModuleEnabled();
+      const actor = toRecruitmentActor(session);
+
+      const allowed = await RecruitmentScopeEngine.canViewCandidate(actor, candidateId);
+      if (!allowed) {
+        throw new PermissionError("Candidate outside recruitment scope.");
+      }
+
+      return RecruitmentTimelineService.buildTimeline({ candidateId, limit });
+    },
+
+    async listResumeParseDrafts(
+      session: SessionUser,
+      candidateId: string,
+      take = 5
+    ): Promise<Array<{ id: string; contentJson: unknown }>> {
+      RecruitmentPermissionService.requireModuleEnabled();
+      const actor = toRecruitmentActor(session);
+
+      const allowed = await RecruitmentScopeEngine.canViewCandidate(actor, candidateId);
+      if (!allowed) {
+        throw new PermissionError("Candidate outside recruitment scope.");
+      }
+
+      return repository.findResumeParseDrafts(candidateId, take);
+    },
+
+    async getResumeParseDraft(
+      session: SessionUser,
+      candidateId: string,
+      draftId: string
+    ): Promise<{ id: string; contentJson: unknown; candidateId: string } | null> {
+      RecruitmentPermissionService.requireModuleEnabled();
+      const actor = toRecruitmentActor(session);
+
+      const allowed = await RecruitmentScopeEngine.canViewCandidate(actor, candidateId);
+      if (!allowed) {
+        throw new PermissionError("Candidate outside recruitment scope.");
+      }
+
+      const insight = await repository.getInsight(draftId);
+      if (!insight) return null;
+      if (String(insight.candidateId) !== candidateId) return null;
+      if (insight.insightType !== AiInsightType.resume_parse) return null;
+
+      return {
+        id: insight.id,
+        contentJson: insight.contentJson,
+        candidateId: String(insight.candidateId),
+      };
     },
 
     async listCandidates(

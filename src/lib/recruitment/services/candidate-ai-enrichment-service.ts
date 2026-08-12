@@ -407,16 +407,11 @@ export function createCandidateAiEnrichmentService(
       insight: Record<string, unknown> | null;
       content: CandidateEnrichmentInsightContent | null;
     }> {
-      const rows = await repository.listInsights(candidateId, {
+      const rows = await repository.findReviewableInsights(candidateId, {
         insightType: AiInsightType.candidate_summary,
+        statuses: [AiInsightStatus.pending_review, AiInsightStatus.accepted],
       });
       for (const row of rows) {
-        if (
-          row.status !== AiInsightStatus.pending_review &&
-          row.status !== AiInsightStatus.accepted
-        ) {
-          continue;
-        }
         const parsed = parseEnrichmentInsightContent(row.contentJson);
         if (!parsed.ok) continue;
         return { insight: row, content: parsed.data };

@@ -29,6 +29,16 @@ vi.mock("@/lib/auth-guards", () => ({
     authProvider: "local",
     userId: "user-hr",
   }),
+  requireRecruitmentAdminSession: async () => ({
+    id: "user-hr",
+    email: "hr@example.com",
+    role: "hr",
+    employeeId: 1,
+    employeeName: "HR User",
+    sessionVersion: 1,
+    authProvider: "local",
+    userId: "user-hr",
+  }),
   getSessionOrThrow: async () => ({
     id: "user-hr",
     email: "hr@example.com",
