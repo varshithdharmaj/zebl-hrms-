@@ -33,9 +33,9 @@ export async function computeOrgMetrics(range: DateRange): Promise<MetricInput[]
   });
   const leaveDays = approvedLeave.reduce((s, l) => s + l.days, 0);
 
-  const pendingSteps = await prisma.leaveApprovalStep.count({
-    where: { status: ApprovalStepStatus.pending },
-  });
+  // Org "Pending approvals" = current actionable steps (not all open chain steps).
+  // Relation currentForLeave exists only when step.id === leave.currentStepId.
+  const pendingApprovals = await countOrgCurrentPendingApprovals();
 
   const escalations = await prisma.workflowEscalation.count({
     where: { sentAt: { gte: range.start, lte: range.end } },
@@ -67,9 +67,29 @@ export async function computeOrgMetrics(range: DateRange): Promise<MetricInput[]
       value: pct(present + shortHours, Math.max(total, employees * 5)),
       metadata: { expectedSlots: employees * 5 },
     },
-    { ...base, metricKey: METRIC_KEYS.PENDING_APPROVALS, value: pendingSteps },
+    { ...base, metricKey: METRIC_KEYS.PENDING_APPROVALS, value: pendingApprovals },
     { ...base, metricKey: METRIC_KEYS.ESCALATION_FREQUENCY, value: escalations },
   ];
+}
+
+/**
+ * Organization-wide count of approvals currently waiting for action.
+ * Same current-step predicate as Approval Center, without actor filter.
+ * DB-side count — does not load steps into memory.
+ */
+export async function countOrgCurrentPendingApprovals(
+  client: Pick<typeof prisma, "leaveApprovalStep"> = prisma
+): Promise<number> {
+  return client.leaveApprovalStep.count({
+    where: {
+      status: ApprovalStepStatus.pending,
+      currentForLeave: {
+        is: {
+          workflowStatus: LeaveWorkflowStatus.pending_approval,
+        },
+      },
+    },
+  });
 }
 
 export async function computeDepartmentMetrics(range: DateRange): Promise<MetricInput[]> {

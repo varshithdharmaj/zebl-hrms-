@@ -96,7 +96,19 @@ export async function scanWorkflowIntegrity(): Promise<{
   return { issues, stuckCount, orphanStepCount };
 }
 
+/**
+ * Stuck-workflow definition (matches scanWorkflowIntegrity):
+ * workflowStatus = pending_approval AND submittedAt older than 7 days.
+ *
+ * Unlike {@link scanWorkflowIntegrity}, this counts the full matching set
+ * (no take:500 sample). Command center only needs the metric, not issue rows.
+ */
 export async function getStuckWorkflowCount(): Promise<number> {
-  const { stuckCount } = await scanWorkflowIntegrity();
-  return stuckCount;
+  const staleBefore = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  return prisma.leaveRequest.count({
+    where: {
+      workflowStatus: LeaveWorkflowStatus.pending_approval,
+      submittedAt: { not: null, lt: staleBefore },
+    },
+  });
 }

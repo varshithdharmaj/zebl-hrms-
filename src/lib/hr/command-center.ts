@@ -1,12 +1,13 @@
 import { LeaveWorkflowStatus } from "@/generated/prisma/enums";
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getNotificationStats } from "@/lib/notifications/admin-queries";
 import { getIntegrationSettings } from "@/lib/integrations/integration-settings";
-import { scanWorkflowIntegrity } from "@/lib/workflow/workflow-integrity";
+import { getStuckWorkflowCount } from "@/lib/workflow/workflow-integrity";
 import { getPendingHrApprovals } from "@/lib/workflow/pending-approvals";
 import { getLeaveOverlapWarnings } from "@/lib/leave/leave-overlap";
 
-const EMPTY_WORKFLOW = { issues: [], stuckCount: 0, orphanStepCount: 0 };
+const EMPTY_WORKFLOW_STUCK = 0;
 
 async function safeLoad<T>(label: string, fallback: T, fn: () => Promise<T>): Promise<T> {
   try {
@@ -27,7 +28,7 @@ export async function getHrCommandCenterData() {
     pendingHr,
     notificationStats,
     integrationSettings,
-    workflowScan,
+    workflowStuckCount,
     absenceSnapshot,
     onLeaveToday,
   ] = await Promise.all([
@@ -40,8 +41,8 @@ export async function getHrCommandCenterData() {
         graphLastHealthStatus: s.graphLastHealthStatus,
       };
     }),
-    safeLoad("workflowScan", EMPTY_WORKFLOW, scanWorkflowIntegrity),
-    // Single Absent-today load: count + department aggregation (was count + findMany).
+    // Dashboard UI only shows stuck count — not the full integrity issue list (Operations does).
+    safeLoad("workflowStuckCount", EMPTY_WORKFLOW_STUCK, getStuckWorkflowCount),
     safeLoad("absenceSnapshot", { absentToday: 0, departmentsShortStaffed: [] }, () =>
       getAbsenceSnapshot(today, tomorrow)
     ),
@@ -59,7 +60,6 @@ export async function getHrCommandCenterData() {
   ]);
 
   const { absentToday, departmentsShortStaffed } = absenceSnapshot;
-  // Same KPI as the former dedicated failed count — sourced from getNotificationStats().
   const failedNotifications = notificationStats.failed;
 
   const escalationRisk = pendingHr.filter((l) => {
@@ -108,32 +108,60 @@ export async function getHrCommandCenterData() {
     failedNotifications,
     notificationPending: notificationStats.pending,
     graphHealth: integrationSettings.graphLastHealthStatus,
-    workflowIssues: workflowScan.issues.slice(0, 8),
-    workflowStuckCount: workflowScan.stuckCount,
+    // Preserved for callers; command-center UI does not render issue rows.
+    workflowIssues: [] as { leaveRequestId: number; code: string; message: string; severity: string }[],
+    workflowStuckCount,
     leaveConflicts,
     departmentsShortStaffed,
   };
 }
 
 /**
- * One Absent-today query for both the KPI count and short-staffed departments list.
- * Semantics match the previous count + findMany pair (same filter).
+ * Absent-today KPI + short-staffed departments via DB aggregation (no row hydration).
+ * Semantics match buildAbsenceSnapshotFromRecords (null department → "Unassigned", ≥2, top 5).
  */
 async function getAbsenceSnapshot(today: Date, tomorrow: Date) {
-  const records = await prisma.attendanceRecord.findMany({
-    where: {
-      attendanceDate: { gte: today, lt: tomorrow },
-      status: "Absent",
-    },
-    select: {
-      employee: { select: { department: true } },
-    },
-  });
+  const rows = await prisma.$queryRaw<Array<{ department: string; absent_count: number }>>(
+    Prisma.sql`
+      SELECT
+        COALESCE(e.department, 'Unassigned') AS department,
+        COUNT(*)::int AS absent_count
+      FROM attendance_records a
+      INNER JOIN employees e ON e.id = a.employee_id
+      WHERE a.attendance_date >= ${today}
+        AND a.attendance_date < ${tomorrow}
+        AND a.status = 'Absent'
+      GROUP BY COALESCE(e.department, 'Unassigned')
+    `
+  );
 
-  return buildAbsenceSnapshotFromRecords(records);
+  return buildAbsenceSnapshotFromDeptCounts(
+    rows.map((r) => ({ department: r.department, absentCount: r.absent_count }))
+  );
 }
 
-/** Pure aggregation — exported for unit tests / reuse. */
+/** Pure aggregation from per-department counts — exported for unit tests / reuse. */
+export function buildAbsenceSnapshotFromDeptCounts(
+  deptCounts: { department: string; absentCount: number }[]
+) {
+  const absentToday = deptCounts.reduce((sum, d) => sum + d.absentCount, 0);
+
+  const departmentsShortStaffed = [...deptCounts]
+    .filter((d) => d.absentCount >= 2)
+    .sort((a, b) => b.absentCount - a.absentCount)
+    .slice(0, 5)
+    .map((d) => ({ department: d.department, absentCount: d.absentCount }));
+
+  return {
+    absentToday,
+    departmentsShortStaffed,
+  };
+}
+
+/**
+ * @deprecated Prefer {@link buildAbsenceSnapshotFromDeptCounts} for new code.
+ * Kept so existing tests / callers that expand raw attendance rows still work.
+ */
 export function buildAbsenceSnapshotFromRecords(
   records: { employee: { department: string | null } }[]
 ) {
@@ -143,14 +171,7 @@ export function buildAbsenceSnapshotFromRecords(
     byDept.set(dept, (byDept.get(dept) ?? 0) + 1);
   }
 
-  const departmentsShortStaffed = [...byDept.entries()]
-    .filter(([, count]) => count >= 2)
-    .map(([department, absentCount]) => ({ department, absentCount }))
-    .sort((a, b) => b.absentCount - a.absentCount)
-    .slice(0, 5);
-
-  return {
-    absentToday: records.length,
-    departmentsShortStaffed,
-  };
+  return buildAbsenceSnapshotFromDeptCounts(
+    [...byDept.entries()].map(([department, absentCount]) => ({ department, absentCount }))
+  );
 }

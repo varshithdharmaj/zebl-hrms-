@@ -1,5 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { buildAbsenceSnapshotFromRecords } from "@/lib/hr/command-center";
+import {
+  buildAbsenceSnapshotFromRecords,
+  buildAbsenceSnapshotFromDeptCounts,
+} from "@/lib/hr/command-center";
 import { getLeaveOverlapWarnings } from "@/lib/leave/leave-overlap";
 
 vi.mock("@/lib/prisma", () => ({
@@ -36,6 +39,28 @@ describe("buildAbsenceSnapshotFromRecords", () => {
     ]);
     expect(snapshot.absentToday).toBe(1);
     expect(snapshot.departmentsShortStaffed).toEqual([]);
+  });
+});
+
+describe("buildAbsenceSnapshotFromDeptCounts", () => {
+  it("sums counts and ranks short-staffed departments", () => {
+    const snapshot = buildAbsenceSnapshotFromDeptCounts([
+      { department: "Eng", absentCount: 3 },
+      { department: "HR", absentCount: 1 },
+      { department: "Unassigned", absentCount: 2 },
+    ]);
+    expect(snapshot.absentToday).toBe(6);
+    expect(snapshot.departmentsShortStaffed).toEqual([
+      { department: "Eng", absentCount: 3 },
+      { department: "Unassigned", absentCount: 2 },
+    ]);
+  });
+
+  it("returns zeros for an empty aggregation", () => {
+    expect(buildAbsenceSnapshotFromDeptCounts([])).toEqual({
+      absentToday: 0,
+      departmentsShortStaffed: [],
+    });
   });
 });
 

@@ -4,6 +4,35 @@ import { getLeaveBalanceSummaries } from "@/lib/leave";
 import { canAccessAdmin } from "@/lib/permissions";
 import type { SessionUser } from "@/lib/session";
 
+/** Minimal leave graph required by pending-approval consumers (inbox, adapter, command center). */
+const pendingLeaveSelect = {
+  id: true,
+  leaveType: true,
+  days: true,
+  startDate: true,
+  endDate: true,
+  employeeId: true,
+  submittedAt: true,
+  version: true,
+  currentStepId: true,
+  workflowStatus: true,
+  employee: {
+    select: {
+      name: true,
+      department: true,
+    },
+  },
+  approvalSteps: {
+    orderBy: { stepOrder: "asc" as const },
+    select: {
+      id: true,
+      approverRole: true,
+      status: true,
+      stepOrder: true,
+    },
+  },
+} as const;
+
 export async function getPendingApprovalsForActor(session: SessionUser) {
   if (canAccessAdmin(session.role)) {
     return getPendingHrApprovals();
@@ -27,13 +56,9 @@ async function getPendingManagerApprovals(managerEmployeeId: number) {
         currentStepId: { not: null },
       },
     },
-    include: {
-      leaveRequest: {
-        include: {
-          employee: true,
-          approvalSteps: { orderBy: { stepOrder: "asc" }, include: { approver: true } },
-        },
-      },
+    select: {
+      id: true,
+      leaveRequest: { select: pendingLeaveSelect },
     },
     orderBy: { createdAt: "asc" },
   });
@@ -52,13 +77,9 @@ export async function getPendingHrApprovals() {
         workflowStatus: LeaveWorkflowStatus.pending_approval,
       },
     },
-    include: {
-      leaveRequest: {
-        include: {
-          employee: true,
-          approvalSteps: { orderBy: { stepOrder: "asc" }, include: { approver: true } },
-        },
-      },
+    select: {
+      id: true,
+      leaveRequest: { select: pendingLeaveSelect },
     },
     orderBy: { createdAt: "asc" },
   });
@@ -74,7 +95,7 @@ export async function enrichPendingLeaveRows(
   return Promise.all(
     leaves.map(async (leave) => {
       const balances = await getLeaveBalanceSummaries(leave.employeeId, {
-        processAccruals: false,
+        processAccruals: true,
       });
       const recentLeaves = await prisma.leaveRequest.findMany({
         where: { employeeId: leave.employeeId },
