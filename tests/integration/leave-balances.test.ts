@@ -51,7 +51,6 @@ describe("Leave balance summaries (integration)", () => {
     await prisma.leaveTransaction.deleteMany({ where: { employeeId } });
     await prisma.employeeLeaveBalance.deleteMany({ where: { employeeId } });
     await prisma.employee.delete({ where: { id: employeeId } });
-    await prisma.$disconnect();
   }, 30000);
 
   run("aggregates leave transactions correctly with groupBy and manual adjustments", async () => {

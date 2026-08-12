@@ -45,6 +45,7 @@ describe("workflow and approval tokens (integration)", () => {
     });
 
   let employeeId: number;
+  let managerEmployeeId: number;
   let managerUserId: string;
   let hrUserId: string;
   let leaveId: number;
@@ -77,6 +78,7 @@ describe("workflow and approval tokens (integration)", () => {
         isActive: true,
       },
     });
+    managerEmployeeId = managerEmp.id;
 
     await prisma.employee.update({
       where: { id: employeeId },
@@ -137,19 +139,29 @@ describe("workflow and approval tokens (integration)", () => {
 
   afterAll(async () => {
     if (!ready || !leaveId) return;
+    const employeeIds = [employeeId, managerEmployeeId].filter(
+      (id): id is number => typeof id === "number"
+    );
     await prisma.approvalToken.deleteMany({ where: { leaveRequestId: leaveId } });
     await prisma.leaveApprovalStep.deleteMany({ where: { leaveRequestId: leaveId } });
     await prisma.leaveRequest.deleteMany({ where: { id: leaveId } });
+    await prisma.leaveTransaction.deleteMany({
+      where: { employeeId: { in: employeeIds } },
+    });
+    await prisma.employeeLeaveBalance.deleteMany({
+      where: { employeeId: { in: employeeIds } },
+    });
     await prisma.user.deleteMany({
       where: { email: { contains: "@test.local" } },
     });
-    await prisma.employee.deleteMany({
-      where: { employeeCode: { startsWith: "T" } },
+    await prisma.employee.updateMany({
+      where: { id: { in: employeeIds } },
+      data: { managerId: null },
     });
     await prisma.employee.deleteMany({
-      where: { employeeCode: { startsWith: "M" } },
+      where: { id: { in: employeeIds } },
     });
-    await prisma.$disconnect();
+    // Shared process Prisma client — do not $disconnect; other files still use it.
   }, 30000);
 
   run("approves via manager workflow step", async () => {

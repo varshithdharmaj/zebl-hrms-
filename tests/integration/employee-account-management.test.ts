@@ -63,7 +63,6 @@ describe("employee account management integration", () => {
     });
     await prisma.user.delete({ where: { id: userId } });
     await prisma.employee.delete({ where: { id: employeeId } });
-    await prisma.$disconnect();
   }, 30_000);
 
   it("resets a password, forces change, revokes sessions, and audits the action", async () => {

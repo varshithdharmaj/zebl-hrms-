@@ -68,7 +68,6 @@ describe("login history integration", () => {
     });
     await prisma.user.delete({ where: { id: userId } });
     await prisma.employee.delete({ where: { id: employeeId } });
-    await prisma.$disconnect();
   }, 30_000);
 
   it("persists, scopes and closes a successful session", async () => {
