@@ -22,6 +22,7 @@ export type WorkflowActionState = {
 
 function revalidateLeavePaths(employeeId: number) {
   revalidatePath("/employee/leaves");
+  revalidatePath("/employee/dashboard");
   revalidatePath("/employee/approvals");
   revalidatePath("/admin/leaves");
   revalidatePath(`/admin/employees/${employeeId}`);

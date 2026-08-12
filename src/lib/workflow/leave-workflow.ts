@@ -96,26 +96,75 @@ function stepActionAuditMetadata(
   };
 }
 
-async function assertVersion(
+/**
+ * Atomically claim optimistic lock: UPDATE ... WHERE version = expected [AND extra].
+ * Returns false if another writer already moved the version/state.
+ */
+async function claimLeaveVersion(
   tx: Prisma.TransactionClient,
   leaveId: number,
-  expectedVersion: number
+  expectedVersion: number,
+  extraWhere?: Prisma.LeaveRequestWhereInput
 ): Promise<void> {
-  const row = await tx.leaveRequest.findUnique({ where: { id: leaveId }, select: { version: true } });
-  if (!row || row.version !== expectedVersion) {
-    throw new WorkflowError("This request was updated by another user. Please refresh and try again.");
+  const result = await tx.leaveRequest.updateMany({
+    where: { id: leaveId, version: expectedVersion, ...extraWhere },
+    data: { version: { increment: 1 } },
+  });
+  if (result.count === 0) {
+    throw new WorkflowError(
+      "This request was updated by another user. Please refresh and try again."
+    );
   }
 }
 
-async function bumpLeave(
+/** Scalar leave-request updates after {@link claimLeaveVersion} (no further version bump). */
+async function updateLeaveState(
   tx: Prisma.TransactionClient,
   leaveId: number,
   data: Prisma.LeaveRequestUpdateInput
 ): Promise<void> {
   await tx.leaveRequest.update({
     where: { id: leaveId },
-    data: { ...data, version: { increment: 1 } },
+    data,
   });
+}
+
+async function claimPendingStep(
+  tx: Prisma.TransactionClient,
+  stepId: number,
+  actor: WorkflowActor,
+  nextStatus: typeof ApprovalStepStatus.approved | typeof ApprovalStepStatus.rejected,
+  comment?: string
+): Promise<void> {
+  const now = new Date();
+  const result = await tx.leaveApprovalStep.updateMany({
+    where: { id: stepId, status: ApprovalStepStatus.pending },
+    data: {
+      status: nextStatus,
+      actedAt: now,
+      actedByUserId: actor.userId,
+      ...(comment !== undefined ? { comment } : {}),
+    },
+  });
+  if (result.count === 0) {
+    throw new WorkflowError(
+      "This approval step was already actioned. Please refresh and try again."
+    );
+  }
+}
+
+function toWorkflowDomainError(error: unknown): never {
+  if (error instanceof WorkflowError) throw error;
+  if (error instanceof Error) {
+    if (
+      error.message.startsWith("Insufficient ") ||
+      error.message.includes("was already deducted") ||
+      error.message.includes("already has a")
+    ) {
+      throw new WorkflowError(error.message);
+    }
+  }
+  throw error;
 }
 
 async function auditWorkflow(
@@ -150,19 +199,24 @@ async function finalizeApproval(
     throw new WorkflowError("Invalid leave type on request.");
   }
 
-  await processPendingLeaveAccruals(leave.employeeId);
+  try {
+    // Same outer transaction — no nested $transaction (avoids partial commits).
+    await processPendingLeaveAccruals(leave.employeeId, tx);
 
-  await deductLeaveForApproval({
-    employeeId: leave.employeeId,
-    leaveType: leave.leaveType,
-    days,
-    leaveRequestId: leave.id,
-    createdBy: actor.email,
-    tx,
-  });
+    await deductLeaveForApproval({
+      employeeId: leave.employeeId,
+      leaveType: leave.leaveType,
+      days,
+      leaveRequestId: leave.id,
+      createdBy: actor.email,
+      tx,
+    });
+  } catch (error) {
+    toWorkflowDomainError(error);
+  }
 
   const now = new Date();
-  await bumpLeave(tx, leave.id, {
+  await updateLeaveState(tx, leave.id, {
     workflowStatus: LeaveWorkflowStatus.approved,
     status: workflowToLeaveStatus(LeaveWorkflowStatus.approved),
     days,
@@ -281,18 +335,12 @@ export async function advanceWorkflow(
   let pendingNotification: WorkflowNotificationEvent | null = null;
 
   const run = async (tx: Prisma.TransactionClient): Promise<WorkflowActionResult> => {
-    await assertVersion(tx, leaveId, version);
+    await claimLeaveVersion(tx, leaveId, version, {
+      workflowStatus: LeaveWorkflowStatus.pending_approval,
+    });
+    await claimPendingStep(tx, step.id, actor, ApprovalStepStatus.approved);
 
     const now = new Date();
-    await tx.leaveApprovalStep.update({
-      where: { id: step.id },
-      data: {
-        status: ApprovalStepStatus.approved,
-        actedAt: now,
-        actedByUserId: actor.userId,
-      },
-    });
-
     const next = getNextApprovalStep({
       ...leave,
       approvalSteps: leave.approvalSteps.map((s) =>
@@ -301,7 +349,7 @@ export async function advanceWorkflow(
     });
 
     if (next) {
-      await bumpLeave(tx, leaveId, {
+      await updateLeaveState(tx, leaveId, {
         currentStep: { connect: { id: next.id } },
       });
       await auditWorkflow(
@@ -414,18 +462,10 @@ export async function rejectWorkflow(
   let pendingNotification: WorkflowNotificationEvent | null = null;
 
   const run = async (tx: Prisma.TransactionClient): Promise<WorkflowActionResult> => {
-    await assertVersion(tx, leaveId, version);
-
-    const now = new Date();
-    await tx.leaveApprovalStep.update({
-      where: { id: step.id },
-      data: {
-        status: ApprovalStepStatus.rejected,
-        actedAt: now,
-        actedByUserId: actor.userId,
-        comment: trimmed,
-      },
+    await claimLeaveVersion(tx, leaveId, version, {
+      workflowStatus: LeaveWorkflowStatus.pending_approval,
     });
+    await claimPendingStep(tx, step.id, actor, ApprovalStepStatus.rejected, trimmed);
 
     await tx.leaveApprovalStep.updateMany({
       where: {
@@ -436,7 +476,8 @@ export async function rejectWorkflow(
       data: { status: ApprovalStepStatus.skipped },
     });
 
-    await bumpLeave(tx, leaveId, {
+    const now = new Date();
+    await updateLeaveState(tx, leaveId, {
       workflowStatus: LeaveWorkflowStatus.rejected,
       status: workflowToLeaveStatus(LeaveWorkflowStatus.rejected),
       rejectionReason: trimmed,
@@ -511,7 +552,9 @@ export async function withdrawWorkflow(
   }
 
   await prisma.$transaction(async (tx) => {
-    await assertVersion(tx, leaveId, leave.version);
+    await claimLeaveVersion(tx, leaveId, leave.version, {
+      workflowStatus: LeaveWorkflowStatus.pending_approval,
+    });
 
     const now = new Date();
     await tx.leaveApprovalStep.updateMany({
@@ -519,7 +562,7 @@ export async function withdrawWorkflow(
       data: { status: ApprovalStepStatus.skipped },
     });
 
-    await bumpLeave(tx, leaveId, {
+    await updateLeaveState(tx, leaveId, {
       workflowStatus: LeaveWorkflowStatus.withdrawn,
       status: workflowToLeaveStatus(LeaveWorkflowStatus.withdrawn),
       withdrawnAt: now,
@@ -579,20 +622,26 @@ export async function cancelWorkflow(
   }
 
   await prisma.$transaction(async (tx) => {
-    await assertVersion(tx, leaveId, leave.version);
-
-    await restoreLeaveBalanceForCancellation({
-      employeeId: leave.employeeId,
-      leaveType: leave.leaveType as LeaveType,
-      days,
-      leaveRequestId: leave.id,
-      createdBy: actor.email,
-      reason: trimmed,
-      tx,
+    await claimLeaveVersion(tx, leaveId, leave.version, {
+      workflowStatus: LeaveWorkflowStatus.approved,
     });
 
+    try {
+      await restoreLeaveBalanceForCancellation({
+        employeeId: leave.employeeId,
+        leaveType: leave.leaveType as LeaveType,
+        days,
+        leaveRequestId: leave.id,
+        createdBy: actor.email,
+        reason: trimmed,
+        tx,
+      });
+    } catch (error) {
+      toWorkflowDomainError(error);
+    }
+
     const now = new Date();
-    await bumpLeave(tx, leaveId, {
+    await updateLeaveState(tx, leaveId, {
       workflowStatus: LeaveWorkflowStatus.cancelled,
       status: workflowToLeaveStatus(LeaveWorkflowStatus.cancelled),
       rejectionReason: trimmed,

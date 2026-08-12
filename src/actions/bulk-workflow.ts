@@ -55,6 +55,8 @@ export async function bulkApproveLeavesAction(
     });
 
     revalidatePath("/employee/approvals");
+    revalidatePath("/employee/leaves");
+    revalidatePath("/employee/dashboard");
     revalidatePath("/admin/leaves");
     revalidatePath("/admin/dashboard");
 
@@ -115,6 +117,8 @@ export async function bulkRejectLeavesAction(
     });
 
     revalidatePath("/employee/approvals");
+    revalidatePath("/employee/leaves");
+    revalidatePath("/employee/dashboard");
     revalidatePath("/admin/leaves");
 
     return {

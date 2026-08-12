@@ -143,7 +143,7 @@ export async function getMyTeamPerson(
   const endIso = toISODate(end);
 
   const [leaveBalances, recentLeaves, attendanceRaw] = await Promise.all([
-    getLeaveBalanceSummaries(subjectEmployeeId, { processAccruals: false }),
+    getLeaveBalanceSummaries(subjectEmployeeId, { processAccruals: true }),
     prisma.leaveRequest.findMany({
       where: { employeeId: subjectEmployeeId },
       orderBy: { createdAt: "desc" },

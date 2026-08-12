@@ -87,27 +87,43 @@ export async function getOrCreateLeaveBalanceRow(employeeId: number, tx?: TxClie
   }
 }
 
-function applyBalanceDelta(
-  balances: { elBalance: number; clBalance: number; slBalance: number },
+async function applyBalanceDeltaAtomic(
+  tx: TxClient,
+  employeeId: number,
   leaveType: LeaveType,
   transactionType: LeaveTransactionType,
   amount: number
-): { elBalance: number; clBalance: number; slBalance: number } {
+): Promise<void> {
+  await getOrCreateLeaveBalanceRow(employeeId, tx);
   const field = leaveTypeToBalanceField(leaveType);
-  let delta = 0;
 
-  if (transactionType === "accrual") {
-    delta = Math.abs(amount);
-  } else if (transactionType === "deduction") {
-    delta = -Math.abs(amount);
-  } else {
-    delta = amount;
+  if (transactionType === "deduction") {
+    const abs = Math.abs(amount);
+    const result = await tx.employeeLeaveBalance.updateMany({
+      where: { employeeId, [field]: { gte: abs } },
+      data: { [field]: { decrement: abs } },
+    });
+    if (result.count === 0) {
+      throw new Error(
+        `Insufficient ${leaveType} balance. Available balance is less than required: ${abs}`
+      );
+    }
+    return;
   }
 
-  return {
-    ...balances,
-    [field]: balances[field] + delta,
-  };
+  if (transactionType === "accrual") {
+    await tx.employeeLeaveBalance.update({
+      where: { employeeId },
+      data: { [field]: { increment: Math.abs(amount) } },
+    });
+    return;
+  }
+
+  // manual_adjustment: signed delta (may go negative — existing business rule)
+  await tx.employeeLeaveBalance.update({
+    where: { employeeId },
+    data: { [field]: { increment: amount } },
+  });
 }
 
 export async function recordLeaveTransactionInTx(
@@ -129,35 +145,36 @@ export async function recordLeaveTransactionInTx(
     throw new Error("Transaction amount must be non-zero.");
   }
 
-  await tx.leaveTransaction.create({
-    data: {
-      employeeId,
-      leaveType,
-      transactionType,
-      amount:
-        transactionType === "manual_adjustment" ? amount : Math.abs(amount),
-      reason: reason ?? null,
-      createdBy: createdBy ?? null,
-      leaveRequestId: leaveRequestId ?? null,
-    },
-  });
+  // Balance first, then ledger row — unique(request, type) rejects duplicate deductions
+  // and rolls the balance change back with the surrounding transaction.
+  await applyBalanceDeltaAtomic(tx, employeeId, leaveType, transactionType, amount);
 
-  const current = await getOrCreateLeaveBalanceRow(employeeId, tx);
-  const updated = applyBalanceDelta(
-    {
-      elBalance: current.elBalance,
-      clBalance: current.clBalance,
-      slBalance: current.slBalance,
-    },
-    leaveType,
-    transactionType,
-    amount
-  );
-
-  await tx.employeeLeaveBalance.update({
-    where: { employeeId },
-    data: updated,
-  });
+  try {
+    await tx.leaveTransaction.create({
+      data: {
+        employeeId,
+        leaveType,
+        transactionType,
+        amount:
+          transactionType === "manual_adjustment" ? amount : Math.abs(amount),
+        reason: reason ?? null,
+        createdBy: createdBy ?? null,
+        leaveRequestId: leaveRequestId ?? null,
+      },
+    });
+  } catch (error) {
+    if (isUniqueConstraintError(error) && leaveRequestId != null) {
+      throw new Error(
+        transactionType === "deduction"
+          ? `Leave request #${leaveRequestId} was already deducted.`
+          : `Leave request #${leaveRequestId} already has a ${transactionType} ledger entry.`
+      );
+    }
+    if (isUniqueConstraintError(error) && transactionType === "accrual" && reason) {
+      throw new Error(`Accrual already posted: ${reason}`);
+    }
+    throw error;
+  }
 }
 
 export async function recordLeaveTransaction(params: {
@@ -210,22 +227,27 @@ export function buildPendingAccrualReasons(
  * Process pending CL/SL yearly and EL monthly accruals.
  * Prefer calling from actions; leave page may still process for balance freshness.
  * Returns joiningDate so callers can avoid a second employee round-trip.
+ *
+ * When `tx` is provided, accruals run inside that transaction (no nested $transaction).
+ * Concurrent inserts of the same reason are rejected by the system-accrual unique index.
  */
 export async function processPendingLeaveAccruals(
-  employeeId: number
+  employeeId: number,
+  tx?: TxClient
 ): Promise<{ joiningDate: Date }> {
-  const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
+  const client = tx ?? prisma;
+  const employee = await client.employee.findUnique({ where: { id: employeeId } });
   if (!employee) throw new Error("Employee not found");
 
   const joiningDate = employee.joiningDate;
   const pending = buildPendingAccrualReasons(joiningDate);
   const candidateReasons = pending.map((p) => p.reason);
 
-  await prisma.$transaction(async (tx) => {
+  const run = async (inner: TxClient) => {
     // Balance ensure + existence check are independent — one round-trip instead of N.
     const [, existing] = await Promise.all([
-      getOrCreateLeaveBalanceRow(employeeId, tx),
-      tx.leaveTransaction.findMany({
+      getOrCreateLeaveBalanceRow(employeeId, inner),
+      inner.leaveTransaction.findMany({
         where: {
           employeeId,
           reason: { in: candidateReasons },
@@ -240,17 +262,35 @@ export async function processPendingLeaveAccruals(
 
     for (const item of pending) {
       if (existingSet.has(item.reason)) continue;
-      await recordLeaveTransactionInTx(tx, {
-        employeeId,
-        leaveType: item.leaveType,
-        transactionType: "accrual",
-        amount: item.amount,
-        reason: item.reason,
-        createdBy: "system",
-      });
-      existingSet.add(item.reason);
+      try {
+        await recordLeaveTransactionInTx(inner, {
+          employeeId,
+          leaveType: item.leaveType,
+          transactionType: "accrual",
+          amount: item.amount,
+          reason: item.reason,
+          createdBy: "system",
+        });
+        existingSet.add(item.reason);
+      } catch (error) {
+        // Concurrent accrual of the same reason — treat as already posted.
+        if (
+          error instanceof Error &&
+          error.message.startsWith("Accrual already posted:")
+        ) {
+          existingSet.add(item.reason);
+          continue;
+        }
+        throw error;
+      }
     }
-  });
+  };
+
+  if (tx) {
+    await run(tx);
+  } else {
+    await prisma.$transaction(run);
+  }
 
   return { joiningDate };
 }
@@ -481,15 +521,8 @@ export async function deductLeaveForApproval(params: {
   const { employeeId, leaveType, days, leaveRequestId, createdBy, tx } = params;
 
   const run = async (client: TxClient) => {
-    const balance = await getOrCreateLeaveBalanceRow(employeeId, client);
-    const field = leaveTypeToBalanceField(leaveType);
-    const available = balance[field];
-    if (available < days) {
-      throw new Error(
-        `Insufficient ${leaveType} balance. Available: ${available}, required: ${days}`
-      );
-    }
-
+    // Conditional decrement + unique(leave_request_id, deduction) enforce
+    // insufficient-balance failure and at-most-one deduction per request.
     await recordLeaveTransactionInTx(client, {
       employeeId,
       leaveType,
@@ -504,8 +537,10 @@ export async function deductLeaveForApproval(params: {
   if (tx) {
     await run(tx);
   } else {
-    await processPendingLeaveAccruals(employeeId);
-    await prisma.$transaction(run);
+    await prisma.$transaction(async (client) => {
+      await processPendingLeaveAccruals(employeeId, client);
+      await run(client);
+    });
   }
 }
 

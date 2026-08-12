@@ -187,4 +187,9 @@ describe("getMyTeamPerson", () => {
     expect(detail.person).not.toHaveProperty("address");
     expect(detail.attendance.presentDays).toBe(10);
   });
+
+  it("loads leave balances with processAccruals: true (authoritative current balance)", async () => {
+    await getMyTeamPerson(MANAGER_ID, 1);
+    expect(getLeaveBalanceSummaries).toHaveBeenCalledWith(1, { processAccruals: true });
+  });
 });

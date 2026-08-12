@@ -530,6 +530,11 @@ model LeaveTransaction {
   createdAt       DateTime @default(now()) @map("created_at")
 
   @@index([employeeId, leaveType])
+  /// Partial uniques (Postgres migration — Prisma has no partial-unique DSL):
+  /// - (leave_request_id, transaction_type) WHERE leave_request_id IS NOT NULL
+  ///   → at most one deduction and one cancel-restore accrual per leave request
+  /// - (employee_id, reason) WHERE transaction_type = 'accrual' AND leave_request_id IS NULL AND reason IS NOT NULL
+  ///   → idempotent system accruals (CL/SL yearly, EL monthly)
   @@map("leave_transactions")
 }
 

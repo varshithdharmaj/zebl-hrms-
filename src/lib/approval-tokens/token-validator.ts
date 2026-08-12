@@ -188,7 +188,9 @@ export async function buildPublicApprovalView(signed: string): Promise<
     return { ok: false, code: "not_found", message: "This approval link is not valid." };
   }
 
-  const balances = await getLeaveBalanceSummaries(record.leaveRequest.employeeId);
+  const balances = await getLeaveBalanceSummaries(record.leaveRequest.employeeId, {
+    processAccruals: true,
+  });
   const approverName =
     record.approvalStep.approver?.name ??
     (record.approvalStep.approverRole === "hr_admin" ? "HR Admin" : null);

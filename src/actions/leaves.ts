@@ -75,6 +75,7 @@ export async function applyLeaveAction(
     });
 
     revalidatePath("/employee/leaves");
+    revalidatePath("/employee/dashboard");
     revalidatePath("/employee/approvals");
     revalidatePath("/admin/leaves");
     return { success: "Leave request submitted for approval." };
