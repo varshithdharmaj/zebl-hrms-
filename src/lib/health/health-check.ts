@@ -15,11 +15,11 @@ export async function checkDatabase(): Promise<HealthCheck> {
   try {
     await prisma.$queryRaw`SELECT 1`;
     return { name: "database", status: "ok" };
-  } catch (e) {
+  } catch {
     return {
       name: "database",
       status: "error",
-      message: e instanceof Error ? e.message : "Database unreachable",
+      message: "Database unreachable",
     };
   }
 }
@@ -59,11 +59,11 @@ export async function checkQueues(): Promise<HealthCheck> {
       status: "ok",
       message: `pending_notifications=${pendingNotifications}, pending_jobs=${pendingJobs}`,
     };
-  } catch (e) {
+  } catch {
     return {
       name: "queues",
       status: "error",
-      message: e instanceof Error ? e.message : "Queue check failed",
+      message: "Queue check failed",
     };
   }
 }

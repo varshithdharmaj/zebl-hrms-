@@ -10,13 +10,27 @@ export type LogContext = {
   [key: string]: unknown;
 };
 
+function redactContext(context?: LogContext): LogContext | undefined {
+  if (!context) return undefined;
+  const out: LogContext = {};
+  for (const [key, value] of Object.entries(context)) {
+    if (/password|secret|token|authorization|cookie|bearer|cron/i.test(key)) {
+      out[key] = "[redacted]";
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
 function emit(level: LogLevel, message: string, context?: LogContext): void {
+  const safe = redactContext(context);
   const entry = {
     ts: new Date().toISOString(),
     level,
     message,
-    correlationId: context?.correlationId ?? createCorrelationId("log"),
-    ...context,
+    correlationId: safe?.correlationId ?? createCorrelationId("log"),
+    ...safe,
   };
   const line = JSON.stringify(entry);
   if (level === "error") console.error(line);
