@@ -11,7 +11,7 @@ import {
 import { isValidLeaveType } from "@/lib/leave-types";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/auth-guards";
-import { getSession } from "@/lib/auth";
+import { getApplicationSession } from "@/lib/auth";
 import { canAccessAdmin } from "@/lib/permissions";
 
 export type ActionState = {
@@ -50,6 +50,7 @@ export async function adjustLeaveBalanceAction(
     revalidatePath("/admin/leaves");
     revalidatePath(`/admin/employees/${employeeId}`);
     revalidatePath("/employee/leaves");
+    revalidatePath("/employee/dashboard");
     return {
       success: `${leaveType} adjusted by ${adjustment > 0 ? "+" : ""}${adjustment}.`,
     };
@@ -64,6 +65,8 @@ export async function syncEmployeeAccrualsAction(employeeId: number): Promise<Ac
     await requireAdminSession();
     await processPendingLeaveAccruals(employeeId);
     revalidatePath(`/admin/employees/${employeeId}`);
+    revalidatePath("/employee/leaves");
+    revalidatePath("/employee/dashboard");
     return { success: "Pending accruals processed." };
   } catch {
     return { error: "Failed to process accruals." };
@@ -71,7 +74,7 @@ export async function syncEmployeeAccrualsAction(employeeId: number): Promise<Ac
 }
 
 export async function getEmployeeProfileLeaveData(employeeId: number) {
-  const session = await getSession();
+  const session = await getApplicationSession();
   if (!session) return { balances: [], history: [] };
 
   // HR/Super Admin, the employee themselves, or their direct manager (hierarchy-scoped).
@@ -97,7 +100,7 @@ export async function getEmployeeProfileLeaveData(employeeId: number) {
 }
 
 export async function getAdminLeaveBalancesOverview() {
-  const session = await getSession();
+  const session = await getApplicationSession();
   if (!session || !canAccessAdmin(session.role)) return [];
 
   const employees = await prisma.employee.findMany({

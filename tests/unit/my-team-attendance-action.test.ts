@@ -2,25 +2,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PermissionError } from "@/lib/permissions";
 
 vi.mock("@/lib/auth", () => ({
-  getSession: vi.fn(),
+  getApplicationSession: vi.fn(),
 }));
 
 vi.mock("@/lib/manager/team-attendance-query", () => ({
   listMyTeamAttendance: vi.fn(),
 }));
 
-import { getSession } from "@/lib/auth";
+import { getApplicationSession } from "@/lib/auth";
 import { listMyTeamAttendance } from "@/lib/manager/team-attendance-query";
 import { listMyTeamAttendanceAction } from "@/actions/my-team";
 
 describe("listMyTeamAttendanceAction", () => {
   beforeEach(() => {
-    vi.mocked(getSession).mockReset();
+    vi.mocked(getApplicationSession).mockReset();
     vi.mocked(listMyTeamAttendance).mockReset();
   });
 
   it("rejects unauthorized sessions", async () => {
-    vi.mocked(getSession).mockResolvedValue(null);
+    vi.mocked(getApplicationSession).mockResolvedValue(null);
     await expect(listMyTeamAttendanceAction()).resolves.toEqual({
       ok: false,
       error: "Unauthorized.",
@@ -28,7 +28,7 @@ describe("listMyTeamAttendanceAction", () => {
   });
 
   it("maps permission errors", async () => {
-    vi.mocked(getSession).mockResolvedValue({
+    vi.mocked(getApplicationSession).mockResolvedValue({
       id: "1",
       email: "e@x.com",
       role: "employee",
@@ -47,7 +47,7 @@ describe("listMyTeamAttendanceAction", () => {
   });
 
   it("returns attendance data for managers", async () => {
-    vi.mocked(getSession).mockResolvedValue({
+    vi.mocked(getApplicationSession).mockResolvedValue({
       id: "1",
       email: "e@x.com",
       role: "employee",

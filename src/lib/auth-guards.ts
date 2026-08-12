@@ -1,4 +1,5 @@
 import { getSession, type SessionUser } from "@/lib/auth";
+import { assertPasswordChangeComplete } from "@/lib/auth/password-change-gate";
 import {
   canAccessAdmin,
   canAccessHRAdministration,
@@ -11,6 +12,14 @@ import { canAccessRecruitmentAdministration } from "@/lib/recruitment/permission
 import type { AppUserRole } from "@/lib/roles";
 
 export async function getSessionOrThrow(): Promise<SessionUser> {
+  const session = await getSession();
+  if (!session) throw new PermissionError("Not authenticated");
+  assertPasswordChangeComplete(session);
+  return session;
+}
+
+/** Authenticated session without the mustChangePassword application gate (logout / password change). */
+export async function getSessionAllowingPasswordChange(): Promise<SessionUser> {
   const session = await getSession();
   if (!session) throw new PermissionError("Not authenticated");
   return session;

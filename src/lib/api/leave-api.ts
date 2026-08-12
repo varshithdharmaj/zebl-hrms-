@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
+import { assertPasswordChangeComplete } from "@/lib/auth/password-change-gate";
 import { AppError } from "@/lib/errors/app-error";
 import { apiErrorResponse } from "@/lib/errors/api-response";
 import { toAppError } from "@/lib/errors/map-error";
@@ -8,6 +9,7 @@ import { createCorrelationId } from "@/lib/observability/correlation";
 export async function requireApiSession() {
   const session = await getSession();
   if (!session) return null;
+  assertPasswordChangeComplete(session);
   return session;
 }
 

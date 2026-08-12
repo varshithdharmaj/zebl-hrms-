@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
+import { assertPasswordChangeComplete } from "@/lib/auth/password-change-gate";
 import { AppError } from "@/lib/errors/app-error";
 import { apiErrorResponse } from "@/lib/errors/api-response";
 import { toAppError } from "@/lib/errors/map-error";
@@ -34,6 +35,7 @@ export function withAuthenticatedApi(handler: ApiHandler) {
           correlationId
         );
       }
+      assertPasswordChangeComplete(session);
       return await handler(request, { correlationId, session });
     } catch (error) {
       logger.error("api_handler_error", {

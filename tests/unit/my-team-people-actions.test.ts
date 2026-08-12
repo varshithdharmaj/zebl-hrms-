@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PermissionError } from "@/lib/permissions";
 
 vi.mock("@/lib/auth", () => ({
-  getSession: vi.fn(),
+  getApplicationSession: vi.fn(),
 }));
 
 vi.mock("@/lib/manager/team-people-query", () => ({
@@ -10,19 +10,19 @@ vi.mock("@/lib/manager/team-people-query", () => ({
   getMyTeamPerson: vi.fn(),
 }));
 
-import { getSession } from "@/lib/auth";
+import { getApplicationSession } from "@/lib/auth";
 import { getMyTeamPerson, listMyTeamPeople } from "@/lib/manager/team-people-query";
 import { getMyTeamPersonAction, listMyTeamPeopleAction } from "@/actions/my-team";
 
 describe("My Team people actions", () => {
   beforeEach(() => {
-    vi.mocked(getSession).mockReset();
+    vi.mocked(getApplicationSession).mockReset();
     vi.mocked(listMyTeamPeople).mockReset();
     vi.mocked(getMyTeamPerson).mockReset();
   });
 
   it("listMyTeamPeopleAction rejects unauthenticated users", async () => {
-    vi.mocked(getSession).mockResolvedValue(null);
+    vi.mocked(getApplicationSession).mockResolvedValue(null);
     await expect(listMyTeamPeopleAction()).resolves.toEqual({
       ok: false,
       error: "Unauthorized.",
@@ -30,7 +30,7 @@ describe("My Team people actions", () => {
   });
 
   it("listMyTeamPeopleAction returns data", async () => {
-    vi.mocked(getSession).mockResolvedValue({
+    vi.mocked(getApplicationSession).mockResolvedValue({
       id: "1",
       email: "e@x.com",
       role: "employee",
@@ -53,7 +53,7 @@ describe("My Team people actions", () => {
   });
 
   it("getMyTeamPersonAction masks IDOR as not found", async () => {
-    vi.mocked(getSession).mockResolvedValue({
+    vi.mocked(getApplicationSession).mockResolvedValue({
       id: "1",
       email: "e@x.com",
       role: "employee",

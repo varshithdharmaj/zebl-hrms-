@@ -1,6 +1,6 @@
 "use server";
 
-import { getSession } from "@/lib/auth";
+import { getApplicationSession } from "@/lib/auth";
 import { canAccessEmployeeShell } from "@/lib/permissions";
 import { employeeHasDirectReports } from "@/lib/employees/direct-reports";
 import {
@@ -16,7 +16,7 @@ import {
  * {@link employeeHasDirectReports}.
  */
 export async function hasDirectReportsNavAction(): Promise<boolean> {
-  const session = await getSession();
+  const session = await getApplicationSession();
   if (!session || !canAccessEmployeeShell(session.role) || session.employeeId == null) {
     return false;
   }
@@ -28,7 +28,7 @@ export async function hasDirectReportsNavAction(): Promise<boolean> {
  * Returns null when the session cannot use the employee shell.
  */
 export async function getMyTeamNavContextAction(): Promise<MyTeamNavContext | null> {
-  const session = await getSession();
+  const session = await getApplicationSession();
   if (!session || !canAccessEmployeeShell(session.role) || session.employeeId == null) {
     return null;
   }

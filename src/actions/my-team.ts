@@ -1,6 +1,6 @@
 "use server";
 
-import { getSession } from "@/lib/auth";
+import { getApplicationSession } from "@/lib/auth";
 import { canAccessEmployeeShell, PermissionError } from "@/lib/permissions";
 import { getMyTeamOverview } from "@/lib/manager/dashboard-service";
 import type { MyTeamOverviewDto } from "@/lib/manager/dashboard-types";
@@ -54,7 +54,7 @@ export type ListMyTeamCalendarResult =
  * My Team Overview (P0) dashboard payload for the signed-in line manager.
  */
 export async function getMyTeamOverviewAction(): Promise<GetMyTeamOverviewResult> {
-  const session = await getSession();
+  const session = await getApplicationSession();
   if (!session || !canAccessEmployeeShell(session.role) || session.employeeId == null) {
     return { ok: false, error: "Unauthorized." };
   }
@@ -74,7 +74,7 @@ export async function getMyTeamOverviewAction(): Promise<GetMyTeamOverviewResult
 export async function listMyTeamPeopleAction(
   params: ListMyTeamPeopleParams = {}
 ): Promise<ListMyTeamPeopleResult> {
-  const session = await getSession();
+  const session = await getApplicationSession();
   if (!session || !canAccessEmployeeShell(session.role) || session.employeeId == null) {
     return { ok: false, error: "Unauthorized." };
   }
@@ -94,7 +94,7 @@ export async function listMyTeamPeopleAction(
 export async function getMyTeamPersonAction(
   employeeId: number
 ): Promise<GetMyTeamPersonResult> {
-  const session = await getSession();
+  const session = await getApplicationSession();
   if (!session || !canAccessEmployeeShell(session.role) || session.employeeId == null) {
     return { ok: false, error: "Unauthorized." };
   }
@@ -118,7 +118,7 @@ export async function getMyTeamPersonAction(
 export async function listMyTeamAttendanceAction(
   params: ListMyTeamAttendanceParams = {}
 ): Promise<ListMyTeamAttendanceResult> {
-  const session = await getSession();
+  const session = await getApplicationSession();
   if (!session || !canAccessEmployeeShell(session.role) || session.employeeId == null) {
     return { ok: false, error: "Unauthorized." };
   }
@@ -136,7 +136,7 @@ export async function listMyTeamAttendanceAction(
 }
 
 export async function listMyTeamLeaveOverviewAction(): Promise<ListMyTeamLeaveOverviewResult> {
-  const session = await getSession();
+  const session = await getApplicationSession();
   if (!session || !canAccessEmployeeShell(session.role) || session.employeeId == null) {
     return { ok: false, error: "Unauthorized." };
   }
@@ -156,7 +156,7 @@ export async function listMyTeamLeaveOverviewAction(): Promise<ListMyTeamLeaveOv
 export async function listMyTeamCalendarAction(
   params: GetMyTeamCalendarParams = {}
 ): Promise<ListMyTeamCalendarResult> {
-  const session = await getSession();
+  const session = await getApplicationSession();
   if (!session || !canAccessEmployeeShell(session.role) || session.employeeId == null) {
     return { ok: false, error: "Unauthorized." };
   }

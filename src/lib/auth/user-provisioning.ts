@@ -142,7 +142,7 @@ export async function provisionMicrosoftUser(
 
   const employee = await findEmployeeByEmail(email);
   const willLinkMicrosoft = !user.azureOid && isSsoAutoLinkEnabled();
-  const willLinkEmployee = !user.employeeId && !!employee;
+  const willLinkEmployee = !user.employeeId && !!employee && isSsoAutoLinkEnabled();
 
   user = await prisma.user.update({
     where: { id: user.id },

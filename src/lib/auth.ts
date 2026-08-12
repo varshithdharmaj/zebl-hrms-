@@ -13,6 +13,7 @@ import { buildSessionUser } from "@/lib/auth/session-bridge";
 import { authenticateLocalUser } from "@/lib/auth/providers/local-provider";
 import { setCachedSessionVersion } from "@/lib/session-version-cache";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
+import { assertPasswordChangeComplete } from "@/lib/auth/password-change-gate";
 import {
   closeAllUserSessions,
   findActiveCurrentLoginSession,
@@ -112,6 +113,14 @@ export const getSession = cache(async (): Promise<SessionUser | null> => {
   if (!token) return null;
   return resolveSessionFromToken(token);
 });
+
+/** Session for HRMS mutations/APIs — rejects local users who must change password. */
+export async function getApplicationSession(): Promise<SessionUser | null> {
+  const session = await getSession();
+  if (!session) return null;
+  assertPasswordChangeComplete(session);
+  return session;
+}
 
 /** JWT-only check for Edge middleware (no DB). Pair with session-version cache. */
 export async function getSessionFromToken(token: string): Promise<SessionUser | null> {

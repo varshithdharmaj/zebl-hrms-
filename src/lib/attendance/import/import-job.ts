@@ -137,7 +137,7 @@ async function provisionNewEmployees(
         email,
         password: EXCEL_UPLOAD_DEFAULT_PASSWORD,
         generate: false,
-        mustChangePassword: false,
+        mustChangePassword: true,
         auditOperation: "upload_auto_create",
       });
       await prisma.notificationPreference.create({

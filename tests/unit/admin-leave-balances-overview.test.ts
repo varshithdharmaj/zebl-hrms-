@@ -21,7 +21,7 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 vi.mock("@/lib/auth", () => ({
-  getSession: vi.fn(),
+  getApplicationSession: vi.fn(),
 }));
 
 vi.mock("@/lib/auth-guards", () => ({
@@ -29,7 +29,7 @@ vi.mock("@/lib/auth-guards", () => ({
 }));
 
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/auth";
+import { getApplicationSession } from "@/lib/auth";
 import {
   buildLeaveBalanceSummariesFromParts,
   getLeaveBalanceSummariesForEmployees,
@@ -202,13 +202,13 @@ describe("getAdminLeaveBalancesOverview", () => {
   });
 
   it("returns [] when unauthorized", async () => {
-    vi.mocked(getSession).mockResolvedValue(null);
+    vi.mocked(getApplicationSession).mockResolvedValue(null);
     await expect(getAdminLeaveBalancesOverview()).resolves.toEqual([]);
     expect(prisma.employee.findMany).not.toHaveBeenCalled();
   });
 
   it("excludes resigned employees and returns overview rows in name order", async () => {
-    vi.mocked(getSession).mockResolvedValue({
+    vi.mocked(getApplicationSession).mockResolvedValue({
       id: "hr-1",
       role: "hr",
       email: "hr@zebl.com",

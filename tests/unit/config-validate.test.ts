@@ -12,6 +12,8 @@ describe("application config validation", () => {
     process.env.AUTH_SECRET = "test-auth-secret-minimum-32-characters-long";
     process.env.DATABASE_URL = "postgresql://zebl:pass@localhost:5432/zebl_ams";
     process.env.APP_BASE_URL = "http://localhost:3000";
+    process.env.NOTIFICATION_CRON_SECRET = "test-notification-cron-secret";
+    process.env.INTEGRATION_CRON_SECRET = "test-integration-cron-secret";
   });
 
   it("passes with valid postgres config", () => {
@@ -30,5 +32,18 @@ describe("application config validation", () => {
     delete process.env.SMTP_HOST;
     const result = validateApplicationConfig();
     expect(result.issues.some((i) => i.field === "SMTP_HOST")).toBe(true);
+  });
+
+  it("fails closed in production when cron secrets are missing", () => {
+    const prev = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    delete process.env.NOTIFICATION_CRON_SECRET;
+    delete process.env.INTEGRATION_CRON_SECRET;
+    const result = validateApplicationConfig({ strict: true });
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((i) => i.field === "NOTIFICATION_CRON_SECRET" && i.level === "error")).toBe(
+      true
+    );
+    process.env.NODE_ENV = prev;
   });
 });

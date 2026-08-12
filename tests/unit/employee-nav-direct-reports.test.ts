@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("@/lib/auth", () => ({
-  getSession: vi.fn(),
+  getApplicationSession: vi.fn(),
 }));
 
 vi.mock("@/lib/employees/direct-reports", () => ({
@@ -12,7 +12,7 @@ vi.mock("@/lib/people-scope/nav-context", () => ({
   resolveMyTeamNavContext: vi.fn(),
 }));
 
-import { getSession } from "@/lib/auth";
+import { getApplicationSession } from "@/lib/auth";
 import { employeeHasDirectReports } from "@/lib/employees/direct-reports";
 import { resolveMyTeamNavContext } from "@/lib/people-scope/nav-context";
 import {
@@ -22,18 +22,18 @@ import {
 
 describe("hasDirectReportsNavAction", () => {
   beforeEach(() => {
-    vi.mocked(getSession).mockReset();
+    vi.mocked(getApplicationSession).mockReset();
     vi.mocked(employeeHasDirectReports).mockReset();
   });
 
   it("returns false when unauthenticated", async () => {
-    vi.mocked(getSession).mockResolvedValue(null);
+    vi.mocked(getApplicationSession).mockResolvedValue(null);
     await expect(hasDirectReportsNavAction()).resolves.toBe(false);
     expect(employeeHasDirectReports).not.toHaveBeenCalled();
   });
 
   it("returns false for non-employee shell roles", async () => {
-    vi.mocked(getSession).mockResolvedValue({
+    vi.mocked(getApplicationSession).mockResolvedValue({
       id: "1",
       email: "hr@x.com",
       role: "hr",
@@ -48,7 +48,7 @@ describe("hasDirectReportsNavAction", () => {
   });
 
   it("returns false when employee profile is not linked", async () => {
-    vi.mocked(getSession).mockResolvedValue({
+    vi.mocked(getApplicationSession).mockResolvedValue({
       id: "1",
       email: "e@x.com",
       role: "employee",
@@ -62,7 +62,7 @@ describe("hasDirectReportsNavAction", () => {
   });
 
   it("returns the direct-reports result for employees", async () => {
-    vi.mocked(getSession).mockResolvedValue({
+    vi.mocked(getApplicationSession).mockResolvedValue({
       id: "1",
       email: "e@x.com",
       role: "employee",
@@ -83,17 +83,17 @@ describe("hasDirectReportsNavAction", () => {
 
 describe("getMyTeamNavContextAction", () => {
   beforeEach(() => {
-    vi.mocked(getSession).mockReset();
+    vi.mocked(getApplicationSession).mockReset();
     vi.mocked(resolveMyTeamNavContext).mockReset();
   });
 
   it("returns null when unauthenticated", async () => {
-    vi.mocked(getSession).mockResolvedValue(null);
+    vi.mocked(getApplicationSession).mockResolvedValue(null);
     await expect(getMyTeamNavContextAction()).resolves.toBeNull();
   });
 
   it("returns resolved context for employees", async () => {
-    vi.mocked(getSession).mockResolvedValue({
+    vi.mocked(getApplicationSession).mockResolvedValue({
       id: "1",
       email: "e@x.com",
       role: "employee",

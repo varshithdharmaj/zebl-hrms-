@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { getApplicationSession } from "@/lib/auth";
 import { canAccessAdmin } from "@/lib/permissions";
 import { writeAuditLog, AUDIT_ACTIONS } from "@/lib/audit";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -12,7 +12,7 @@ import {
 import { buildPayrollAttendanceExcel, toPayrollExportRow } from "@/lib/reports/payroll-excel";
 
 export async function GET(request: Request) {
-  const session = await getSession();
+  const session = await getApplicationSession();
   if (!session || !canAccessAdmin(session.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

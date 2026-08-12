@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/auth-guards";
-import { getSession } from "@/lib/auth";
+import { getApplicationSession } from "@/lib/auth";
 import { safeParseWithSchema } from "@/lib/validation/parse";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
 import { canManageTicket, canAssignTicket } from "@/lib/tickets";
@@ -51,7 +51,7 @@ export async function assignTicketAction(
   _prev: AdminTicketActionState,
   formData: FormData
 ): Promise<AdminTicketActionState> {
-  const session = await getSession();
+  const session = await getApplicationSession();
   if (!session) return { error: "Not authenticated" };
 
   const validated = safeParseWithSchema(assignTicketSchema, {
@@ -125,7 +125,7 @@ export async function changeTicketStatusAction(
   _prev: AdminTicketActionState,
   formData: FormData
 ): Promise<AdminTicketActionState> {
-  const session = await getSession();
+  const session = await getApplicationSession();
   if (!session) return { error: "Not authenticated" };
 
   const validated = safeParseWithSchema(statusChangeSchema, {
@@ -231,7 +231,7 @@ export async function addTicketUpdateAction(
   _prev: AdminTicketActionState,
   formData: FormData
 ): Promise<AdminTicketActionState> {
-  const session = await getSession();
+  const session = await getApplicationSession();
   if (!session) return { error: "Not authenticated" };
 
   const validated = safeParseWithSchema(addUpdateSchema, {

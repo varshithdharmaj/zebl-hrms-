@@ -8,7 +8,7 @@ import { safeParseWithSchema } from "@/lib/validation/parse";
 import { createTicketSchema, ticketReplySchema } from "@/lib/validation/schemas/tickets";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
 import { canReplyToTicket } from "@/lib/tickets";
-import { getSession } from "@/lib/auth";
+import { getApplicationSession } from "@/lib/auth";
 import { PermissionError } from "@/lib/permissions";
 import {
   notifyTicketCreated,
@@ -148,7 +148,7 @@ export async function replyToTicketAction(
   _prev: TicketActionState,
   formData: FormData
 ): Promise<TicketActionState> {
-  const session = await getSession();
+  const session = await getApplicationSession();
   if (!session) {
     return { error: "Not authenticated" };
   }

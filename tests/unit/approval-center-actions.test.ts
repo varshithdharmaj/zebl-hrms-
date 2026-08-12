@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/auth", () => ({
-  getSession: vi.fn(),
+  getApplicationSession: vi.fn(),
 }));
 
 vi.mock("@/lib/approvals/approval-center-service", () => ({
@@ -21,7 +21,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { getSession } from "@/lib/auth";
+import { getApplicationSession } from "@/lib/auth";
 import { actOnApprovalCase, listApprovalCenterCases } from "@/lib/approvals/approval-center-service";
 import {
   actOnApprovalCaseAction,
@@ -30,13 +30,13 @@ import {
 
 describe("approval-center actions", () => {
   beforeEach(() => {
-    vi.mocked(getSession).mockReset();
+    vi.mocked(getApplicationSession).mockReset();
     vi.mocked(listApprovalCenterCases).mockReset();
     vi.mocked(actOnApprovalCase).mockReset();
   });
 
   it("listApprovalCenterAction rejects unauthenticated users", async () => {
-    vi.mocked(getSession).mockResolvedValue(null);
+    vi.mocked(getApplicationSession).mockResolvedValue(null);
     await expect(listApprovalCenterAction()).resolves.toEqual({
       ok: false,
       error: "Unauthorized.",
@@ -44,7 +44,7 @@ describe("approval-center actions", () => {
   });
 
   it("listApprovalCenterAction returns cases", async () => {
-    vi.mocked(getSession).mockResolvedValue({
+    vi.mocked(getApplicationSession).mockResolvedValue({
       id: "1",
       email: "e@x.com",
       role: "employee",
@@ -61,7 +61,7 @@ describe("approval-center actions", () => {
   });
 
   it("actOnApprovalCaseAction denies unauthorized callers", async () => {
-    vi.mocked(getSession).mockResolvedValue(null);
+    vi.mocked(getApplicationSession).mockResolvedValue(null);
     const fd = new FormData();
     fd.set("caseId", "leave:1");
     fd.set("action", "approve");
@@ -71,7 +71,7 @@ describe("approval-center actions", () => {
   });
 
   it("actOnApprovalCaseAction dispatches approve", async () => {
-    vi.mocked(getSession).mockResolvedValue({
+    vi.mocked(getApplicationSession).mockResolvedValue({
       id: "1",
       email: "e@x.com",
       role: "employee",

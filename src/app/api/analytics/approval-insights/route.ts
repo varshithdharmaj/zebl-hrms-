@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { getApplicationSession } from "@/lib/auth";
 import { canAccessAdmin } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { buildApprovalInsights } from "@/lib/analytics/approval-insights";
 
 export async function GET(request: Request) {
-  const session = await getSession();
+  const session = await getApplicationSession();
   if (!session) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

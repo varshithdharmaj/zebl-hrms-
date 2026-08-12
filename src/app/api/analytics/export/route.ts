@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { getApplicationSession } from "@/lib/auth";
 import { canViewOrgAnalytics } from "@/lib/permissions";
 import { generateExecutiveReport, type ReportFormat } from "@/lib/reports/report-generator";
 
 export async function GET(request: Request) {
-  const session = await getSession();
+  const session = await getApplicationSession();
   if (!session || !canViewOrgAnalytics(session.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

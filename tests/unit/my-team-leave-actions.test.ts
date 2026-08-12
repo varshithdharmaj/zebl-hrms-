@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PermissionError } from "@/lib/permissions";
 
 vi.mock("@/lib/auth", () => ({
-  getSession: vi.fn(),
+  getApplicationSession: vi.fn(),
 }));
 
 vi.mock("@/lib/manager/team-leave-query", () => ({
@@ -13,7 +13,7 @@ vi.mock("@/lib/manager/team-calendar-query", () => ({
   getMyTeamCalendar: vi.fn(),
 }));
 
-import { getSession } from "@/lib/auth";
+import { getApplicationSession } from "@/lib/auth";
 import { getMyTeamLeaveOverview } from "@/lib/manager/team-leave-query";
 import { getMyTeamCalendar } from "@/lib/manager/team-calendar-query";
 import {
@@ -33,12 +33,12 @@ const managerSession = {
 
 describe("listMyTeamLeaveOverviewAction", () => {
   beforeEach(() => {
-    vi.mocked(getSession).mockReset();
+    vi.mocked(getApplicationSession).mockReset();
     vi.mocked(getMyTeamLeaveOverview).mockReset();
   });
 
   it("rejects unauthorized sessions", async () => {
-    vi.mocked(getSession).mockResolvedValue(null);
+    vi.mocked(getApplicationSession).mockResolvedValue(null);
     await expect(listMyTeamLeaveOverviewAction()).resolves.toEqual({
       ok: false,
       error: "Unauthorized.",
@@ -46,7 +46,7 @@ describe("listMyTeamLeaveOverviewAction", () => {
   });
 
   it("maps permission errors (authorization)", async () => {
-    vi.mocked(getSession).mockResolvedValue(managerSession);
+    vi.mocked(getApplicationSession).mockResolvedValue(managerSession);
     vi.mocked(getMyTeamLeaveOverview).mockRejectedValue(
       new PermissionError("My Team leave is only available to line managers.")
     );
@@ -57,7 +57,7 @@ describe("listMyTeamLeaveOverviewAction", () => {
   });
 
   it("returns leave overview for managers", async () => {
-    vi.mocked(getSession).mockResolvedValue(managerSession);
+    vi.mocked(getApplicationSession).mockResolvedValue(managerSession);
     const data = {
       directReportCount: 0,
       balances: [],
@@ -75,12 +75,12 @@ describe("listMyTeamLeaveOverviewAction", () => {
 
 describe("listMyTeamCalendarAction", () => {
   beforeEach(() => {
-    vi.mocked(getSession).mockReset();
+    vi.mocked(getApplicationSession).mockReset();
     vi.mocked(getMyTeamCalendar).mockReset();
   });
 
   it("rejects unauthorized sessions", async () => {
-    vi.mocked(getSession).mockResolvedValue(null);
+    vi.mocked(getApplicationSession).mockResolvedValue(null);
     await expect(listMyTeamCalendarAction()).resolves.toEqual({
       ok: false,
       error: "Unauthorized.",
@@ -88,7 +88,7 @@ describe("listMyTeamCalendarAction", () => {
   });
 
   it("maps permission errors", async () => {
-    vi.mocked(getSession).mockResolvedValue(managerSession);
+    vi.mocked(getApplicationSession).mockResolvedValue(managerSession);
     vi.mocked(getMyTeamCalendar).mockRejectedValue(
       new PermissionError("My Team calendar is only available to line managers.")
     );
@@ -99,7 +99,7 @@ describe("listMyTeamCalendarAction", () => {
   });
 
   it("returns calendar data", async () => {
-    vi.mocked(getSession).mockResolvedValue(managerSession);
+    vi.mocked(getApplicationSession).mockResolvedValue(managerSession);
     const data = {
       view: "month" as const,
       rangeStart: new Date("2026-03-01"),

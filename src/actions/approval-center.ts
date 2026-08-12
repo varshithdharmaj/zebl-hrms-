@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getSession } from "@/lib/auth";
+import { getApplicationSession } from "@/lib/auth";
 import { canAccessAdmin } from "@/lib/permissions";
 import type { SessionUser } from "@/lib/session";
 import {
@@ -30,7 +30,7 @@ function canUseApprovalCenter(session: SessionUser): boolean {
 export async function listApprovalCenterAction(
   caseType?: "leave"
 ): Promise<ListApprovalCenterResult> {
-  const session = await getSession();
+  const session = await getApplicationSession();
   if (!session || !canUseApprovalCenter(session)) {
     return { ok: false, error: "Unauthorized." };
   }
@@ -52,7 +52,7 @@ export async function actOnApprovalCaseAction(
   _prev: ActOnApprovalCaseResult,
   formData: FormData
 ): Promise<ActOnApprovalCaseResult> {
-  const session = await getSession();
+  const session = await getApplicationSession();
   if (!session || !canUseApprovalCenter(session)) {
     return { error: "Unauthorized." };
   }
@@ -84,6 +84,7 @@ export async function actOnApprovalCaseAction(
       );
       if (leave) {
         revalidatePath("/employee/leaves");
+        revalidatePath("/employee/dashboard");
         revalidatePath("/employee/approvals");
         revalidatePath("/admin/leaves");
         revalidatePath(`/admin/employees/${leave.employeeId}`);

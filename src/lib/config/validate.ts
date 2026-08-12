@@ -89,11 +89,11 @@ export function validateApplicationConfig(opts?: {
   }
 
   if (strict && isProduction()) {
-    if (!getEnv("NOTIFICATION_CRON_SECRET") && !getEnv("INTEGRATION_CRON_SECRET")) {
+    if (!getEnv("NOTIFICATION_CRON_SECRET") || !getEnv("INTEGRATION_CRON_SECRET")) {
       issues.push({
         field: "NOTIFICATION_CRON_SECRET",
-        level: "warning",
-        message: "Cron secrets recommended for worker HTTP triggers in production.",
+        level: "error",
+        message: "NOTIFICATION_CRON_SECRET and INTEGRATION_CRON_SECRET are required in production.",
       });
     }
   }

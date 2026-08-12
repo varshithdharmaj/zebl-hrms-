@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { getSession } from "@/lib/auth";
+import { sessionRequiresPasswordChange } from "@/lib/auth/password-change-gate";
 import { canAccessAdmin } from "@/lib/permissions";
 import { getEnv } from "@/lib/config/env";
 
@@ -10,17 +11,31 @@ function secretsMatch(bearer: string, secret: string): boolean {
   return timingSafeEqual(a, b);
 }
 
+function nonEmptySecrets(secrets: (string | undefined)[]): string[] {
+  return secrets.filter((s): s is string => Boolean(s && s.length > 0));
+}
+
+/**
+ * Authorize a cron/worker HTTP trigger.
+ * Empty configured secrets never match. Missing/invalid Bearer is rejected
+ * unless an HR/SA session (without a pending password change) is present.
+ */
 export async function authorizeCronOrAdmin(
   request: Request,
   secrets: (string | undefined)[]
 ): Promise<boolean> {
   const authHeader = request.headers.get("authorization");
-  const bearer = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  const validSecrets = secrets.filter(Boolean) as string[];
-  if (bearer && validSecrets.some((s) => secretsMatch(bearer, s))) return true;
+  const bearer = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
+  const validSecrets = nonEmptySecrets(secrets);
+
+  if (bearer && validSecrets.length > 0 && validSecrets.some((s) => secretsMatch(bearer, s))) {
+    return true;
+  }
 
   const session = await getSession();
-  return Boolean(session && canAccessAdmin(session.role));
+  if (!session || !canAccessAdmin(session.role)) return false;
+  if (sessionRequiresPasswordChange(session)) return false;
+  return true;
 }
 
 export function getCronSecrets(): {

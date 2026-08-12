@@ -108,7 +108,11 @@ export async function loginAction(
     metadata: { authProvider: sessionUser.authProvider, clientIp, provider: "local" },
   });
 
-  redirect(getDefaultRedirect(sessionUser.role));
+  redirect(
+    sessionUser.mustChangePassword && sessionUser.authProvider === "local"
+      ? "/change-password"
+      : getDefaultRedirect(sessionUser.role)
+  );
 }
 
 export async function logoutAction() {

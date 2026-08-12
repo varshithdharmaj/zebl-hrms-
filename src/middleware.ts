@@ -14,6 +14,10 @@ import {
   isCronPublicPath,
   isPublicPath,
 } from "@/lib/public-routes";
+import {
+  isPasswordChangeAllowedPath,
+  sessionRequiresPasswordChange,
+} from "@/lib/auth/password-change-gate";
 
 function redirectToRoleHome(request: NextRequest, role: AppUserRole) {
   return NextResponse.redirect(new URL(getRoleHomePath(role), request.url));
@@ -26,7 +30,13 @@ function redirectToLogin(request: NextRequest, pathname: string, clearSession: b
   }
   const response = NextResponse.redirect(loginUrl);
   if (clearSession) {
-    response.cookies.set(COOKIE_NAME, "", { path: "/", maxAge: 0 });
+    response.cookies.set(COOKIE_NAME, "", {
+      path: "/",
+      maxAge: 0,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+    });
   }
   return response;
 }
@@ -53,18 +63,35 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname === "/") {
-    if (session) return redirectToRoleHome(request, session.role);
+    if (session) {
+      if (sessionRequiresPasswordChange(session)) {
+        return NextResponse.redirect(new URL("/change-password", request.url));
+      }
+      return redirectToRoleHome(request, session.role);
+    }
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
   if (isPublicPath(pathname)) {
     if (pathname === "/login" && request.nextUrl.searchParams.get("clear") === "1") {
       const response = NextResponse.next();
-      response.cookies.set(COOKIE_NAME, "", { path: "/", maxAge: 0 });
+      response.cookies.set(COOKIE_NAME, "", {
+        path: "/",
+        maxAge: 0,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+      });
       return response;
     }
     // Cron process routes authenticate via Bearer secret; never bounce to role home.
     if (session && !isApprovalPublicPath(pathname) && !isCronPublicPath(pathname)) {
+      if (sessionRequiresPasswordChange(session)) {
+        if (!isPasswordChangeAllowedPath(pathname)) {
+          return NextResponse.redirect(new URL("/change-password", request.url));
+        }
+        return NextResponse.next();
+      }
       // Do not bounce away from login when sent here after a failed dashboard auth check.
       const returningFromProtected = request.nextUrl.searchParams.has("from");
       const clearingSession = request.nextUrl.searchParams.get("clear") === "1";
@@ -77,6 +104,10 @@ export async function middleware(request: NextRequest) {
 
   if (!session) {
     return redirectToLogin(request, pathname, false);
+  }
+
+  if (sessionRequiresPasswordChange(session) && !isPasswordChangeAllowedPath(pathname)) {
+    return NextResponse.redirect(new URL("/change-password", request.url));
   }
 
   if (pathname.startsWith("/admin") && !canAccessAdmin(session.role)) {
