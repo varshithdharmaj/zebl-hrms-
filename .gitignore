@@ -15,3 +15,5 @@ src/generated/prisma
 tsconfig.tsbuildinfo
 .env.*
 !.env.example
+
+tsconfig.test.tsbuildinfo
