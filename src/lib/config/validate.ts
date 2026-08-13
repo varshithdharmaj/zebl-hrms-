@@ -88,12 +88,16 @@ export function validateApplicationConfig(opts?: {
     });
   }
 
+  // Cron HTTP triggers reject empty secrets (see authorizeCronOrAdmin). Missing values
+  // must not hard-fail app startup — that turns every Server Action into a 500 HTML
+  // page and the client error "An unexpected response was received from the server."
   if (strict && isProduction()) {
     if (!getEnv("NOTIFICATION_CRON_SECRET") || !getEnv("INTEGRATION_CRON_SECRET")) {
       issues.push({
         field: "NOTIFICATION_CRON_SECRET",
-        level: "error",
-        message: "NOTIFICATION_CRON_SECRET and INTEGRATION_CRON_SECRET are required in production.",
+        level: "warning",
+        message:
+          "NOTIFICATION_CRON_SECRET and INTEGRATION_CRON_SECRET are unset; cron HTTP triggers will only work for signed-in admins.",
       });
     }
   }

@@ -28,8 +28,16 @@ export async function register() {
     if (all.length > 0) {
       const fn = config.ok ? console.warn : console.error;
       fn("[zebl] Startup configuration issues:", all.join("; "));
-      if (!config.ok && process.env.NODE_ENV === "production") {
+      // Do not throw in production: instrumentation failures become 500 HTML for every
+      // dynamic request (health, login Server Actions) → client "unexpected response".
+      // AUTH_SECRET / DATABASE_URL errors still fail at the first request that needs them.
+      if (!config.ok && process.env.NODE_ENV !== "production") {
         throw new Error("Application configuration validation failed at startup.");
+      }
+      if (!config.ok && process.env.NODE_ENV === "production") {
+        console.error(
+          "[zebl] Continuing despite config errors so health/logs remain reachable. Fix env and redeploy."
+        );
       }
     }
 

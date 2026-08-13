@@ -34,16 +34,16 @@ describe("application config validation", () => {
     expect(result.issues.some((i) => i.field === "SMTP_HOST")).toBe(true);
   });
 
-  it("fails closed in production when cron secrets are missing", () => {
+  it("warns in production when cron secrets are missing (does not fail startup)", () => {
     const prev = process.env.NODE_ENV;
     process.env.NODE_ENV = "production";
     delete process.env.NOTIFICATION_CRON_SECRET;
     delete process.env.INTEGRATION_CRON_SECRET;
     const result = validateApplicationConfig({ strict: true });
-    expect(result.ok).toBe(false);
-    expect(result.issues.some((i) => i.field === "NOTIFICATION_CRON_SECRET" && i.level === "error")).toBe(
-      true
-    );
+    expect(result.ok).toBe(true);
+    expect(
+      result.issues.some((i) => i.field === "NOTIFICATION_CRON_SECRET" && i.level === "warning")
+    ).toBe(true);
     process.env.NODE_ENV = prev;
   });
 });

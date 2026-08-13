@@ -176,6 +176,8 @@ Use a free external cron (e.g. [cron-job.org](https://cron-job.org)) to hit your
 |---------|--------|-----|
 | `prisma.payrollSettings` undefined | Client not generated | `postinstall` / redeploy after `prisma generate` |
 | `Query Engine for runtime "rhel-openssl-3.0.x"` / Server Action 500 | Engine binary not traced into `/var/task` (custom `src/generated/prisma` output) | Ensure `binaryTargets` includes `rhel-openssl-3.0.x` and `outputFileTracingIncludes` covers `./src/generated/prisma/**/*`; redeploy |
+| `/login` loads but login/API returns 500; console: `An unexpected response was received from the server` | Runtime crash (often missing `AUTH_SECRET`, bad `DATABASE_URL`, or startup config throw). Static `/login` HTML still serves. | Vercel → Project → Logs (Runtime). Fix env for **Production** (+ Preview if needed), Redeploy. Confirm `GET /api/health` returns JSON. |
+| Preview URL redirects to `vercel.com/sso-api` | Deployment Protection (Vercel Authentication) on preview | Use the Production domain, or disable protection / use a bypass token for that preview |
 | `DATABASE_URL is not set` at build | Missing Vercel env | Add `DATABASE_URL` in project settings |
 | `Configuration validation failed` | Missing `AUTH_SECRET` | Set 32+ char secret |
 | `Can't reach database server` | Neon asleep / wrong URL | Wake Neon; check pooled URL & SSL |
