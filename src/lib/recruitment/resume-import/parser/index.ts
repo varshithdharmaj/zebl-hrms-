@@ -12,6 +12,9 @@ import {
 import type { ResumeImportDraftContent } from "@/lib/recruitment/resume-import/types";
 import { runSemanticVerificationPipeline } from "../semantic";
 import type { SemanticVerifyGenerator } from "../semantic/llm-verify";
+import { getResumeParseMode } from "./parse-mode";
+import { parseResumeWithLlm, type LlmResumeGenerator } from "./llm-parse-resume";
+import { logger } from "@/lib/observability/logger";
 
 export type { ResumeParseResult, ResumeParserError, ParsedResumeDraft } from "./types";
 export { RESUME_PARSER_VERSION, EMPTY_PARSED_RESUME_DRAFT } from "./types";
@@ -34,11 +37,15 @@ export {
   normalizePhone,
 } from "./patterns";
 export { matchSectionHeader, detectResumeSections } from "./sections";
+export { getResumeParseMode } from "./parse-mode";
 
 /**
  * Full pipeline:
  * Document bytes → text extract → cleanup → parse → normalize
  * → optional selective semantic verification → draft content
+ *
+ * When RESUME_PARSE_MODE=llm, skips the deterministic parser and sends
+ * the complete extracted text directly to the LLM for structured extraction.
  *
  * Does not write to the database. Candidate remains Source of Truth via HR review.
  */
@@ -49,12 +56,36 @@ export async function parseResumeDocument(input: {
   documentId?: string | null;
   /** Default false. Opt-in only via `true` or RESUME_SEMANTIC_VERIFY=1. */
   semanticVerification?: boolean;
-  /** Test seam for Gemini. */
+  /** Test seam for Gemini semantic verification. */
   semanticGenerate?: SemanticVerifyGenerator;
+  /** Test seam for LLM resume parser Gemini call. */
+  llmGenerate?: LlmResumeGenerator;
 }): Promise<{
   result: ResumeParseResult;
   draftContent: ResumeImportDraftContent;
 }> {
+  const parseMode = getResumeParseMode();
+
+  // --- LLM path: send original uploaded PDF/DOCX file directly to Gemini ---
+  if (parseMode === "llm") {
+    logger.info("recruitment.resume.parse_mode", {
+      entityType: "resume",
+      parseMode: "llm",
+      fileName: input.fileName,
+      mimeType: input.mimeType,
+    });
+    return parseResumeWithLlm(
+      {
+        content: input.content,
+        fileName: input.fileName,
+        mimeType: input.mimeType,
+        documentId: input.documentId ?? null,
+      },
+      { generate: input.llmGenerate }
+    );
+  }
+
+  // --- Deterministic path (default): existing cleanup → parse → normalize flow ---
   const extracted = await extractResumeText({
     content: input.content,
     fileName: input.fileName,

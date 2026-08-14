@@ -17,6 +17,8 @@ export interface ResumeConflictDialogProps {
   onOpenChange: (open: boolean) => void;
   conflicts: ConflictField[];
   onResolve: (resolutions: Record<string, string>) => void;
+  /** Parent merge/apply in flight — keep dialog open and block re-submit. */
+  isPending?: boolean;
 }
 
 export function ResumeConflictDialog({
@@ -24,6 +26,7 @@ export function ResumeConflictDialog({
   onOpenChange,
   conflicts,
   onResolve,
+  isPending = false,
 }: ResumeConflictDialogProps) {
   // Store selected value per conflict key: "current" or "parsed"
   const [selections, setSelections] = useState<Record<string, "current" | "parsed">>(
@@ -36,10 +39,12 @@ export function ResumeConflictDialog({
   }, [conflicts]);
 
   function handleSelect(key: string, choice: "current" | "parsed") {
+    if (isPending) return;
     setSelections((prev) => ({ ...prev, [key]: choice }));
   }
 
   function handleApply() {
+    if (isPending) return;
     const resolutions: Record<string, string> = {};
     for (const conflict of conflicts) {
       const choice = selections[conflict.key] ?? "current";
@@ -47,11 +52,16 @@ export function ResumeConflictDialog({
         choice === "current" ? conflict.currentValue : conflict.parsedValue;
     }
     onResolve(resolutions);
-    // Parent closes the dialog after apply starts — avoid treating apply as cancel.
   }
 
   return (
-    <DialogPrimitive.Root open={isOpen} onOpenChange={onOpenChange}>
+    <DialogPrimitive.Root
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open && isPending) return;
+        onOpenChange(open);
+      }}
+    >
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm transition-opacity" />
         <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card p-6 shadow-elevated focus:outline-none flex flex-col overflow-hidden animate-in fade-in-50 zoom-in-95 duration-200">
@@ -70,7 +80,12 @@ export function ResumeConflictDialog({
               </div>
             </div>
             <DialogPrimitive.Close asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-lg"
+                disabled={isPending}
+              >
                 <X className="h-4 w-4" />
               </Button>
             </DialogPrimitive.Close>
@@ -93,8 +108,9 @@ export function ResumeConflictDialog({
                       {/* Current Typed Value Option */}
                       <button
                         type="button"
+                        disabled={isPending}
                         onClick={() => handleSelect(conflict.key, "current")}
-                        className={`flex flex-col items-start p-3 rounded-lg border text-left transition-all ${
+                        className={`flex flex-col items-start p-3 rounded-lg border text-left transition-all disabled:opacity-60 disabled:pointer-events-none ${
                           currentSelected
                             ? "border-primary bg-primary/5 ring-1 ring-primary"
                             : "border-border bg-card hover:bg-muted/15"
@@ -118,8 +134,9 @@ export function ResumeConflictDialog({
                       {/* Parsed Resume Value Option */}
                       <button
                         type="button"
+                        disabled={isPending}
                         onClick={() => handleSelect(conflict.key, "parsed")}
-                        className={`flex flex-col items-start p-3 rounded-lg border text-left transition-all ${
+                        className={`flex flex-col items-start p-3 rounded-lg border text-left transition-all disabled:opacity-60 disabled:pointer-events-none ${
                           parsedSelected
                             ? "border-primary bg-primary/5 ring-1 ring-primary"
                             : "border-border bg-card hover:bg-muted/15"
@@ -149,12 +166,17 @@ export function ResumeConflictDialog({
           {/* Footer */}
           <div className="flex justify-end gap-2 border-t border-border pt-4 shrink-0">
             <DialogPrimitive.Close asChild>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" disabled={isPending}>
                 Cancel
               </Button>
             </DialogPrimitive.Close>
-            <Button size="sm" onClick={handleApply} className="font-semibold shadow-subtle">
-              Resolve & Merge
+            <Button
+              size="sm"
+              onClick={handleApply}
+              loading={isPending}
+              className="font-semibold shadow-subtle"
+            >
+              {isPending ? "Applying…" : "Resolve & Merge"}
             </Button>
           </div>
 

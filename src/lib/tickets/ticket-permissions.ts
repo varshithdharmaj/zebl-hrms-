@@ -1,5 +1,5 @@
 import type { SessionUser } from "@/lib/session";
-import { isSuperAdmin, canAccessHRAdministration } from "@/lib/permissions";
+import { isSuperAdmin, isWorkforceMember, canAccessHRAdministration } from "@/lib/permissions";
 
 export type TicketLike = {
   id: string;
@@ -15,7 +15,7 @@ export type TicketLike = {
  * Rules:
  * - Super Admin: all tickets (including anonymous)
  * - HR: assigned tickets + department-matched tickets, non-anonymous only
- * - Employee: own tickets only (own raisedByEmployeeId)
+ * - Employee / Manager: own tickets only (own raisedByEmployeeId)
  * - Anonymous tickets: Super Admin only
  */
 export function canViewTicket(session: SessionUser | null, ticket: TicketLike): boolean {
@@ -29,8 +29,8 @@ export function canViewTicket(session: SessionUser | null, ticket: TicketLike): 
   // Super Admin sees all non-anonymous
   if (isSuperAdmin(session.role)) return true;
 
-  // Employee: own tickets only
-  if (session.role === "employee") {
+  // Employee / Manager: own tickets only (self-service, not team-scoped)
+  if (isWorkforceMember(session.role)) {
     return session.employeeId === ticket.raisedByEmployeeId;
   }
 
@@ -92,8 +92,8 @@ export function canManageTicket(session: SessionUser | null, ticket: TicketLike)
 export function canReplyToTicket(session: SessionUser | null, ticket: TicketLike): boolean {
   if (!session) return false;
 
-  // Own tickets only for employees
-  if (session.role === "employee") {
+  // Own tickets only for employees/managers
+  if (isWorkforceMember(session.role)) {
     return session.employeeId === ticket.raisedByEmployeeId;
   }
 

@@ -3,6 +3,35 @@
 export const RECRUITMENT_BASE_PATH = "/admin/recruitment";
 
 const UNSAFE_RETURN_CHARS = /[\s<>'"`\\]/;
+const MAX_PATH_DECODE_PASSES = 5;
+
+/**
+ * Decode a path repeatedly until stable.
+ * Returns null on malformed percent-encoding or pathological nesting.
+ */
+function decodePathFully(path: string): string | null {
+  let current = path;
+  for (let i = 0; i < MAX_PATH_DECODE_PASSES; i++) {
+    try {
+      const decoded = decodeURIComponent(current);
+      if (decoded === current) return current;
+      current = decoded;
+    } catch {
+      return null;
+    }
+  }
+  // Still changing after max passes — treat as unsafe.
+  try {
+    if (decodeURIComponent(current) !== current) return null;
+  } catch {
+    return null;
+  }
+  return current;
+}
+
+function hasTraversalSegment(path: string): boolean {
+  return path.split("/").some((segment) => segment === "." || segment === "..");
+}
 
 export function isSafeRecruitmentReturnTo(
   value: string | null | undefined
@@ -14,7 +43,19 @@ export function isSafeRecruitmentReturnTo(
   if (trimmed.startsWith("//")) return false;
   if (trimmed.includes("://")) return false;
   if (UNSAFE_RETURN_CHARS.test(trimmed)) return false;
-  if (trimmed.includes("..")) return false;
+
+  const pathOnly = trimmed.split(/[?#]/, 1)[0] ?? trimmed;
+  if (pathOnly.includes("..")) return false;
+
+  const decodedPath = decodePathFully(pathOnly);
+  if (decodedPath == null) return false;
+  if (!decodedPath.startsWith(RECRUITMENT_BASE_PATH)) return false;
+  if (decodedPath.startsWith("//")) return false;
+  if (decodedPath.includes("://")) return false;
+  if (UNSAFE_RETURN_CHARS.test(decodedPath)) return false;
+  if (hasTraversalSegment(decodedPath)) return false;
+  if (decodedPath.includes("..")) return false;
+
   return true;
 }
 
@@ -77,11 +118,15 @@ export function buildPipelineHref(context: {
   applicationId?: string | null;
   jobOpeningId?: string | null;
   currentStage?: string | null;
+  returnTo?: string | null;
 }): string {
   const params = new URLSearchParams();
   if (context.jobOpeningId) params.set("jobOpeningId", context.jobOpeningId);
   if (context.currentStage) params.set("currentStage", context.currentStage);
   if (context.applicationId) params.set("applicationId", context.applicationId);
+  if (isSafeRecruitmentReturnTo(context.returnTo)) {
+    params.set("returnTo", context.returnTo);
+  }
   const qs = params.toString();
   return qs ? `${RECRUITMENT_BASE_PATH}/pipeline?${qs}` : `${RECRUITMENT_BASE_PATH}/pipeline`;
 }
@@ -91,11 +136,13 @@ export function buildApplicationCreateRedirect(input: {
   applicationId: string;
   jobOpeningId?: string | null;
   currentStage?: string | null;
+  returnTo?: string | null;
 }): string {
   return buildPipelineHref({
     applicationId: input.applicationId,
     jobOpeningId: input.jobOpeningId,
     currentStage: input.currentStage,
+    returnTo: input.returnTo,
   });
 }
 

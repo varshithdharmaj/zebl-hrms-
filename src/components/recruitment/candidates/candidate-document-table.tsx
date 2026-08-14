@@ -32,6 +32,7 @@ import {
   X,
   RefreshCw,
   Sparkles,
+  Loader2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -55,6 +56,8 @@ export interface CandidateDocumentRowProps {
   onReplace: (id: string, file: File) => Promise<void>;
   onStartImport: (documentId: string) => Promise<void>;
   isPending: boolean;
+  /** True while this row’s resume-import draft is being created. */
+  isImportStarting?: boolean;
 }
 
 export function CandidateDocumentRow({
@@ -66,6 +69,7 @@ export function CandidateDocumentRow({
   onReplace,
   onStartImport,
   isPending,
+  isImportStarting = false,
 }: CandidateDocumentRowProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(doc.fileName);
@@ -222,10 +226,27 @@ export function CandidateDocumentRow({
                       size="icon"
                       onClick={() => void onStartImport(doc.id)}
                       className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
-                      title="Start Resume Import (stub draft)"
+                      title={
+                        isImportStarting
+                          ? "Starting resume import…"
+                          : "Start Resume Import (stub draft)"
+                      }
+                      aria-label={
+                        isImportStarting
+                          ? "Starting resume import"
+                          : "Start resume import"
+                      }
                       disabled={isPending}
+                      aria-busy={isImportStarting || undefined}
                     >
-                      <Sparkles className="h-4 w-4" />
+                      {isImportStarting ? (
+                        <Loader2
+                          className="h-4 w-4 animate-spin motion-reduce:animate-none"
+                          aria-hidden
+                        />
+                      ) : (
+                        <Sparkles className="h-4 w-4" aria-hidden />
+                      )}
                     </Button>
                   </>
                 )}
@@ -288,6 +309,7 @@ export interface CandidateDocumentTableProps {
 export function CandidateDocumentTable({ documents, candidateId }: CandidateDocumentTableProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [importingDocumentId, setImportingDocumentId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -385,8 +407,10 @@ export function CandidateDocumentTable({ documents, candidateId }: CandidateDocu
   };
 
   const handleStartImport = async (documentId: string) => {
+    if (isPending) return;
     setError(null);
     setSuccess(null);
+    setImportingDocumentId(documentId);
     startTransition(async () => {
       const res = await createResumeImportDraftAction(
         {},
@@ -394,6 +418,7 @@ export function CandidateDocumentTable({ documents, candidateId }: CandidateDocu
       );
       if (res.error) {
         setError(res.error);
+        setImportingDocumentId(null);
         return;
       }
       if (res.draftId) {
@@ -403,6 +428,7 @@ export function CandidateDocumentTable({ documents, candidateId }: CandidateDocu
         return;
       }
       setError("Import draft was created but no draft id was returned.");
+      setImportingDocumentId(null);
     });
   };
 
@@ -440,6 +466,7 @@ export function CandidateDocumentTable({ documents, candidateId }: CandidateDocu
               onReplace={handleReplace}
               onStartImport={handleStartImport}
               isPending={isPending}
+              isImportStarting={importingDocumentId === doc.id && isPending}
             />
           ))}
         </DataTable>

@@ -48,6 +48,10 @@ import {
 } from "@/lib/recruitment/communication/attachment-rules";
 import { buildCommunicationAttachmentStoragePath } from "@/lib/recruitment/shared/storage-paths";
 import { createCommunicationPhase5Methods } from "@/lib/recruitment/services/communication-phase5";
+import {
+  getRecruitmentStorage,
+  type StorageAdapter,
+} from "@/lib/recruitment/storage";
 
 async function assertCanWriteCommunication(session: SessionUser): Promise<RecruitmentScope> {
   RecruitmentPermissionService.requireModuleEnabled();
@@ -137,7 +141,8 @@ function resolveThreadId(args: {
 }
 
 export function createCommunicationService(
-  repository: CommunicationRepository = prismaCommunicationRepository
+  repository: CommunicationRepository = prismaCommunicationRepository,
+  storage: StorageAdapter = getRecruitmentStorage()
 ) {
   const phase5 = createCommunicationPhase5Methods(repository);
 
@@ -716,9 +721,13 @@ export function createCommunicationService(
       });
     },
 
-    async addAttachment(session: SessionUser, input: UploadCommunicationAttachmentInput) {
+    async addAttachment(
+      session: SessionUser,
+      input: UploadCommunicationAttachmentInput & { content: Buffer | Uint8Array }
+    ) {
       const scope = await assertCanWriteCommunication(session);
-      const parsed = uploadCommunicationAttachmentSchema.parse(input);
+      const { content, ...meta } = input;
+      const parsed = uploadCommunicationAttachmentSchema.parse(meta);
 
       const validation = validateCommunicationAttachment({
         fileName: parsed.fileName,
@@ -729,16 +738,13 @@ export function createCommunicationService(
         throw new RecruitmentDomainError("REC_VALIDATION", validation.message);
       }
 
-      const scan = await scanAttachmentForVirus({
-        fileName: parsed.fileName,
-        fileType: parsed.fileType,
-        fileSize: parsed.fileSize,
-        storagePath: parsed.storagePath,
-      });
-      if (!scan.ok) {
+      if (!content || content.byteLength === 0) {
+        throw new RecruitmentDomainError("REC_VALIDATION", "File content is required.");
+      }
+      if (content.byteLength !== parsed.fileSize) {
         throw new RecruitmentDomainError(
           "REC_VALIDATION",
-          scan.reason || "Attachment failed virus scan."
+          "File size does not match uploaded content."
         );
       }
 
@@ -749,17 +755,44 @@ export function createCommunicationService(
       assertEntityInScope(scope, communication);
       assertDraftEditable(communication.status);
 
+      // Storage key is always server-generated — never trust a client-supplied path.
       const storagePath = buildCommunicationAttachmentStoragePath(
         parsed.communicationId,
         parsed.fileName
       );
 
-      const created = await repository.addAttachment(parsed.communicationId, {
+      const scan = await scanAttachmentForVirus({
         fileName: parsed.fileName,
         fileType: parsed.fileType,
         fileSize: parsed.fileSize,
         storagePath,
       });
+      if (!scan.ok) {
+        throw new RecruitmentDomainError(
+          "REC_VALIDATION",
+          scan.reason || "Attachment failed virus scan."
+        );
+      }
+
+      await storage.save(storagePath, content, { contentType: parsed.fileType });
+
+      let created: { id: string };
+      try {
+        created = await repository.addAttachment(parsed.communicationId, {
+          fileName: parsed.fileName,
+          fileType: parsed.fileType,
+          fileSize: parsed.fileSize,
+          storagePath,
+        });
+      } catch (error) {
+        // DB write failed after the blob was saved — clean up the orphan.
+        try {
+          await storage.delete(storagePath);
+        } catch {
+          /* ignore */
+        }
+        throw error;
+      }
 
       await writeAuditLog({
         entityType: "recruitment_communication",
@@ -774,6 +807,39 @@ export function createCommunicationService(
       });
 
       return { id: created.id, candidateId: communication.candidateId };
+    },
+
+    /** Scope-checked real file content for download/preview routes. */
+    async getAttachmentContent(
+      session: SessionUser,
+      id: string
+    ): Promise<{ content: Buffer; fileName: string; fileType: string }> {
+      const scope = await assertCanReadCommunication(session);
+      const parsed = attachmentIdSchema.parse({ id });
+      const attachment = await repository.getAttachment(parsed.id);
+      if (!attachment) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Attachment not found.");
+      }
+      const communication = await repository.getCommunication(attachment.communicationId);
+      if (!communication || communication.deletedAt) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Communication not found.");
+      }
+      assertEntityInScope(scope, communication);
+
+      const exists = await storage.exists(attachment.storagePath);
+      if (!exists) {
+        throw new RecruitmentDomainError(
+          "REC_NOT_FOUND",
+          "Attachment file not found in storage."
+        );
+      }
+
+      const content = await storage.read(attachment.storagePath);
+      return {
+        content,
+        fileName: attachment.fileName,
+        fileType: attachment.fileType || "application/octet-stream",
+      };
     },
 
     async listAttachments(session: SessionUser, communicationId: string) {

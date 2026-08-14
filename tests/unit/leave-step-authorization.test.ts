@@ -130,6 +130,46 @@ describe("canUserApproveStep", () => {
   });
 });
 
+describe("MANAGER application role does not itself grant approval authority", () => {
+  // Hard requirement: approval authority comes exclusively from the designated
+  // approverId on the step (derived from Employee.managerId at chain-build time),
+  // never from `role === "manager"`. A user with the MANAGER role who is NOT the
+  // designated approver for a given step must be rejected exactly like any other
+  // non-designated employee — and a designated approver is authorized whether
+  // their User.role happens to be "employee" or "manager".
+  const step = { stepRole: ApproverRole.manager, approverId: 50 };
+
+  it("a manager-role user who is the designated approver can approve", () => {
+    const designatedManagerRoleActor: WorkflowActor = {
+      userId: "mgr-role-1",
+      email: "designated-manager@test.local",
+      role: "manager",
+      employeeId: 50,
+    };
+    const leave = leaveAtStep(step);
+    expect(canUserApproveStep(designatedManagerRoleActor, leave)).toBe(true);
+  });
+
+  it("a manager-role user who is NOT the designated approver cannot approve", () => {
+    const otherManagerRoleActor: WorkflowActor = {
+      userId: "mgr-role-2",
+      email: "other-manager@test.local",
+      role: "manager",
+      employeeId: 999, // a different manager's team — not approverId 50
+    };
+    const leave = leaveAtStep(step);
+    expect(canUserApproveStep(otherManagerRoleActor, leave)).toBe(false);
+  });
+
+  it("designated approver is authorized regardless of whether role is employee or manager", () => {
+    const leave = leaveAtStep(step);
+    const asEmployeeRole: WorkflowActor = { ...managerActor, role: "employee" };
+    const asManagerRole: WorkflowActor = { ...managerActor, role: "manager" };
+    expect(canUserApproveStep(asEmployeeRole, leave)).toBe(true);
+    expect(canUserApproveStep(asManagerRole, leave)).toBe(true);
+  });
+});
+
 describe("canUserRejectStep — same boundary as approve", () => {
   it("HR can reject hr_admin step", () => {
     const leave = leaveAtStep({

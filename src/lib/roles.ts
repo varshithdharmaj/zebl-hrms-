@@ -1,6 +1,6 @@
 import type { UserRole as PrismaUserRole } from "@/generated/prisma/client";
 
-export const USER_ROLES = ["super_admin", "hr", "employee"] as const;
+export const USER_ROLES = ["super_admin", "hr", "manager", "employee"] as const;
 
 export type AppUserRole = (typeof USER_ROLES)[number];
 
@@ -19,6 +19,7 @@ export function toAppUserRole(role: PrismaUserRole): AppUserRole {
 export const ROLE_LABELS: Record<AppUserRole, string> = {
   super_admin: "Super Admin",
   hr: "HR",
+  manager: "Manager",
   employee: "Employee",
 };
 
@@ -26,7 +27,13 @@ export const ROLE_LABELS: Record<AppUserRole, string> = {
 export const ADMIN_SHELL_ROLES: AppUserRole[] = ["super_admin", "hr"];
 
 /**
- * Roles linked to an employee record for workforce self-service features.
- * Manager/approval capability is derived from the Employee hierarchy, not the role.
+ * Roles linked to an employee record for workforce self-service features
+ * (own leave/attendance/tickets, and — for Manager — the My Team pages).
+ *
+ * `manager` is an application-level capability (who can access Manager features
+ * at all); it is independent of `Employee.managerId`/`isLineManager`, which
+ * determines *whose* team a given user may act on. A `manager`-role user with
+ * zero direct reports sees an empty team, not an error; an `employee`-role user
+ * is never shown Manager features even if they happen to have direct reports.
  */
-export const WORKFORCE_ROLES: AppUserRole[] = ["employee"];
+export const WORKFORCE_ROLES: AppUserRole[] = ["employee", "manager"];

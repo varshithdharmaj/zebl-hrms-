@@ -46,6 +46,7 @@ export function ApplicationForm({
   jobs,
   employees,
   preselectedCandidateId,
+  returnTo,
 }: {
   mode: "create" | "edit";
   application?: ApplicationFormValues;
@@ -53,6 +54,8 @@ export function ApplicationForm({
   jobs: { id: string; title: string }[];
   employees: EmployeeOption[];
   preselectedCandidateId?: string;
+  /** Validated Recruitment returnTo — forwarded to Pipeline after create. */
+  returnTo?: string | null;
 }) {
   const router = useRouter();
   const action = mode === "create" ? createApplicationAction : updateApplicationAction;
@@ -82,6 +85,7 @@ export function ApplicationForm({
         buildApplicationCreateRedirect({
           applicationId: state.applicationId,
           jobOpeningId: jobOpeningId || undefined,
+          returnTo,
         })
       );
       router.refresh();
@@ -91,7 +95,7 @@ export function ApplicationForm({
       router.push(`/admin/recruitment/applications/${application.id}`);
       router.refresh();
     }
-  }, [state.success, state.applicationId, mode, application?.id, jobOpeningId, router]);
+  }, [state.success, state.applicationId, mode, application?.id, jobOpeningId, returnTo, router]);
 
   return (
     <form action={formAction} className="space-y-6 max-w-3xl">

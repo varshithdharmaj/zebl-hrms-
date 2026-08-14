@@ -46,6 +46,7 @@ export function CandidateUploadDialog({
   const [pendingMerge, setPendingMerge] = useState<PendingMerge | null>(null);
   const [conflictOpen, setConflictOpen] = useState(false);
   const [statusNote, setStatusNote] = useState<string | null>(null);
+  const [isApplyingMerge, setIsApplyingMerge] = useState(false);
   const applyingRef = useRef(false);
 
   const resetLocal = () => {
@@ -55,11 +56,12 @@ export function CandidateUploadDialog({
     setStatusNote(null);
     setPendingMerge(null);
     setConflictOpen(false);
+    setIsApplyingMerge(false);
     applyingRef.current = false;
   };
 
   const handleOpenChange = (open: boolean) => {
-    if (!open && isPending) return;
+    if (!open && (isPending || isApplyingMerge)) return;
     if (!open) resetLocal();
     onOpenChange(open);
   };
@@ -96,8 +98,9 @@ export function CandidateUploadDialog({
   };
 
   const handleConflictResolve = (resolutions: Record<string, string>) => {
-    if (!pendingMerge) return;
+    if (!pendingMerge || applyingRef.current || isApplyingMerge) return;
     applyingRef.current = true;
+    setIsApplyingMerge(true);
     const draftId = pendingMerge.draftId;
     const selections: Record<string, "current" | "parsed"> = {};
     for (const conflict of pendingMerge.conflicts) {
@@ -105,8 +108,7 @@ export function CandidateUploadDialog({
       selections[conflict.key] =
         chosen === conflict.parsedValue ? "parsed" : "current";
     }
-    setConflictOpen(false);
-    setPendingMerge(null);
+    // Keep conflict dialog open while merge runs so Apply pending is visible.
     setStatusNote("Applying selected fields…");
 
     startTransition(async () => {
@@ -115,11 +117,14 @@ export function CandidateUploadDialog({
         { draftId, candidateId, conflictSelections: selections }
       );
       applyingRef.current = false;
+      setIsApplyingMerge(false);
       if (res.error) {
         setError(res.error);
         setStatusNote(null);
         return;
       }
+      setConflictOpen(false);
+      setPendingMerge(null);
       setSuccess(res.success ?? "Candidate profile updated from resume.");
       setStatusNote(null);
       setFiles([]);
@@ -132,11 +137,20 @@ export function CandidateUploadDialog({
   };
 
   const handleConflictDialogChange = (open: boolean) => {
-    setConflictOpen(open);
-    if (open || applyingRef.current || !pendingMerge) return;
+    if (open) {
+      setConflictOpen(true);
+      return;
+    }
+    if (isPending || isApplyingMerge || applyingRef.current) return;
 
     // Cancel: keep uploaded document, dismiss draft, do not change profile.
-    const draftId = pendingMerge.draftId;
+    const draftId = pendingMerge?.draftId;
+    setConflictOpen(false);
+    if (!draftId) {
+      setPendingMerge(null);
+      setStatusNote(null);
+      return;
+    }
     setPendingMerge(null);
     setStatusNote(null);
     startTransition(async () => {
@@ -448,6 +462,7 @@ export function CandidateUploadDialog({
         onOpenChange={handleConflictDialogChange}
         conflicts={pendingMerge?.conflicts ?? []}
         onResolve={handleConflictResolve}
+        isPending={isApplyingMerge}
       />
     </>
   );

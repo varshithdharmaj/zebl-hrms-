@@ -297,12 +297,28 @@ export async function duplicateDraftAction(
   }
 }
 
+/**
+ * Accepts real file bytes via FormData (mirrors uploadCandidateDocumentAction) —
+ * the storage key is always generated server-side inside addAttachment().
+ */
 export async function uploadCommunicationAttachmentAction(
   _prev: RecruitmentCommunicationActionState,
-  input: unknown
+  formData: FormData
 ): Promise<RecruitmentCommunicationActionState> {
   try {
-    const parsed = safeParseWithSchema(uploadCommunicationAttachmentSchema, input);
+    const file = formData.get("file");
+    if (!(file instanceof File) || file.size === 0) {
+      return { error: "A non-empty file is required." };
+    }
+
+    const communicationId = String(formData.get("communicationId") ?? "").trim();
+
+    const parsed = safeParseWithSchema(uploadCommunicationAttachmentSchema, {
+      communicationId,
+      fileName: file.name || "attachment.bin",
+      fileType: file.type || "application/octet-stream",
+      fileSize: file.size,
+    });
     if (!parsed.ok) return { error: parsed.error };
 
     const session = await getSessionOrThrow();
@@ -310,8 +326,9 @@ export async function uploadCommunicationAttachmentAction(
       return { error: "Recruitment module is disabled." };
     }
 
+    const content = Buffer.from(await file.arrayBuffer());
     const service = createCommunicationService();
-    const result = await service.addAttachment(session, parsed.data);
+    const result = await service.addAttachment(session, { ...parsed.data, content });
 
     revalidateCommunicationList();
     revalidateCommunicationDraft(parsed.data.communicationId);

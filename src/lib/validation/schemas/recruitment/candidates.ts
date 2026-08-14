@@ -51,15 +51,21 @@ const experienceYearsString = z
   ])
   .optional();
 
-const dateSchema = z
-  .string()
-  .trim()
-  .optional()
-  .transform((v) => {
-    if (!v) return null;
-    const d = new Date(v);
+/** Idempotent: FormData strings, already-parsed Date/null from action→service re-parse. */
+const dateSchema = z.preprocess((value) => {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const d = new Date(trimmed);
     return Number.isNaN(d.getTime()) ? null : d;
-  });
+  }
+  return value;
+}, z.date().nullable().optional());
 
 const optionalBoolean = z.preprocess((value) => {
   if (value === undefined) return undefined;

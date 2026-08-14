@@ -72,6 +72,7 @@ export default async function NewApplicationPage({
         jobs={jobs}
         employees={employees}
         preselectedCandidateId={preselectedCandidateId}
+        returnTo={nav.returnTo}
       />
     </div>
   );

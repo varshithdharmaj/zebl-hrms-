@@ -23,6 +23,11 @@ import {
   normalizePipelineBoardTake,
 } from "@/lib/recruitment/shared/pagination";
 import type { PipelineDrawerApplication } from "@/components/recruitment/applications/application-pipeline-drawer";
+import {
+  parseRecruitmentNavSearch,
+  resolveRecruitmentReturnTo,
+  returnToLabel,
+} from "@/lib/recruitment/navigation/return-to";
 
 export default async function RecruitmentPipelinePage({
   searchParams,
@@ -31,6 +36,7 @@ export default async function RecruitmentPipelinePage({
 }) {
   const session = await requireRecruitmentAdminSession();
   const raw = await searchParams;
+  const nav = parseRecruitmentNavSearch(raw);
 
   const view = raw.view === "list" ? "list" : "board";
   const applicationId = typeof raw.applicationId === "string" ? raw.applicationId : undefined;
@@ -93,6 +99,23 @@ export default async function RecruitmentPipelinePage({
       : Promise.resolve(null),
     getRequireDecisionForOfferCached(),
   ]);
+
+  // Next.js cannot serialize Prisma Decimal objects from Server to Client Components.
+  // We sanitize the result items, particularly candidate fields like totalExperienceYears.
+  const safeResultItems = result.items.map((app: any) => ({
+    ...app,
+    candidate: app.candidate
+      ? {
+          ...app.candidate,
+          totalExperienceYears:
+            app.candidate.totalExperienceYears !== null && app.candidate.totalExperienceYears !== undefined
+              ? Number(app.candidate.totalExperienceYears)
+              : null,
+          currentCtc: app.candidate.currentCtc !== null && app.candidate.currentCtc !== undefined ? Number(app.candidate.currentCtc) : null,
+          expectedCtc: app.candidate.expectedCtc !== null && app.candidate.expectedCtc !== undefined ? Number(app.candidate.expectedCtc) : null,
+        }
+      : null,
+  }));
 
   let selectedOffers: Array<{
     id: string;
@@ -174,6 +197,12 @@ export default async function RecruitmentPipelinePage({
       <WorkspacePageHeader
         title="Pipeline"
         description="Move candidates through hiring stages. Interviews, offers, and Convert to Employee live on each card. Joined is for converted hires only."
+        backHref={
+          nav.returnTo
+            ? resolveRecruitmentReturnTo(nav.returnTo, "/admin/recruitment/pipeline")
+            : undefined
+        }
+        backLabel={nav.returnTo ? returnToLabel(nav.returnTo, "Back") : undefined}
         action={
           <Button asChild className="font-semibold shadow-subtle">
             <Link href="/admin/recruitment/applications/new">New Application</Link>
@@ -186,13 +215,13 @@ export default async function RecruitmentPipelinePage({
       {view === "board" ? (
         <Suspense fallback={<div className="text-sm text-muted-foreground">Loading board…</div>}>
           <PipelineBoard
-            applications={result.items as PipelineDrawerApplication[]}
+            applications={safeResultItems as PipelineDrawerApplication[]}
             employeeOptions={employeeOptions}
             selectedApplication={selectedApplication}
           />
           <div className="flex flex-col items-center gap-2 pt-2">
             <p className="text-xs text-muted-foreground">
-              Showing {result.items.length} of {result.total} applications
+              Showing {safeResultItems.length} of {result.total} applications
             </p>
             {boardTake.hasMoreCapacity && result.total > result.items.length ? (
               <Button asChild variant="outline" size="sm" className="font-semibold text-xs">
@@ -218,7 +247,7 @@ export default async function RecruitmentPipelinePage({
           </div>
         </Suspense>
       ) : (
-        <ApplicationTable applications={result.items} employeeOptions={employeeOptions} />
+        <ApplicationTable applications={safeResultItems} employeeOptions={employeeOptions} />
       )}
     </div>
   );

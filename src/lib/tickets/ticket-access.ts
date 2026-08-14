@@ -1,6 +1,6 @@
 import type { Prisma } from "@/generated/prisma/client";
 import type { SessionUser } from "@/lib/session";
-import { isSuperAdmin } from "@/lib/permissions";
+import { isSuperAdmin, isWorkforceMember } from "@/lib/permissions";
 
 export type TicketFilters = {
   status?: string | string[];
@@ -20,7 +20,7 @@ export type TicketFilters = {
  * Rules:
  * - Super Admin: all tickets (including anonymous)
  * - HR: assigned + department-matched, NON-ANONYMOUS only
- * - Employee: own tickets only (by raisedByEmployeeId)
+ * - Employee / Manager: own tickets only (by raisedByEmployeeId)
  * - Anonymous tickets never visible to non-SA
  */
 export function buildTicketWhereClause(
@@ -66,8 +66,8 @@ export function buildTicketWhereClause(
   // Non-SA: NEVER see anonymous tickets
   baseWhere.isAnonymous = false;
 
-  // Employee: own tickets only
-  if (session.role === "employee") {
+  // Employee / Manager: own tickets only (self-service, not team-scoped)
+  if (isWorkforceMember(session.role)) {
     if (!session.employeeId) {
       // No employee profile = no tickets visible
       return { id: "impossible" };

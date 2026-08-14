@@ -24,6 +24,7 @@ datasource db {
 enum UserRole {
   super_admin
   hr
+  manager
   employee
 }
 

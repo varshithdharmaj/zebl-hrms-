@@ -56,6 +56,16 @@ const otherEmployeeSession: SessionUser = {
   authProvider: "local",
 };
 
+const managerSession: SessionUser = {
+  id: "mgr-1",
+  email: "manager@test.local",
+  role: "manager",
+  employeeId: 300,
+  employeeName: "Manager User",
+  sessionVersion: 1,
+  authProvider: "local",
+};
+
 const normalTicket: TicketLike = {
   id: "ticket-1",
   isAnonymous: false,
@@ -445,6 +455,63 @@ describe("Ticket Authorization — Edge Cases", () => {
 
   it("Super Admin can manage anonymous ticket regardless of assignment", () => {
     expect(canManageTicket(superAdminSession, anonymousTicket)).toBe(true);
+  });
+});
+
+describe("Ticket Authorization — Manager role (self-service parity with Employee)", () => {
+  // MANAGER is an application role; ticket self-service is per-record (own tickets
+  // only), same as Employee. It must NOT gain HR-style management just from role.
+  const managerOwnTicket: TicketLike = {
+    id: "ticket-mgr-own",
+    isAnonymous: false,
+    raisedByEmployeeId: 300,
+    assignedToUserId: null,
+    department: "Engineering",
+  };
+
+  it("Manager can view own tickets", () => {
+    expect(canViewTicket(managerSession, managerOwnTicket)).toBe(true);
+  });
+
+  it("Manager cannot view another employee's ticket", () => {
+    expect(canViewTicket(managerSession, normalTicket)).toBe(false);
+  });
+
+  it("Manager cannot view anonymous tickets", () => {
+    expect(canViewTicket(managerSession, { ...anonymousTicket, raisedByEmployeeId: 300 })).toBe(
+      false
+    );
+  });
+
+  it("Manager can reply to own tickets", () => {
+    expect(canReplyToTicket(managerSession, managerOwnTicket)).toBe(true);
+  });
+
+  it("Manager cannot reply to another employee's ticket", () => {
+    expect(canReplyToTicket(managerSession, normalTicket)).toBe(false);
+  });
+
+  it("Manager cannot manage tickets (no HR authority from role alone)", () => {
+    expect(canManageTicket(managerSession, managerOwnTicket)).toBe(false);
+  });
+
+  it("Manager cannot view internal notes", () => {
+    expect(canViewInternalNotes(managerSession, managerOwnTicket)).toBe(false);
+  });
+
+  it("Manager cannot assign tickets", () => {
+    expect(canAssignTicket(managerSession, managerOwnTicket)).toBe(false);
+  });
+
+  it("Manager WHERE clause restricts to own raisedByEmployeeId, excludes anonymous", () => {
+    const where = buildTicketWhereClause(managerSession);
+    expect(where.raisedByEmployeeId).toBe(300);
+    expect(where.isAnonymous).toBe(false);
+  });
+
+  it("Manager cannot access anonymous queue", () => {
+    expect(canAccessAnonymousTickets("manager")).toBe(false);
+    expect(buildAnonymousTicketWhereClause(managerSession).id).toBe("impossible");
   });
 });
 

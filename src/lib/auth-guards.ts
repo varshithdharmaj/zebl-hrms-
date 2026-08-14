@@ -92,8 +92,14 @@ export async function requireRoleSession(
 
 export type SessionWithEmployee = SessionUser & { employeeId: number };
 
+/**
+ * Workforce self-service session (own leave/attendance/tickets/security).
+ * Admits `employee` and `manager` — both are individual workforce members with
+ * a linked Employee record. Name kept for call-site stability; it predates the
+ * Manager role and now means "workforce shell session", not "role === employee".
+ */
 export async function requireEmployeeSession(): Promise<SessionWithEmployee> {
-  const session = await requireRoleSession("employee");
+  const session = await requireRoleSession(["employee", "manager"]);
   if (session.employeeId == null) throw new PermissionError("Employee profile not linked");
   return { ...session, employeeId: session.employeeId };
 }

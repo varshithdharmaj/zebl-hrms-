@@ -8,6 +8,7 @@ import type { CommunicationRepository } from "@/lib/recruitment/repositories/com
 import type { SessionUser } from "@/lib/session";
 import { RecruitmentDomainError } from "@/lib/recruitment/shared/errors";
 import { unrestrictedRecruitmentScope } from "@/lib/recruitment/types/scope";
+import { createMemoryStorageAdapter } from "@/lib/recruitment/storage";
 
 vi.mock("@/lib/recruitment/config/feature-flags", () => ({
   isRecruitmentModuleEnabled: () => true,
@@ -113,9 +114,11 @@ function draftRecord(overrides: Partial<CommunicationRepository extends never ? 
 
 describe("CommunicationService", () => {
   let mockRepo: CommunicationRepository;
+  let storage: ReturnType<typeof createMemoryStorageAdapter>;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    storage = createMemoryStorageAdapter();
     mockRepo = {
       createCommunication: vi.fn(async () => ({ id: "comm-1" })),
       updateCommunication: vi.fn(async () => undefined),
@@ -230,46 +233,139 @@ describe("CommunicationService", () => {
     expect(thread).toHaveLength(1);
   });
 
-  it("adds attachments only to drafts", async () => {
-    const service = createCommunicationService(mockRepo);
+  it("adds attachments only to drafts and saves real bytes to storage", async () => {
+    const service = createCommunicationService(mockRepo, storage);
+    const content = Buffer.from("offer-pdf-bytes");
     const result = await service.addAttachment(hrSession, {
       communicationId: "comm-1",
       fileName: "offer.pdf",
       fileType: "application/pdf",
-      fileSize: 2048,
-      storagePath: "communications/comm-1/attachments/offer.pdf",
+      fileSize: content.byteLength,
+      content,
     });
     expect(result.id).toBe("att-1");
-    expect(mockRepo.addAttachment).toHaveBeenCalled();
+    expect(mockRepo.addAttachment).toHaveBeenCalledWith(
+      "comm-1",
+      expect.objectContaining({
+        fileName: "offer.pdf",
+        storagePath: expect.stringMatching(/^communications\/comm-1\/attachments\//),
+      })
+    );
+
+    const [, savedInput] = vi.mocked(mockRepo.addAttachment).mock.calls[0];
+    expect(await storage.exists(savedInput.storagePath)).toBe(true);
+    expect(await storage.read(savedInput.storagePath)).toEqual(content);
   });
 
   it("rejects attachment upload for sent messages", async () => {
     vi.mocked(mockRepo.getCommunication).mockResolvedValue(
       draftRecord({ status: RecruitmentCommunicationStatus.sent }) as never
     );
-    const service = createCommunicationService(mockRepo);
+    const service = createCommunicationService(mockRepo, storage);
+    const content = Buffer.from("offer-pdf-bytes");
     await expect(
       service.addAttachment(hrSession, {
         communicationId: "comm-1",
         fileName: "offer.pdf",
         fileType: "application/pdf",
-        fileSize: 2048,
-        storagePath: "communications/comm-1/attachments/offer.pdf",
+        fileSize: content.byteLength,
+        content,
       })
     ).rejects.toBeInstanceOf(RecruitmentDomainError);
+    expect(mockRepo.addAttachment).not.toHaveBeenCalled();
   });
 
-  it("rejects unsupported attachment types", async () => {
-    const service = createCommunicationService(mockRepo);
+  it("rejects unsupported attachment types without touching storage", async () => {
+    const service = createCommunicationService(mockRepo, storage);
+    const content = Buffer.from("MZ-exe-bytes");
     await expect(
       service.addAttachment(hrSession, {
         communicationId: "comm-1",
         fileName: "malware.exe",
         fileType: "application/x-msdownload",
-        fileSize: 2048,
-        storagePath: "communications/comm-1/attachments/malware.exe",
+        fileSize: content.byteLength,
+        content,
       })
     ).rejects.toBeInstanceOf(RecruitmentDomainError);
+    expect(mockRepo.addAttachment).not.toHaveBeenCalled();
+  });
+
+  it("rejects when content length does not match declared fileSize", async () => {
+    const service = createCommunicationService(mockRepo, storage);
+    const content = Buffer.from("short");
+    await expect(
+      service.addAttachment(hrSession, {
+        communicationId: "comm-1",
+        fileName: "offer.pdf",
+        fileType: "application/pdf",
+        fileSize: 999,
+        content,
+      })
+    ).rejects.toBeInstanceOf(RecruitmentDomainError);
+  });
+
+  it("cleans up the orphaned blob when the DB write fails", async () => {
+    vi.mocked(mockRepo.addAttachment).mockRejectedValue(new Error("db down"));
+    const service = createCommunicationService(mockRepo, storage);
+    const content = Buffer.from("offer-pdf-bytes");
+
+    const saveSpy = vi.spyOn(storage, "save");
+    const deleteSpy = vi.spyOn(storage, "delete");
+
+    await expect(
+      service.addAttachment(hrSession, {
+        communicationId: "comm-1",
+        fileName: "offer.pdf",
+        fileType: "application/pdf",
+        fileSize: content.byteLength,
+        content,
+      })
+    ).rejects.toThrow("db down");
+
+    expect(saveSpy).toHaveBeenCalledTimes(1);
+    const savedKey = saveSpy.mock.calls[0][0];
+    expect(deleteSpy).toHaveBeenCalledWith(savedKey);
+    expect(await storage.exists(savedKey)).toBe(false);
+  });
+
+  it("getAttachmentContent returns real bytes and 404s when the blob is missing", async () => {
+    const service = createCommunicationService(mockRepo, storage);
+    const content = Buffer.from("resume-content");
+    const { id } = await service.addAttachment(hrSession, {
+      communicationId: "comm-1",
+      fileName: "resume.pdf",
+      fileType: "application/pdf",
+      fileSize: content.byteLength,
+      content,
+    });
+
+    vi.mocked(mockRepo.getAttachment).mockResolvedValue({
+      id,
+      communicationId: "comm-1",
+      fileName: "resume.pdf",
+      fileType: "application/pdf",
+      fileSize: content.byteLength,
+      storagePath: (vi.mocked(mockRepo.addAttachment).mock.calls[0][1] as { storagePath: string })
+        .storagePath,
+      uploadedAt: new Date(),
+    });
+
+    const loaded = await service.getAttachmentContent(hrSession, id);
+    expect(loaded.content.toString("utf8")).toBe("resume-content");
+    expect(loaded.fileType).toBe("application/pdf");
+
+    vi.mocked(mockRepo.getAttachment).mockResolvedValue({
+      id: "att-missing",
+      communicationId: "comm-1",
+      fileName: "gone.pdf",
+      fileType: "application/pdf",
+      fileSize: 10,
+      storagePath: "communications/comm-1/attachments/does-not-exist.pdf",
+      uploadedAt: new Date(),
+    });
+    await expect(
+      service.getAttachmentContent(hrSession, "att-missing")
+    ).rejects.toMatchObject({ code: "REC_NOT_FOUND" });
   });
 
   it("duplicates a draft", async () => {

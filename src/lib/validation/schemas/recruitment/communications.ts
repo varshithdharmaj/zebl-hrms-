@@ -97,12 +97,17 @@ export const getThreadSchema = z.object({
   threadId: z.string().trim().min(1, "Thread ID is required."),
 });
 
+/**
+ * Metadata for a communication attachment upload. `storagePath` is intentionally
+ * NOT accepted from the client — the server generates the storage key
+ * (see buildCommunicationAttachmentStoragePath). File bytes travel separately as
+ * FormData (see uploadCommunicationAttachmentAction), not through this schema.
+ */
 export const uploadCommunicationAttachmentSchema = z.object({
   communicationId: z.string().trim().min(1, "Communication ID is required."),
   fileName: z.string().trim().min(1, "File name is required.").max(255),
   fileType: z.string().trim().min(1, "MIME type is required.").max(200),
   fileSize: z.number().int().positive("File size must be positive."),
-  storagePath: z.string().trim().min(1, "Storage path is required.").max(1000),
 });
 
 export const attachmentIdSchema = z.object({

@@ -108,10 +108,40 @@ export function buildRecruitmentBreadcrumbs(
     return withCurrent(crumbs);
   }
 
-  if (input.section === "candidates" && !input.application) {
-    crumbs.push({ label: "Candidates", href: `${RECRUITMENT_BASE_PATH}/candidates` });
-    if (input.candidate) crumbs.push({ label: input.candidate.name });
-    if (input.leafLabel) crumbs.push({ label: input.leafLabel });
+  /**
+   * Candidate page: the viewed Candidate is always the leaf/current crumb.
+   * Preserve Pipeline / Job / Application parents when return context exists.
+   */
+  if (input.section === "candidates") {
+    if (origin === "pipeline") {
+      crumbs.push({ label: "Pipeline", href: pipelineHref });
+      if (input.job) {
+        crumbs.push({
+          label: input.job.title,
+          href: `${RECRUITMENT_BASE_PATH}/jobs/${input.job.id}`,
+        });
+      }
+    } else if (origin === "job" && input.job) {
+      pushJob(false);
+    } else if (origin === "application" && input.application) {
+      crumbs.push({ label: "Pipeline", href: `${RECRUITMENT_BASE_PATH}/pipeline` });
+    } else {
+      crumbs.push({ label: "Candidates", href: `${RECRUITMENT_BASE_PATH}/candidates` });
+    }
+
+    if (input.application && applicationLabel) {
+      crumbs.push({
+        label: applicationLabel,
+        href: `${RECRUITMENT_BASE_PATH}/applications/${input.application.id}`,
+      });
+    }
+
+    if (input.candidate) {
+      crumbs.push({ label: input.candidate.name });
+    }
+    if (input.leafLabel) {
+      crumbs.push({ label: input.leafLabel });
+    }
     return withCurrent(crumbs);
   }
 

@@ -22,6 +22,23 @@ export function isEmployee(role: AppUserRole): boolean {
   return role === "employee";
 }
 
+/**
+ * MANAGER is an organizational/application role — "what type of user is this?"
+ * It does NOT by itself grant access to any specific team, employee, or leave
+ * request. Team-scoped authority still comes exclusively from
+ * `Employee.managerId` (see PeopleScopeEngine) and `LeaveApprovalStep.approverId`
+ * (see canUserApproveStep) — a Manager with no direct reports has no team scope,
+ * and a Manager is never authorized on another manager's team just by role.
+ */
+export function isManager(role: AppUserRole): boolean {
+  return role === "manager";
+}
+
+/** Roles with an individual workforce self-service record (own leave/attendance/tickets). */
+export function isWorkforceMember(role: AppUserRole): boolean {
+  return isEmployee(role) || isManager(role);
+}
+
 // --- Area access ---------------------------------------------------------
 
 /** Platform & security administration (user management, system config, audit) — Super Admin only. */
@@ -42,9 +59,13 @@ export function canAccessAdmin(role: AppUserRole): boolean {
   return canAccessHRAdministration(role);
 }
 
-/** Employee self-service shell (`/employee/*`). */
+/**
+ * Workforce self-service shell (`/employee/*`): own leave/attendance/tickets,
+ * plus (for Manager) the hierarchy-gated My Team pages. Manager does NOT gain
+ * `/admin` (HR administration) access through this.
+ */
 export function canAccessEmployeeShell(role: AppUserRole): boolean {
-  return isEmployee(role);
+  return isWorkforceMember(role);
 }
 
 // --- HR operations -------------------------------------------------------
@@ -69,15 +90,18 @@ export function canEditEmployeeProfilePhoto(input: {
 }
 
 /**
- * Account-level administration is target-aware: HR may administer employee accounts,
- * while only Super Admin may administer HR or Super Admin accounts.
+ * Account-level administration is target-aware: HR may administer employee and
+ * Manager accounts (password reset, lock/unlock — account lifecycle, not role
+ * assignment), while only Super Admin may administer HR or Super Admin accounts.
+ * Manager is included so HR doesn't lose account-administration ability for a
+ * user the moment they're promoted from `employee` to `manager`.
  */
 export function canAdministerEmployeeAccount(
   actorRole: AppUserRole,
   targetRole: AppUserRole
 ): boolean {
   if (isSuperAdmin(actorRole)) return true;
-  return isHR(actorRole) && targetRole === "employee";
+  return isHR(actorRole) && (targetRole === "employee" || isManager(targetRole));
 }
 
 /** Org-wide analytics (approval insights, workforce metrics). Super Admin + HR. */
@@ -94,21 +118,22 @@ export function canManageUserRoles(actorRole: AppUserRole): boolean {
 
 /**
  * Target-aware guard: whether `actorRole` may modify a user whose role is `targetRole`
- * (role change, activation/deactivation). In the three-role model only Super Admin may
- * modify users; a Super Admin target is additionally protected (last-Super-Admin and
- * self-action checks are enforced server-side in the mutation layer).
+ * (role change, activation/deactivation). Only Super Admin may modify users; a Super
+ * Admin target is additionally protected (last-Super-Admin and self-action checks are
+ * enforced server-side in the mutation layer).
  */
 export function canModifyTargetUser(actorRole: AppUserRole, targetRole: AppUserRole): boolean {
   // Only Super Admin may modify users. A non-Super-Admin actor may never modify anyone —
-  // in particular a Super Admin target is protected from HR/employee actors. Last-Super-Admin
-  // and self-action protections are enforced server-side in the mutation layer.
+  // in particular a Super Admin target is protected from HR/Manager/employee actors, and a
+  // Manager can never modify themselves or anyone else. Last-Super-Admin and self-action
+  // protections are enforced server-side in the mutation layer.
   if (!isSuperAdmin(actorRole)) return false;
-  return isSuperAdmin(targetRole) || isHR(targetRole) || isEmployee(targetRole);
+  return isSuperAdmin(targetRole) || isHR(targetRole) || isManager(targetRole) || isEmployee(targetRole);
 }
 
-/** Roles an actor is permitted to assign to other users. */
+/** Roles an actor is permitted to assign to other users. Manager assignment stays Super-Admin-only. */
 export function assignableRolesFor(actorRole: AppUserRole): AppUserRole[] {
-  return isSuperAdmin(actorRole) ? ["super_admin", "hr", "employee"] : [];
+  return isSuperAdmin(actorRole) ? ["super_admin", "hr", "manager", "employee"] : [];
 }
 
 /**

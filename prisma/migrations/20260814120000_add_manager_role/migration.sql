@@ -1,0 +1,21 @@
+-- Add the MANAGER application role.
+--
+-- This is purely additive: no existing `users.role` value is changed, no rows are
+-- touched, and no table is dropped or recreated. It is safe to run against a
+-- database containing production data.
+--
+-- Context: `Employee.managerId` (team hierarchy), `LeaveApprovalStep.approverId`
+-- (designated approval authority), and `HiringTeamRole.hiring_manager`
+-- (job-specific recruitment responsibility) are UNCHANGED by this migration and
+-- remain the source of truth for team scope / approval / recruitment authority.
+-- `UserRole.manager` only answers "what type of application user is this" —
+-- see src/lib/permissions.ts and src/lib/roles.ts for how it's consumed.
+--
+-- Existing employees who currently have direct reports (via Employee.managerId)
+-- are NOT automatically promoted to this role — promotion is a deliberate,
+-- human-reviewed step: prisma/scripts/list-manager-role-candidates.ts (read-only
+-- report) followed by prisma/scripts/apply-manager-role.ts (explicit allowlist
+-- only). There is no reliable way to auto-derive who was historically intended
+-- as "Manager" (the 20260720000000_three_role_model migration collapsed
+-- manager -> employee without preserving that distinction).
+ALTER TYPE "UserRole" ADD VALUE 'manager';

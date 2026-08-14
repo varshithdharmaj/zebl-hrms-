@@ -138,4 +138,24 @@ describe("candidate zod schemas", () => {
       expect(parsed.data.willingToRelocate).toBe(false);
     }
   });
+
+  it("re-parses form date fields after action→service round-trip", () => {
+    const first = updateCandidateSchema.safeParse({
+      id: "cand-123",
+      fullName: "Jane Smith",
+      dateOfBirth: "1990-05-15",
+      earliestJoinDate: "",
+    });
+    expect(first.success).toBe(true);
+    if (!first.success) return;
+
+    expect(first.data.dateOfBirth).toBeInstanceOf(Date);
+    expect(first.data.earliestJoinDate).toBeNull();
+
+    const second = updateCandidateSchema.safeParse(first.data);
+    expect(second.success).toBe(true);
+    if (!second.success) return;
+    expect(second.data.dateOfBirth).toBeInstanceOf(Date);
+    expect(second.data.earliestJoinDate).toBeNull();
+  });
 });

@@ -12,6 +12,7 @@ import {
   dismissCandidateAiEnrichmentAction,
   generateCandidateAiEnrichmentAction,
 } from "@/actions/recruitment-ai-enrichment";
+import { createResumeImportDraftAction } from "@/actions/recruitment-resume-import";
 import type { CandidateEnrichmentInsightContent } from "@/lib/recruitment/ai/types";
 
 export type CandidateAiInsightCardProps = {
@@ -20,6 +21,8 @@ export type CandidateAiInsightCardProps = {
   status: string | null;
   content: CandidateEnrichmentInsightContent | null;
   sourceDraftId: string | null;
+  /** Attached resume doc — used to create a parse draft when none exists. */
+  resumeDocumentId?: string | null;
   canManage: boolean;
   profileHeadline: string | null;
   profileSummary: string | null;
@@ -33,6 +36,7 @@ export function CandidateAiInsightsCard({
   status,
   content,
   sourceDraftId,
+  resumeDocumentId = null,
   canManage,
   profileHeadline,
   profileSummary,
@@ -51,6 +55,7 @@ export function CandidateAiInsightsCard({
   const headlineFilled = Boolean(profileHeadline?.trim());
   const summaryFilled = Boolean(profileSummary?.trim());
   const canAccept = canManage && status === "pending_review" && !isStale;
+  const canGenerate = Boolean(sourceDraftId || resumeDocumentId);
 
   function runAccept(opts: {
     acceptSummary?: boolean;
@@ -104,15 +109,33 @@ export function CandidateAiInsightsCard({
   }
 
   function runGenerate() {
-    if (!sourceDraftId) {
-      setError("Upload or import a resume first to generate AI insights.");
-      return;
-    }
     setError(null);
+    setSuccess(null);
     startTransition(async () => {
+      let draftId = sourceDraftId;
+      if (!draftId) {
+        if (!resumeDocumentId) {
+          setError("Upload or import a resume first to generate AI insights.");
+          return;
+        }
+        const draftRes = await createResumeImportDraftAction(
+          {},
+          { candidateId, documentId: resumeDocumentId }
+        );
+        if (draftRes.error) {
+          setError(draftRes.error);
+          return;
+        }
+        if (!draftRes.draftId) {
+          setError("Could not create a resume parse draft.");
+          return;
+        }
+        draftId = draftRes.draftId;
+      }
+
       const res = await generateCandidateAiEnrichmentAction(
         {},
-        { candidateId, sourceDraftId, force: true }
+        { candidateId, sourceDraftId: draftId, force: true }
       );
       if (res.error) {
         setError(res.error);
@@ -153,7 +176,7 @@ export function CandidateAiInsightsCard({
               size="sm"
               className="ml-auto text-xs font-semibold"
               loading={isPending}
-              disabled={!sourceDraftId}
+              disabled={!canGenerate}
               onClick={runGenerate}
             >
               {isPending ? "Generating…" : enrichment ? "Regenerate" : "Generate"}
@@ -180,8 +203,9 @@ export function CandidateAiInsightsCard({
 
         {!enrichment ? (
           <p className="text-sm text-muted-foreground">
-            AI enrichment runs after resume import when enabled. You can also generate
-            manually once a resume draft exists.
+            {resumeDocumentId
+              ? "A resume is attached. Click Generate to create AI suggestions from it."
+              : "Upload a resume on the Documents tab, then click Generate. Insights also run automatically after resume import when AI is enabled."}
           </p>
         ) : (
           <div className="space-y-4">

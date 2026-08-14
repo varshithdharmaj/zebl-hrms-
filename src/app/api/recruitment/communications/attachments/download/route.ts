@@ -18,15 +18,12 @@ export async function GET(request: Request) {
     }
 
     const service = createCommunicationService();
-    const { attachment } = await service.getAttachment(session, id);
+    const { content, fileName, fileType } = await service.getAttachmentContent(session, id);
 
-    // Production: stream from object storage using server-side storagePath.
-    const mockContent = Buffer.from("Mock attachment download content.");
-
-    return new NextResponse(mockContent, {
+    return new NextResponse(new Uint8Array(content), {
       headers: {
-        "Content-Type": attachment.fileType || "application/octet-stream",
-        "Content-Disposition": `attachment; filename="${encodeURIComponent(attachment.fileName)}"`,
+        "Content-Type": fileType || "application/octet-stream",
+        "Content-Disposition": `attachment; filename="${encodeURIComponent(fileName)}"`,
         "Cache-Control": "private, no-store",
       },
     });

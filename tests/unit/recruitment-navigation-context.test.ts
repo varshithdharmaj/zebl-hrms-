@@ -123,21 +123,44 @@ describe("sidebar nav active matching", () => {
 
 describe("returnTo validation", () => {
   it("accepts internal recruitment paths", () => {
+    expect(isSafeRecruitmentReturnTo("/admin/recruitment")).toBe(true);
+    expect(isSafeRecruitmentReturnTo("/admin/recruitment/pipeline")).toBe(true);
     expect(
       isSafeRecruitmentReturnTo(
         "/admin/recruitment/pipeline?applicationId=a1&jobOpeningId=j1"
       )
     ).toBe(true);
+    expect(isSafeRecruitmentReturnTo("/admin/recruitment/candidates/123")).toBe(true);
+    expect(isSafeRecruitmentReturnTo("/admin/recruitment/applications/123")).toBe(true);
   });
 
   it("rejects open redirects and traversal", () => {
     expect(isSafeRecruitmentReturnTo("https://evil.example/phish")).toBe(false);
     expect(isSafeRecruitmentReturnTo("//evil.example")).toBe(false);
+    expect(isSafeRecruitmentReturnTo("javascript:alert(1)")).toBe(false);
     expect(isSafeRecruitmentReturnTo("/admin/employees/1")).toBe(false);
     expect(isSafeRecruitmentReturnTo("/admin/recruitment/pipeline/../settings")).toBe(
       false
     );
+    expect(isSafeRecruitmentReturnTo("/admin/recruitment/../employees")).toBe(false);
     expect(isSafeRecruitmentReturnTo("/admin/recruitment/pipeline\n/x")).toBe(false);
+  });
+
+  it("rejects encoded and double-encoded path traversal", () => {
+    expect(isSafeRecruitmentReturnTo("/admin/recruitment/%2e%2e/employees")).toBe(false);
+    expect(isSafeRecruitmentReturnTo("/admin/recruitment/%2E%2E/employees")).toBe(false);
+    expect(isSafeRecruitmentReturnTo("/admin/recruitment/%252e%252e/employees")).toBe(
+      false
+    );
+    expect(
+      isSafeRecruitmentReturnTo("/admin/recruitment/pipeline/%2e%2e/%2e%2e/employees")
+    ).toBe(false);
+  });
+
+  it("rejects malformed percent-encoding in the path", () => {
+    expect(isSafeRecruitmentReturnTo("/admin/recruitment/%")).toBe(false);
+    expect(isSafeRecruitmentReturnTo("/admin/recruitment/%zz")).toBe(false);
+    expect(isSafeRecruitmentReturnTo("/admin/recruitment/%2")).toBe(false);
   });
 
   it("falls back when returnTo is unsafe", () => {
@@ -179,7 +202,7 @@ describe("recruitment breadcrumbs", () => {
     expect(crumbs[2]?.href).toContain("/candidates/c1");
   });
 
-  it("builds pipeline return trail from returnTo", () => {
+  it("builds pipeline return trail from returnTo with candidate as leaf", () => {
     const crumbs = buildRecruitmentBreadcrumbs({
       section: "candidates",
       returnTo: "/admin/recruitment/pipeline?jobOpeningId=j1&applicationId=a1",
@@ -187,8 +210,33 @@ describe("recruitment breadcrumbs", () => {
       job: { id: "j1", title: "Senior Software Engineer" },
       application: { id: "a1", jobTitle: "Senior Software Engineer" },
     });
-    expect(crumbs[1]?.label).toBe("Pipeline");
+    expect(crumbs.map((c) => c.label)).toEqual([
+      "Recruitment",
+      "Pipeline",
+      "Senior Software Engineer",
+      "Application: Senior Software Engineer",
+      "Rahul",
+    ]);
     expect(crumbs[1]?.href).toContain("/pipeline");
+    expect(crumbs[3]?.href).toContain("/applications/a1");
+    expect(crumbs.at(-1)?.href).toBeUndefined();
+    expect(crumbs.at(-1)?.label).toBe("Rahul");
+  });
+
+  it("keeps candidate as leaf for direct candidate navigation with application context", () => {
+    const crumbs = buildRecruitmentBreadcrumbs({
+      section: "candidates",
+      candidate: { id: "c1", name: "Varshith" },
+      job: { id: "j1", title: "Senior Software Engineer" },
+      application: { id: "a1", jobTitle: "Senior Software Engineer" },
+    });
+    expect(crumbs.map((c) => c.label)).toEqual([
+      "Recruitment",
+      "Candidates",
+      "Application: Senior Software Engineer",
+      "Varshith",
+    ]);
+    expect(crumbs.at(-1)?.href).toBeUndefined();
   });
 
   it("formats stage labels without relying on color", () => {

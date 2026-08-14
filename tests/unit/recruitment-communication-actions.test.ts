@@ -141,19 +141,34 @@ describe("recruitment-communications actions", () => {
   });
 
   it("uploads an attachment", async () => {
-    const result = await uploadCommunicationAttachmentAction(
-      {},
-      {
+    const file = new File([new Uint8Array([1, 2, 3, 4])], "resume.pdf", {
+      type: "application/pdf",
+    });
+    const formData = new FormData();
+    formData.set("communicationId", "comm-1");
+    formData.set("file", file);
+
+    const result = await uploadCommunicationAttachmentAction({}, formData);
+    expect(result.success).toBeDefined();
+    expect(result.attachmentId).toBe("att-1");
+    expect(addAttachment).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
         communicationId: "comm-1",
         fileName: "resume.pdf",
         fileType: "application/pdf",
-        fileSize: 1024,
-        storagePath: "communications/comm-1/attachments/resume.pdf",
-      }
+        fileSize: 4,
+        content: expect.anything(),
+      })
     );
-    expect(result.success).toBeDefined();
-    expect(result.attachmentId).toBe("att-1");
-    expect(addAttachment).toHaveBeenCalled();
+  });
+
+  it("rejects an attachment upload with no file", async () => {
+    const formData = new FormData();
+    formData.set("communicationId", "comm-1");
+    const result = await uploadCommunicationAttachmentAction({}, formData);
+    expect(result.error).toBeDefined();
+    expect(addAttachment).not.toHaveBeenCalled();
   });
 
   it("removes an attachment", async () => {

@@ -12,6 +12,7 @@ import {
   dismissCandidateAiRecoveryAction,
   generateCandidateAiRecoveryAction,
 } from "@/actions/recruitment-ai-recovery";
+import { createResumeImportDraftAction } from "@/actions/recruitment-resume-import";
 import type {
   RecoveryFieldKey,
   ResumeFieldRecoveryInsightContent,
@@ -45,6 +46,8 @@ export type CandidateAiRecoveryCardProps = {
   status: string | null;
   content: ResumeFieldRecoveryInsightContent | null;
   sourceDraftId: string | null;
+  /** Attached resume doc — used to create a parse draft when none exists. */
+  resumeDocumentId?: string | null;
   canManage: boolean;
   isStale?: boolean;
 };
@@ -55,6 +58,7 @@ export function CandidateAiRecoveryCard({
   status,
   content,
   sourceDraftId,
+  resumeDocumentId = null,
   canManage,
   isStale = false,
 }: CandidateAiRecoveryCardProps) {
@@ -70,18 +74,36 @@ export function CandidateAiRecoveryCard({
     [content?.proposals]
   );
   const canAct = canManage && status === "pending_review" && !isStale;
+  const canGenerate = Boolean(sourceDraftId || resumeDocumentId);
 
   function runGenerate() {
-    if (!sourceDraftId) {
-      setError("Upload or import a resume first to generate field recovery.");
-      return;
-    }
     setError(null);
     setSuccess(null);
     startTransition(async () => {
+      let draftId = sourceDraftId;
+      if (!draftId) {
+        if (!resumeDocumentId) {
+          setError("Upload or import a resume first to generate field recovery.");
+          return;
+        }
+        const draftRes = await createResumeImportDraftAction(
+          {},
+          { candidateId, documentId: resumeDocumentId }
+        );
+        if (draftRes.error) {
+          setError(draftRes.error);
+          return;
+        }
+        if (!draftRes.draftId) {
+          setError("Could not create a resume parse draft.");
+          return;
+        }
+        draftId = draftRes.draftId;
+      }
+
       const res = await generateCandidateAiRecoveryAction(
         {},
-        { candidateId, sourceDraftId, force: true }
+        { candidateId, sourceDraftId: draftId, force: true }
       );
       if (res.error) {
         setError(res.error);
@@ -175,7 +197,7 @@ export function CandidateAiRecoveryCard({
               size="sm"
               className="ml-auto text-xs font-semibold"
               loading={isPending}
-              disabled={!sourceDraftId}
+              disabled={!canGenerate}
               onClick={runGenerate}
             >
               {isPending ? "Generating…" : content ? "Regenerate" : "Generate"}
@@ -202,8 +224,9 @@ export function CandidateAiRecoveryCard({
 
         {!content || pendingProposals.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            When resume import leaves empty profile fields, AI may propose
-            evidence-backed recoveries here. Nothing is written until you accept.
+            {resumeDocumentId
+              ? "A resume is attached. Click Generate to propose evidence-backed field recoveries. Nothing is written until you accept."
+              : "Upload a resume on the Documents tab, then click Generate. Recovery also runs after resume import when empty fields remain."}
           </p>
         ) : (
           <ul className="space-y-3">

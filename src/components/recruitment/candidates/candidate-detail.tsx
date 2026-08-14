@@ -56,7 +56,10 @@ import type { ResumeFieldRecoveryInsightContent } from "@/lib/recruitment/ai/rec
 import {
   buildPipelineHref,
   buildRecruitmentEntityHref,
+  currentPathWithSearch,
+  isSafeRecruitmentReturnTo,
 } from "@/lib/recruitment/navigation/return-to";
+import { buildCandidateCreateApplicationHref } from "@/lib/recruitment/candidate/workspace-create-application-href";
 import { formatRecruitmentEnumLabel } from "@/lib/recruitment/navigation/breadcrumbs";
 
 const NOTE_MAX_LENGTH = 5000;
@@ -112,6 +115,7 @@ export function CandidateDetailView({
   applicationCount,
   canWriteDiscussion = false,
   canManageCandidate = false,
+  canViewCompensation = false,
   aiEnrichment,
   aiRecovery,
   bannerNotice = null,
@@ -127,6 +131,9 @@ export function CandidateDetailView({
     scheduledStart: Date | string;
     roundType: string;
     status: string;
+    applicationId?: string | null;
+    jobOpeningId?: string | null;
+    jobTitle?: string | null;
   }>;
   offers?: ReadonlyArray<{
     id: string;
@@ -134,7 +141,9 @@ export function CandidateDetailView({
     ctc?: number | string | null;
     currency?: string | null;
     status: string;
+    applicationId?: string | null;
     application?: {
+      id?: string | null;
       jobOpening?: { title?: string | null } | null;
     } | null;
   }>;
@@ -142,11 +151,13 @@ export function CandidateDetailView({
   applicationCount?: number;
   canWriteDiscussion?: boolean;
   canManageCandidate?: boolean;
+  canViewCompensation?: boolean;
   aiEnrichment?: {
     insightId: string | null;
     status: string | null;
     content: CandidateEnrichmentInsightContent | null;
     sourceDraftId: string | null;
+    resumeDocumentId?: string | null;
     isStale?: boolean;
   };
   aiRecovery?: {
@@ -154,6 +165,7 @@ export function CandidateDetailView({
     status: string | null;
     content: ResumeFieldRecoveryInsightContent | null;
     sourceDraftId: string | null;
+    resumeDocumentId?: string | null;
     isStale?: boolean;
   };
   /** One-shot recoverable notice (e.g. resume attach failed after create). */
@@ -164,10 +176,19 @@ export function CandidateDetailView({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const createApplicationHref = `/admin/recruitment/applications/new?candidateId=${encodeURIComponent(candidate.id)}`;
+  const workspaceReturnTo = (() => {
+    const current = currentPathWithSearch(pathname, searchParams.toString());
+    return isSafeRecruitmentReturnTo(current)
+      ? current
+      : `/admin/recruitment/candidates/${candidate.id}`;
+  })();
+  const createApplicationHref = buildCandidateCreateApplicationHref({
+    candidateId: candidate.id,
+    returnTo: workspaceReturnTo,
+  });
   const applicationHref = (app: CandidateApplicationRow) =>
     buildRecruitmentEntityHref(`/admin/recruitment/applications/${app.id}`, {
-      returnTo: `/admin/recruitment/candidates/${candidate.id}`,
+      returnTo: workspaceReturnTo,
       jobOpeningId: app.jobOpeningId || navContext?.jobOpeningId,
       currentStage: app.currentStage,
     });
@@ -177,9 +198,35 @@ export function CandidateDetailView({
       jobOpeningId: app.jobOpeningId || undefined,
       currentStage: app.currentStage,
     });
+  const interviewHref = (item: {
+    id: string;
+    applicationId?: string | null;
+  }) => {
+    const preferred =
+      item.applicationId != null && item.applicationId.length > 0
+        ? `/admin/recruitment/applications/${item.applicationId}`
+        : workspaceReturnTo;
+    return buildRecruitmentEntityHref(`/admin/recruitment/interviews/${item.id}`, {
+      returnTo: isSafeRecruitmentReturnTo(preferred) ? preferred : workspaceReturnTo,
+    });
+  };
+  const offerHref = (item: {
+    id: string;
+    applicationId?: string | null;
+    application?: { id?: string | null } | null;
+  }) => {
+    const applicationId = item.applicationId || item.application?.id || null;
+    const preferred =
+      applicationId != null && applicationId.length > 0
+        ? `/admin/recruitment/applications/${applicationId}`
+        : workspaceReturnTo;
+    return buildRecruitmentEntityHref(`/admin/recruitment/offers/${item.id}`, {
+      returnTo: isSafeRecruitmentReturnTo(preferred) ? preferred : workspaceReturnTo,
+    });
+  };
   const [activeTab, setActiveTab] = useState<WorkspaceTab>(initialTab);
   const [isPending, startTransition] = useTransition();
-  const [, startTabTransition] = useTransition();
+  const [isTabPending, startTabTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [noteBody, setNoteBody] = useState("");
@@ -330,6 +377,7 @@ export function CandidateDetailView({
         ]}
         active={activeTab}
         onChange={handleTabChange}
+        pending={isTabPending}
       />
 
       {activeTab === "documents" && (
@@ -424,11 +472,17 @@ export function CandidateDetailView({
                     <div>
                       <h4 className="text-xs font-bold">{item.title}</h4>
                       <p className="mt-1 text-[11px] text-muted-foreground">
-                        {new Date(item.scheduledStart).toLocaleDateString()} · {item.roundType.replace(/_/g, " ")}
+                        {item.jobTitle?.trim()
+                          ? item.jobTitle
+                          : "Application context unavailable"}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        {new Date(item.scheduledStart).toLocaleDateString()} ·{" "}
+                        {item.roundType.replace(/_/g, " ")}
                       </p>
                     </div>
                     <Button asChild variant="outline" size="sm" className="text-xs font-semibold">
-                      <Link href={`/admin/recruitment/interviews/${item.id}`}>View</Link>
+                      <Link href={interviewHref(item)}>View</Link>
                     </Button>
                   </div>
                 ))}
@@ -453,7 +507,7 @@ export function CandidateDetailView({
                       </p>
                     </div>
                     <Button asChild variant="outline" size="sm" className="text-xs font-semibold">
-                      <Link href={`/admin/recruitment/offers/${item.id}`}>View</Link>
+                      <Link href={offerHref(item)}>View</Link>
                     </Button>
                   </div>
                 ))}
@@ -534,6 +588,7 @@ export function CandidateDetailView({
                 status={aiEnrichment?.status ?? null}
                 content={aiEnrichment?.content ?? null}
                 sourceDraftId={aiEnrichment?.sourceDraftId ?? null}
+                resumeDocumentId={aiEnrichment?.resumeDocumentId ?? null}
                 isStale={Boolean(aiEnrichment?.isStale)}
                 canManage={Boolean(canManageCandidate)}
                 profileHeadline={candidate.headline}
@@ -549,6 +604,9 @@ export function CandidateDetailView({
                 content={aiRecovery?.content ?? null}
                 sourceDraftId={
                   aiRecovery?.sourceDraftId ?? aiEnrichment?.sourceDraftId ?? null
+                }
+                resumeDocumentId={
+                  aiRecovery?.resumeDocumentId ?? aiEnrichment?.resumeDocumentId ?? null
                 }
                 isStale={Boolean(aiRecovery?.isStale)}
                 canManage={Boolean(canManageCandidate)}
@@ -639,20 +697,22 @@ export function CandidateDetailView({
               </dl>
             </CandidateSection>
 
-            <CandidateSection title="Compensation" description="CTC expectations.">
-              <dl className="grid gap-4 sm:grid-cols-2">
-                <CandidateInfoItem
-                  label="Current CTC"
-                  value={candidate.currentCtc ? `${candidate.currentCtc} ${candidate.currency}` : null}
-                  icon={IndianRupee}
-                />
-                <CandidateInfoItem
-                  label="Expected CTC"
-                  value={candidate.expectedCtc ? `${candidate.expectedCtc} ${candidate.currency}` : null}
-                  icon={IndianRupee}
-                />
-              </dl>
-            </CandidateSection>
+            {canViewCompensation ? (
+              <CandidateSection title="Compensation" description="CTC expectations.">
+                <dl className="grid gap-4 sm:grid-cols-2">
+                  <CandidateInfoItem
+                    label="Current CTC"
+                    value={candidate.currentCtc ? `${candidate.currentCtc} ${candidate.currency}` : null}
+                    icon={IndianRupee}
+                  />
+                  <CandidateInfoItem
+                    label="Expected CTC"
+                    value={candidate.expectedCtc ? `${candidate.expectedCtc} ${candidate.currency}` : null}
+                    icon={IndianRupee}
+                  />
+                </dl>
+              </CandidateSection>
+            ) : null}
 
             <CandidateSection title="Availability" description="Notice period and work preferences.">
               <dl className="grid gap-4 sm:grid-cols-2">
@@ -855,6 +915,7 @@ export function CandidateDetailView({
                       type="button"
                       size="sm"
                       className="font-semibold shadow-subtle"
+                      loading={isNotePending}
                       disabled={isNotePending || !noteBody.trim()}
                       onClick={submitNote}
                     >

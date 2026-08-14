@@ -13,6 +13,14 @@ import {
   mapWorkspaceApplicationRow,
   type CandidateWorkspaceApplicationRow,
 } from "@/lib/recruitment/candidate/workspace-applications";
+import {
+  redactCandidateCompensationFields,
+  redactOfferCtc,
+} from "@/lib/recruitment/candidate/workspace-compensation";
+import {
+  mapWorkspaceInterviewRow,
+  type CandidateWorkspaceInterviewRow,
+} from "@/lib/recruitment/candidate/workspace-interviews";
 import { listInterviewsCached } from "@/lib/recruitment/interview/queries";
 import {
   countCandidateApplicationsCached,
@@ -21,6 +29,7 @@ import {
 } from "@/lib/recruitment/application/queries";
 import { listOffersCached } from "@/lib/recruitment/offer/queries";
 import { RecruitmentPermissionService } from "@/lib/recruitment/permissions/permission-service";
+import { RecruitmentScopeEngine } from "@/lib/recruitment/permissions/recruitment-scope-engine";
 import { isRecruitmentDomainError } from "@/lib/recruitment/shared/errors";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
 import { CandidateDetailView } from "@/components/recruitment/candidates/candidate-detail";
@@ -42,7 +51,6 @@ import {
 import { parseResumeImportDraftContent } from "@/lib/recruitment/resume-import/draft-content";
 import type { TimelineItem } from "@/lib/recruitment/types/timeline";
 import type { CandidateDocumentView } from "@/lib/recruitment/candidate/types";
-import type { InterviewListItem } from "@/lib/recruitment/repositories/interview-repository";
 import type { OfferDetail } from "@/lib/recruitment/repositories/offer-repository";
 
 export default async function CandidateDetailPage({
@@ -131,6 +139,12 @@ export default async function CandidateDetailPage({
   const enrichmentService = createCandidateAiEnrichmentService();
   const recoveryService = createCandidateAiRecoveryService();
 
+  const recruitmentScope = await RecruitmentScopeEngine.getScope(session);
+  const canViewCompensation = RecruitmentPermissionService.canViewCompensation(
+    session,
+    recruitmentScope.capabilities.isHiringManager
+  );
+
   let applications: CandidateWorkspaceApplicationRow[] = [];
   let applicationCount = 0;
 
@@ -159,7 +173,7 @@ export default async function CandidateDetailPage({
 
   let timeline: readonly TimelineItem[] = [];
   let documents: CandidateDocumentView[] = [];
-  let interviews: InterviewListItem[] = [];
+  let interviews: CandidateWorkspaceInterviewRow[] = [];
   let offers: OfferDetail[] = [];
   let canWriteDiscussion = false;
   let enrichment: Awaited<ReturnType<typeof enrichmentService.listLatestEnrichment>> = {
@@ -189,7 +203,7 @@ export default async function CandidateDetailPage({
         { field: "createdAt", direction: "desc" }
       ),
     ]);
-    interviews = interviewsResult.items;
+    interviews = interviewsResult.items.map((item) => mapWorkspaceInterviewRow(item));
     offers = offersResult.items;
   } else if (tab === "documents") {
     documents = await listCandidateDocumentsCached(session, candidateId);
@@ -197,10 +211,13 @@ export default async function CandidateDetailPage({
     timeline = await getCandidateTimelineCached(session, candidateId, 50);
   }
 
-  const candidate = {
-    ...candidateOverview,
-    documents,
-  };
+  const candidate = redactCandidateCompensationFields(
+    {
+      ...candidateOverview,
+      documents,
+    },
+    canViewCompensation
+  );
 
   const sourceDraftId =
     enrichment.content?.sourceDraftId ??
@@ -214,6 +231,16 @@ export default async function CandidateDetailPage({
       }
     })?.id ??
     null;
+
+  /** When overview has a resume file but no parse draft, Generate can create one. */
+  let resumeDocumentId: string | null = null;
+  if (tab === "overview" && !sourceDraftId) {
+    const docs = await listCandidateDocumentsCached(session, candidateId);
+    resumeDocumentId =
+      docs.find((d) => d.documentType === "resume" && d.isPrimary)?.id ??
+      docs.find((d) => d.documentType === "resume")?.id ??
+      null;
+  }
 
   let enrichmentMapped = null;
   if (enrichment.content?.sourceDraftId) {
@@ -270,7 +297,7 @@ export default async function CandidateDetailPage({
             : null,
           returnTo: nav.returnTo,
         })}
-        stage={originatingApp?.currentStage ?? nav.currentStage}
+        stage={originatingApp?.currentStage}
         status={originatingApp?.status}
       />
       <WorkspacePageHeader
@@ -304,21 +331,17 @@ export default async function CandidateDetailPage({
         timeline={timeline}
         applications={applications}
         applicationCount={applicationCount}
-        interviews={interviews.map((item) => ({
-          id: String(item.id),
-          title: String(item.title ?? "Interview"),
-          scheduledStart: item.scheduledStart as Date | string,
-          roundType: String(item.roundType ?? "round"),
-          status: String(item.status ?? "scheduled"),
-        }))}
+        interviews={interviews}
         offers={offers.map((item) => ({
           id: item.id,
           offerNumber: item.offerNumber,
-          ctc: item.ctc == null ? null : Number(item.ctc),
-          currency: item.currency,
+          ctc: redactOfferCtc(item.ctc, canViewCompensation),
+          currency: canViewCompensation ? item.currency : null,
           status: item.status,
+          applicationId: item.applicationId ? String(item.applicationId) : null,
           application: item.application
             ? {
+                id: item.application.id ? String(item.application.id) : null,
                 jobOpening: item.application.jobOpening
                   ? { title: item.application.jobOpening.title }
                   : null,
@@ -327,11 +350,13 @@ export default async function CandidateDetailPage({
         }))}
         canWriteDiscussion={canWriteDiscussion}
         canManageCandidate={canManageCandidate}
+        canViewCompensation={canViewCompensation}
         aiEnrichment={{
           insightId: enrichment.insight ? String(enrichment.insight.id) : null,
           status: enrichment.insight ? String(enrichment.insight.status) : null,
           content: enrichment.content,
           sourceDraftId,
+          resumeDocumentId,
           isStale: enrichmentIsStale,
         }}
         aiRecovery={{
@@ -339,14 +364,15 @@ export default async function CandidateDetailPage({
           status: recovery.insight ? String(recovery.insight.status) : null,
           content: recovery.content,
           sourceDraftId: recovery.content?.sourceDraftId ?? sourceDraftId,
+          resumeDocumentId,
           isStale: recoveryIsStale,
         }}
         bannerNotice={bannerNotice}
         navContext={{
           returnTo: nav.returnTo,
-          originatingApplicationId: nav.applicationId,
-          jobOpeningId: nav.jobOpeningId,
-          currentStage: nav.currentStage,
+          originatingApplicationId: originatingApp?.id ?? null,
+          jobOpeningId: originatingApp?.jobOpeningId ?? null,
+          currentStage: originatingApp?.currentStage ?? null,
         }}
       />
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -58,6 +58,7 @@ export function CandidateForm({
   const router = useRouter();
   const action = mode === "create" ? createCandidateAction : updateCandidateAction;
   const [state, formAction, pending] = useActionState(action, initial);
+  const [isNavigating, startNavigation] = useTransition();
 
   const [status, setStatus] = useState<CandidateStatus>(candidate?.status ?? CandidateStatus.active);
   const [source, setSource] = useState<CandidateSource>(
@@ -76,7 +77,9 @@ export function CandidateForm({
 
   useEffect(() => {
     if (state.success && state.candidateId) {
-      router.push(`/admin/recruitment/candidates/${state.candidateId}`);
+      startNavigation(() => {
+        router.push(`/admin/recruitment/candidates/${state.candidateId}`);
+      });
     }
   }, [state.success, state.candidateId, router]);
 
@@ -556,8 +559,8 @@ export function CandidateForm({
       </div>
 
       <div className="flex flex-wrap gap-3 pt-4">
-        <Button type="submit" loading={pending} className="h-10 px-6 font-semibold shadow-subtle">
-          {pending ? "Saving…" : mode === "create" ? "Create candidate" : "Save changes"}
+        <Button type="submit" loading={pending || isNavigating} className="h-10 px-6 font-semibold shadow-subtle">
+          {pending || isNavigating ? "Saving…" : mode === "create" ? "Create candidate" : "Save changes"}
         </Button>
         <Button type="button" variant="outline" asChild className="h-10 px-6 font-semibold shadow-subtle">
           <Link

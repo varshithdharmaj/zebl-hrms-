@@ -75,6 +75,13 @@ const hrActor: SessionUser = {
   role: "hr",
 };
 
+const managerActor: SessionUser = {
+  ...superAdminActor,
+  id: "actor-3",
+  role: "manager",
+  employeeId: 10,
+};
+
 describe("changeUserRole — privilege escalation & last-admin protection", () => {
   beforeEach(() => {
     findUnique.mockReset();
@@ -89,6 +96,42 @@ describe("changeUserRole — privilege escalation & last-admin protection", () =
   it("blocks HR from changing anyone's role", async () => {
     await expect(changeUserRole(hrActor, "target-1", "hr")).rejects.toThrow(UserManagementError);
     expect(findUnique).not.toHaveBeenCalled();
+  });
+
+  it("blocks Manager from changing anyone's role, including self-promotion to super_admin", async () => {
+    await expect(
+      changeUserRole(managerActor, "target-1", "manager")
+    ).rejects.toThrow(UserManagementError);
+    await expect(
+      changeUserRole(managerActor, managerActor.id, "super_admin")
+    ).rejects.toThrow(UserManagementError);
+    expect(findUnique).not.toHaveBeenCalled();
+  });
+
+  it("allows Super Admin to promote an employee to manager", async () => {
+    findUnique.mockResolvedValue({ id: "target-emp", role: "employee", isActive: true });
+    update.mockResolvedValue({});
+
+    await changeUserRole(superAdminActor, "target-emp", "manager");
+
+    expect(count).not.toHaveBeenCalled();
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "target-emp" },
+      data: { role: "manager" },
+    });
+    expect(invalidateUserSessions).toHaveBeenCalledWith("target-emp");
+  });
+
+  it("allows Super Admin to demote a manager back to employee", async () => {
+    findUnique.mockResolvedValue({ id: "target-mgr", role: "manager", isActive: true });
+    update.mockResolvedValue({});
+
+    await changeUserRole(superAdminActor, "target-mgr", "employee");
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "target-mgr" },
+      data: { role: "employee" },
+    });
   });
 
   it("blocks a Super Admin from changing their own role", async () => {
@@ -260,6 +303,12 @@ describe("setUserActive — privilege escalation & last-admin protection", () =>
 
   it("blocks HR from activating/deactivating anyone", async () => {
     await expect(setUserActive(hrActor, "target-1", false)).rejects.toThrow(UserManagementError);
+  });
+
+  it("blocks Manager from activating/deactivating anyone", async () => {
+    await expect(setUserActive(managerActor, "target-1", false)).rejects.toThrow(
+      UserManagementError
+    );
   });
 
   it("blocks self-deactivation", async () => {

@@ -11,14 +11,6 @@ import {
 } from "@/lib/recruitment/communication/attachment-rules";
 import type { CommunicationAttachmentView } from "../types";
 
-async function checksum(file: File): Promise<string> {
-  const buffer = await file.arrayBuffer();
-  const hash = await crypto.subtle.digest("SHA-256", buffer);
-  return Array.from(new Uint8Array(hash))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
 export function AttachmentUploader({
   communicationId,
   onUploaded,
@@ -63,18 +55,10 @@ export function AttachmentUploader({
         setOptimistic((prev) => [optimisticItem, ...prev]);
 
         try {
-          await checksum(file);
-          const storagePath = `communications/${communicationId}/attachments/${Date.now()}-${file.name}`;
-          const result = await uploadCommunicationAttachmentAction(
-            {},
-            {
-              communicationId,
-              fileName: file.name,
-              fileType: file.type || "application/octet-stream",
-              fileSize: file.size,
-              storagePath,
-            }
-          );
+          const body = new FormData();
+          body.set("communicationId", communicationId);
+          body.set("file", file);
+          const result = await uploadCommunicationAttachmentAction({}, body);
 
           setOptimistic((prev) => prev.filter((item) => item.id !== tempId));
 
@@ -86,7 +70,6 @@ export function AttachmentUploader({
           onUploaded?.({
             ...optimisticItem,
             id: result.attachmentId ?? tempId,
-            storagePath,
           });
         } catch {
           setOptimistic((prev) => prev.filter((item) => item.id !== tempId));
