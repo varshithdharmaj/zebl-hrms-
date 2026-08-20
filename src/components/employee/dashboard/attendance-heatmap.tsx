@@ -52,6 +52,42 @@ export function isWorkedCategory(category: AttendanceDayResult["category"]): boo
   return isWorkedDayCategory(category);
 }
 
+/**
+ * An active hover/focus interaction always wins over a pinned month. The pin
+ * is only a fallback once hoveredMonthKey is genuinely null (no pointer/focus
+ * interaction anywhere in the interactive wrapper — see `shouldClearHoverOnFocusOut`
+ * and the wrapper's onMouseLeave, which are the only two places hoveredMonthKey
+ * is cleared).
+ */
+export function resolveActiveMonthKey(
+  hoveredMonthKey: string | null,
+  pinnedMonthKey: string | null
+): string | null {
+  return hoveredMonthKey ?? pinnedMonthKey;
+}
+
+/** Click-to-pin toggles: clicking the already-pinned month unpins it. */
+export function nextPinnedMonthKey(
+  currentPinnedMonthKey: string | null,
+  clickedMonthKey: string
+): string | null {
+  return currentPinnedMonthKey === clickedMonthKey ? null : clickedMonthKey;
+}
+
+/**
+ * Keyboard focus can leave the interactive wrapper without any mouse event
+ * ever firing (e.g. Tab past the last cell to the next section). Without this,
+ * hoveredMonthKey could stay stuck on the last-focused month indefinitely,
+ * permanently shadowing the pinned fallback. `relatedTarget` is the element
+ * gaining focus; if it's outside the wrapper, the interaction has genuinely ended.
+ */
+export function shouldClearHoverOnFocusOut(
+  container: { contains(node: Node | null): boolean },
+  relatedTarget: Node | null
+): boolean {
+  return !container.contains(relatedTarget);
+}
+
 export function getCellColor(day: AttendanceDayResult): string {
   if (isWorkedDayCategory(day.category) && day.ratioTier) {
     return RATIO_TIER_COLOR[day.ratioTier];
@@ -445,7 +481,7 @@ export function AttendanceHeatmap({ month }: { month: AttendanceHeatmapMonth | n
   const [hoveredMonthKey, setHoveredMonthKey] = useState<string | null>(null);
   const [pinnedMonthKey, setPinnedMonthKey] = useState<string | null>(null);
 
-  const activeMonthKey = hoveredMonthKey ?? pinnedMonthKey;
+  const activeMonthKey = resolveActiveMonthKey(hoveredMonthKey, pinnedMonthKey);
 
   const derived = useMemo(() => {
     if (!month) return null;
@@ -498,13 +534,18 @@ export function AttendanceHeatmap({ month }: { month: AttendanceHeatmapMonth | n
         <span>Best {bestStreak} days</span>
       </div>
 
-      {activeStats && <MonthSummaryBar stats={activeStats} />}
-
       <div
-        className="overflow-x-auto pb-2"
         onMouseLeave={() => setHoveredMonthKey(null)}
+        onBlur={(event) => {
+          if (shouldClearHoverOnFocusOut(event.currentTarget, event.relatedTarget)) {
+            setHoveredMonthKey(null);
+          }
+        }}
       >
-        <div className="relative inline-flex flex-col gap-[3px]">
+        {activeStats && <MonthSummaryBar stats={activeStats} />}
+
+        <div className="overflow-x-auto pb-2">
+          <div className="relative inline-flex flex-col gap-[3px]">
           {activeRange && <MonthWindowOverlay range={activeRange} weekCount={weeks.length} />}
 
           <div className="relative z-[1] flex items-center gap-[3px] pl-9" style={{ minHeight: MONTH_LABEL_ROW }}>
@@ -523,9 +564,7 @@ export function AttendanceHeatmap({ month }: { month: AttendanceHeatmapMonth | n
                       onMouseEnter={() => setHoveredMonthKey(label.monthKey)}
                       onFocus={() => setHoveredMonthKey(label.monthKey)}
                       onClick={() =>
-                        setPinnedMonthKey((prev) =>
-                          prev === label.monthKey ? null : label.monthKey
-                        )
+                        setPinnedMonthKey((prev) => nextPinnedMonthKey(prev, label.monthKey))
                       }
                       aria-pressed={pinnedMonthKey === label.monthKey}
                       aria-label={`${label.label} summary`}
@@ -577,6 +616,7 @@ export function AttendanceHeatmap({ month }: { month: AttendanceHeatmapMonth | n
               })}
             </div>
           ))}
+          </div>
         </div>
       </div>
 

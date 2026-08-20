@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "postinstall": "prisma generate && node scripts/patch-prisma-browser-types.mjs",
-    "predev": "prisma generate && node scripts/patch-prisma-browser-types.mjs && tsx prisma/scripts/check-database-env.ts && tsx prisma/scripts/ping-database.ts",
+    "predev": "tsx prisma/scripts/check-database-env.ts && tsx prisma/scripts/ping-database.ts",
     "dev": "next dev -H 0.0.0.0",
     "prebuild": "tsx prisma/scripts/check-database-env.ts",
     "build": "prisma generate && node scripts/patch-prisma-browser-types.mjs && next build",

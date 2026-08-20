@@ -59,8 +59,8 @@ export async function resetUserPasswordAction(
     const parsed = safeParseWithSchema(passwordResetSchema, {
       userId: formData.get("userId"),
       mode: formData.get("mode"),
-      password: formData.get("password"),
-      confirmPassword: formData.get("confirmPassword"),
+      password: formData.get("password") || "",
+      confirmPassword: formData.get("confirmPassword") || "",
       mustChangePassword: formData.get("mustChangePassword") === "on",
     });
     if (!parsed.ok) return { error: parsed.error };
@@ -169,11 +169,11 @@ export async function provisionEmployeeLoginAction(
     const parsed = safeParseWithSchema(provisionEmployeeLoginSchema, {
       employeeId: formData.get("employeeId"),
       mode: formData.get("mode"),
-      email: formData.get("email"),
-      existingUserId: formData.get("existingUserId"),
+      email: formData.get("email") || "",
+      existingUserId: formData.get("existingUserId") || "",
       passwordMode: formData.get("passwordMode") || "generated",
-      password: formData.get("password"),
-      confirmPassword: formData.get("confirmPassword"),
+      password: formData.get("password") || "",
+      confirmPassword: formData.get("confirmPassword") || "",
       mustChangePassword: formData.get("mustChangePassword") === "on",
     });
     if (!parsed.ok) return { error: parsed.error };
