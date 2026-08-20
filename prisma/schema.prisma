@@ -335,6 +335,8 @@ model Employee {
   interviewPanelistOf       InterviewPanelist[]
   interviewFeedbackAuthored InterviewFeedback[]
   conversionSnapshots       EmployeeConversionSnapshot[]   @relation("ConversionSnapshotEmployee")
+  // Biometric bridge integration (Phase 2D)
+  biometricPunches          BiometricPunch[]
 
   @@index([managerId])
   @@index([employeeStatus])
@@ -2099,4 +2101,35 @@ model RecruitmentSavedFilter {
   @@unique([userId, entity, name])
   @@index([userId, entity])
   @@map("recruitment_saved_filters")
+}
+
+/// Raw biometric punch events from the eSSL Attendance Bridge.
+/// Immutable audit layer — never edited after insert.
+/// source + tableName + deviceLogId is the idempotency key.
+model BiometricPunch {
+  id           Int       @id @default(autoincrement())
+
+  source       String
+  tableName    String    @map("table_name")
+  deviceLogId  Int       @map("device_log_id")
+
+  employeeCode String    @map("employee_code")
+
+  employeeId   Int?      @map("employee_id")
+  employee     Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  punchedAt    DateTime  @map("punched_at")
+  deviceId     Int       @map("device_id")
+
+  metadata     Json      @default("{}")
+
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@unique([source, tableName, deviceLogId])
+
+  @@index([employeeCode])
+  @@index([employeeId])
+  @@index([punchedAt])
+
+  @@map("biometric_punches")
 }

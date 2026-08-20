@@ -42,11 +42,13 @@ export function getCronSecrets(): {
   notification: string | undefined;
   integration: string | undefined;
   analytics: string | undefined;
+  attendanceBridge: string | undefined;
 } {
   const integration = getEnv("INTEGRATION_CRON_SECRET");
   return {
     notification: getEnv("NOTIFICATION_CRON_SECRET"),
     integration,
     analytics: getEnv("ANALYTICS_CRON_SECRET") ?? integration,
+    attendanceBridge: getEnv("ATTENDANCE_BRIDGE_SECRET") ?? integration,
   };
 }
