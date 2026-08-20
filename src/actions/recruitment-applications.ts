@@ -41,13 +41,25 @@ function revalidateRecruitmentDashboard() {
   revalidatePath("/admin/recruitment");
 }
 
+function normalizeActionInput(input: unknown): unknown {
+  if (input instanceof FormData) {
+    const obj: Record<string, unknown> = {};
+    for (const [key, value] of input.entries()) {
+      if (typeof value !== "string") continue;
+      obj[key] = value === "" ? undefined : value;
+    }
+    return obj;
+  }
+  return input;
+}
+
 export async function createApplicationAction(
   _prev: RecruitmentApplicationActionState,
   input: unknown
 ): Promise<RecruitmentApplicationActionState> {
   try {
     // 1. Validation
-    const parsed = safeParseWithSchema(createApplicationSchema, input);
+    const parsed = safeParseWithSchema(createApplicationSchema, normalizeActionInput(input));
     if (!parsed.ok) return { error: parsed.error };
 
     // 2. Permission Check
@@ -82,7 +94,7 @@ export async function updateApplicationAction(
 ): Promise<RecruitmentApplicationActionState> {
   try {
     // 1. Validation
-    const parsed = safeParseWithSchema(updateApplicationSchema, input);
+    const parsed = safeParseWithSchema(updateApplicationSchema, normalizeActionInput(input));
     if (!parsed.ok) return { error: parsed.error };
 
     // 2. Permission Check
