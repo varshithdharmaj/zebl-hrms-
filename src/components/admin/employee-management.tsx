@@ -46,6 +46,14 @@ const initialState: ActionState = {};
 export function EmployeeManagement({ employees }: { employees: Employee[] }) {
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 25;
+
+  // Reset to first page when search changes
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearch(e.target.value);
+    setCurrentPage(1);
+  };
 
   const filtered = employees.filter((e) => {
     const q = search.toLowerCase();
@@ -58,13 +66,17 @@ export function EmployeeManagement({ employees }: { employees: Employee[] }) {
     );
   });
 
+  const totalPages = Math.ceil(filtered.length / itemsPerPage) || 1;
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedEmployees = filtered.slice(startIndex, startIndex + itemsPerPage);
+
   return (
     <SectionCard noPadding>
       <div className="flex flex-col gap-3 border-b border-border p-5 sm:flex-row sm:items-center sm:justify-between">
         <Input
           placeholder="Search employees…"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={handleSearchChange}
           className="max-w-sm"
         />
         <Button onClick={() => setCreateOpen(true)}>
@@ -74,7 +86,7 @@ export function EmployeeManagement({ employees }: { employees: Employee[] }) {
       </div>
 
       <DataTable columns={["Code", "Name", "Role", "Department", "Joined", "Status", ""]}>
-        {filtered.map((emp) => (
+        {paginatedEmployees.map((emp) => (
           <DataTableRow key={emp.id}>
             <DataTableCell className="font-mono text-xs text-muted-foreground">
               {emp.employeeCode}
@@ -106,6 +118,35 @@ export function EmployeeManagement({ employees }: { employees: Employee[] }) {
           </DataTableRow>
         ))}
       </DataTable>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between border-t border-border p-4">
+          <p className="text-sm text-muted-foreground">
+            Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, filtered.length)} of {filtered.length} employees
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            >
+              Previous
+            </Button>
+            <span className="text-sm font-medium">
+              Page {currentPage} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
 
       <CreateEmployeeDialog open={createOpen} onOpenChange={setCreateOpen} />
     </SectionCard>
