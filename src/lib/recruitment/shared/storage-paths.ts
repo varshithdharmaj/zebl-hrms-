@@ -30,6 +30,42 @@ export function isSafeIntakeResumeKey(intakeId: string, key: string): boolean {
   );
 }
 
+/**
+ * Temporary resume storage for anonymous public /apply submissions, before a
+ * Candidate exists. Deliberately a separate namespace from `recruitment/intake/*`
+ * (HR-initiated) and `candidates/*` (permanent) — see PublicApplicationSubmission
+ * schema comment. Month-partitioned so an operator can archive/delete a whole
+ * `public-intake/YYYY-MM/` directory once everything in it is terminal
+ * (copied to a permanent CandidateDocument, or expired).
+ */
+export function monthPartitionFor(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+}
+
+export function buildPublicIntakeStorageKey(
+  submissionId: string,
+  fileName: string,
+  monthPartition: string
+): string {
+  return `public-intake/${monthPartition}/${submissionId}/${sanitizeStorageFileName(fileName)}`;
+}
+
+export function isSafePublicIntakeKey(
+  submissionId: string,
+  monthPartition: string,
+  key: string
+): boolean {
+  const prefix = `public-intake/${monthPartition}/${submissionId}/`;
+  return (
+    key.startsWith(prefix) &&
+    !key.includes("..") &&
+    !key.includes("\\") &&
+    !key.includes("//", prefix.length)
+  );
+}
+
 export function buildOfferPdfStorageKey(offerId: string, fileName: string): string {
   return `offers/${offerId}/pdf/${crypto.randomUUID()}-${sanitizeStorageFileName(fileName)}`;
 }

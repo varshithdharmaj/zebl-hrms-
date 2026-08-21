@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { getJobOpeningCached } from "@/lib/recruitment/job/queries";
+import { getAppBaseUrl } from "@/lib/config/app-url";
 import { RecruitmentPermissionService } from "@/lib/recruitment/permissions/permission-service";
 import { RecruitmentTimelineService } from "@/lib/recruitment/services/timeline-service";
 import { isRecruitmentDomainError } from "@/lib/recruitment/shared/errors";
@@ -57,6 +58,7 @@ export default async function JobOpeningDetailPage({
         job={job}
         timeline={timeline}
         showCompensation={showCompensation}
+        appBaseUrl={getAppBaseUrl()}
       />
     </div>
   );

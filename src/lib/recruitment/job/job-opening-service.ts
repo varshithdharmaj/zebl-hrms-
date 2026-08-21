@@ -29,6 +29,7 @@ import { RecruitmentDomainError } from "@/lib/recruitment/shared/errors";
 import { withRecruitmentTransaction } from "@/lib/recruitment/shared/transaction";
 import { createAfterCommitBuffer } from "@/lib/recruitment/shared/after-commit";
 import { RecruitmentEventFactory } from "@/lib/recruitment/events/factory";
+import { generateUniqueJobSlug } from "@/lib/recruitment/shared/slug";
 import type { CreateJobOpeningInput, UpdateJobOpeningInput } from "@/lib/validation/schemas/recruitment/jobs";
 import type { PageResult } from "@/lib/recruitment/types/pagination";
 
@@ -596,6 +597,61 @@ export function createJobOpeningService(repository: JobRepository = prismaJobRep
         );
       });
       await events.flush();
+    },
+
+    /**
+     * Publish/unpublish a job on the public career portal (/apply). Slug is
+     * assigned once, on first publish, and kept stable across later
+     * unpublish/republish so a link HR has already shared never rots.
+     */
+    async setPublicListing(
+      session: SessionUser,
+      jobOpeningId: string,
+      input: { isPubliclyListed: boolean }
+    ): Promise<{ isPubliclyListed: boolean; publicSlug: string | null }> {
+      RecruitmentPermissionService.requireModuleEnabled();
+      await RecruitmentPermissionService.assertCanManageJobs(session);
+
+      const job = await repository.getJob(jobOpeningId, { includeCompensation: false });
+      if (!job || job.deletedAt) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Job opening not found.");
+      }
+
+      // Eligibility (Phase-3 design §3, §19-P): the public /apply list/detail
+      // query already filters on status === open, so a non-open job could
+      // never actually be *reached* by a candidate even if this flag were
+      // true — but letting HR flip "on" for a draft/closed/on-hold job would
+      // produce a link that silently 404s for every candidate who opens it.
+      // Reuse the existing status enum rather than inventing new rules.
+      if (input.isPubliclyListed && job.status !== JobOpeningStatus.open) {
+        throw new RecruitmentDomainError(
+          "REC_JOB_ILLEGAL_STATUS",
+          "Only open jobs can be listed publicly. Open this job first, then publish it."
+        );
+      }
+
+      const existing = await prisma.jobOpening.findUnique({
+        where: { id: jobOpeningId },
+        select: { publicSlug: true },
+      });
+
+      let publicSlug = existing?.publicSlug ?? null;
+      if (input.isPubliclyListed && !publicSlug) {
+        publicSlug = await generateUniqueJobSlug(job.title, async (candidate) => {
+          const clash = await prisma.jobOpening.findUnique({
+            where: { publicSlug: candidate },
+            select: { id: true },
+          });
+          return Boolean(clash);
+        });
+      }
+
+      await prisma.jobOpening.update({
+        where: { id: jobOpeningId },
+        data: { isPubliclyListed: input.isPubliclyListed, publicSlug },
+      });
+
+      return { isPubliclyListed: input.isPubliclyListed, publicSlug };
     },
   };
 }
