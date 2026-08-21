@@ -17,3 +17,6 @@ tsconfig.tsbuildinfo
 !.env.example
 
 tsconfig.test.tsbuildinfo
+
+# Data snapshots/backups (may contain production data) — do not commit
+scripts/_backup-*.json
