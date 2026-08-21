@@ -9,6 +9,8 @@ import { PipelineBoard } from "@/components/recruitment/applications/pipeline-bo
 import { Button } from "@/components/ui/button";
 import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { getApplicationCached, listApplicationsCached } from "@/lib/recruitment/application";
+import type { ApplicationDetail } from "@/lib/recruitment/repositories/application-repository";
+import type { ApplicationTableItem } from "@/components/recruitment/applications/application-table";
 import { getEmployeeOptions } from "@/lib/recruitment/candidate";
 import { listInterviewsCached } from "@/lib/recruitment/interview/queries";
 import {
@@ -102,7 +104,14 @@ export default async function RecruitmentPipelinePage({
 
   // Next.js cannot serialize Prisma Decimal objects from Server to Client Components.
   // We sanitize the result items, particularly candidate fields like totalExperienceYears.
-  const safeResultItems = result.items.map((app: any) => ({
+  //
+  // Note: ApplicationTableItem/ApplicationDetail still declare these candidate
+  // fields as Prisma.Decimal — this sanitization intentionally converts them
+  // to plain numbers before they reach the client. That existing type/runtime
+  // mismatch predates this fix and is out of scope here (see recruitment
+  // Phase-3 build-blocker task: fix only the reported no-explicit-any error,
+  // don't refactor this page or ApplicationTable's types).
+  const safeResultItems = result.items.map((app: ApplicationDetail) => ({
     ...app,
     candidate: app.candidate
       ? {
@@ -115,7 +124,7 @@ export default async function RecruitmentPipelinePage({
           expectedCtc: app.candidate.expectedCtc !== null && app.candidate.expectedCtc !== undefined ? Number(app.candidate.expectedCtc) : null,
         }
       : null,
-  }));
+  })) as unknown as ApplicationTableItem[];
 
   let selectedOffers: Array<{
     id: string;
