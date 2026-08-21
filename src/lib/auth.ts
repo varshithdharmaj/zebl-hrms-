@@ -1,6 +1,7 @@
 import { cookies, headers } from "next/headers";
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
+import { LoginSessionStatus } from "@/generated/prisma/client";
 import {
   COOKIE_NAME,
   createSessionToken,
@@ -14,8 +15,10 @@ import { authenticateLocalUser } from "@/lib/auth/providers/local-provider";
 import { setCachedSessionVersion } from "@/lib/session-version-cache";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
 import { assertPasswordChangeComplete } from "@/lib/auth/password-change-gate";
+import { IDLE_TIMEOUT_MS } from "@/lib/auth/session-policy";
 import {
   closeAllUserSessions,
+  closeSession,
   findActiveCurrentLoginSession,
   touchLoginSessionActivityIfStale,
 } from "@/lib/security/login-history-service";
@@ -95,6 +98,12 @@ export async function resolveSessionFromToken(token: string): Promise<SessionUse
 
   if (payload.sessionId) {
     if (!loginSession) return null;
+    // Idle timeout: reject and close sessions inactive past the configured
+    // window, independent of the JWT's absolute expiration.
+    if (Date.now() - loginSession.lastActivityAt.getTime() > IDLE_TIMEOUT_MS) {
+      await closeSession(payload.sessionId, LoginSessionStatus.expired);
+      return null;
+    }
     // Activity touch only after user + session validation (never concurrent with checks).
     await touchLoginSessionActivityIfStale(
       payload.sessionId,

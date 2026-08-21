@@ -1,6 +1,7 @@
 import { SignJWT, jwtVerify } from "jose";
 import type { AuthProvider } from "@/generated/prisma/enums";
 import type { AppUserRole } from "@/lib/roles";
+import { SESSION_MAX_LIFETIME_JWT } from "@/lib/auth/session-policy";
 
 export type SessionUser = {
   id: string;
@@ -50,7 +51,7 @@ export async function createSessionToken(user: SessionUser, sessionId?: string):
   })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("7d");
+    .setExpirationTime(SESSION_MAX_LIFETIME_JWT);
   if (sessionId) jwt.setJti(sessionId);
   return jwt.sign(getSecret());
 }
