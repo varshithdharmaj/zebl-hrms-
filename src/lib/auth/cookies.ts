@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { COOKIE_NAME } from "@/lib/session";
+import { SESSION_MAX_LIFETIME_SECONDS } from "@/lib/auth/session-policy";
 
 export async function setSessionCookie(token: string) {
   const cookieStore = await cookies();
@@ -8,7 +9,7 @@ export async function setSessionCookie(token: string) {
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 60 * 24 * 7,
+    maxAge: SESSION_MAX_LIFETIME_SECONDS,
   });
 }
 

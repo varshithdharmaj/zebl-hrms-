@@ -13,6 +13,7 @@ import {
 } from "@/lib/auth";
 import { authenticateLocalUser } from "@/lib/auth/providers/local-provider";
 import { establishSession } from "@/lib/auth/session-bridge";
+import { sessionRequiresPasswordChange } from "@/lib/auth/password-change-gate";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
 import { checkRateLimit, resetRateLimit } from "@/lib/rate-limit";
 import { getRequestSecurityContext } from "@/lib/security/request-context";
@@ -174,6 +175,11 @@ export async function changePasswordAction(
     return { error: "New password must be at least 8 characters long." };
   }
 
+  // Captured before invalidation: only the mandatory first-login flow should
+  // force a redirect away from the current page on success.
+  const wasForcedChange = sessionRequiresPasswordChange(session);
+  let freshSession: Awaited<ReturnType<typeof establishSession>> = null;
+
   try {
     const user = await prisma.user.findUnique({
       where: { id: session.id },
@@ -197,9 +203,19 @@ export async function changePasswordAction(
         mustChangePassword: false,
       },
     });
-    await invalidateUserSessions(session.id);
 
+    // Revoke every existing session (including this one) so no stale JWT
+    // survives the password rotation, then immediately establish a fresh
+    // session for the current device — otherwise the user's own successful
+    // password change silently logs them out with nowhere to go.
+    await invalidateUserSessions(session.id);
     const clientIp = await getRequestClientIp();
+    freshSession = await establishSession({
+      userId: session.id,
+      authProvider: session.authProvider,
+      clientIp,
+    });
+
     const requestContext = await getRequestSecurityContext();
     await writeAuditLog({
       entityType: "user",
@@ -213,10 +229,22 @@ export async function changePasswordAction(
       requestContext,
       metadata: { reason: "password_changed", clientIp },
     });
-
-    return { success: "Password changed successfully." };
   } catch (e) {
     console.error("Change password error:", e);
     return { error: "An error occurred while changing your password." };
   }
+
+  if (!freshSession) {
+    // Password was changed but the account could not be re-authenticated
+    // (e.g. deactivated concurrently). Fail safe: force a clean re-login
+    // rather than leaving a half-authenticated client state.
+    await clearSessionCookie();
+    redirect("/login?clear=1");
+  }
+
+  if (wasForcedChange) {
+    redirect(getDefaultRedirect(freshSession.role));
+  }
+
+  return { success: "Password changed successfully." };
 }

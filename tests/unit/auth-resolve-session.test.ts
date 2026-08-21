@@ -7,17 +7,24 @@ vi.mock("next/headers", () => ({
   headers: vi.fn(),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const prisma: Record<string, unknown> = {
     user: {
       findUnique: vi.fn(),
     },
     loginSession: {
       findFirst: vi.fn(),
+      findUnique: vi.fn(),
       updateMany: vi.fn(),
+      update: vi.fn(),
     },
-  },
-}));
+  };
+  // closeSession() runs its logic inside prisma.$transaction(async (tx) => ...);
+  // handing back the same mocked client keeps tx.loginSession.* calls visible
+  // to the same spies the rest of the test asserts against.
+  prisma.$transaction = vi.fn(async (fn: (tx: unknown) => unknown) => fn(prisma));
+  return { prisma };
+});
 
 vi.mock("@/lib/session-version-cache", () => ({
   setCachedSessionVersion: vi.fn(),
@@ -279,5 +286,44 @@ describe("resolveSessionFromToken (Phase 5M parallel reads)", () => {
     );
 
     await expect(resolveSessionFromToken(token)).rejects.toThrow("session db fail");
+  });
+
+  it("rejects and closes a session idle past the configured timeout", async () => {
+    const token = await createSessionToken(baseUser, "session-1");
+    const idleSince = new Date(Date.now() - 31 * 60 * 1000); // default idle timeout is 30 min
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(dbUser() as never);
+    vi.mocked(prisma.loginSession.findFirst).mockResolvedValue({
+      lastActivityAt: idleSince,
+    } as never);
+    vi.mocked(prisma.loginSession.findUnique).mockResolvedValue({
+      loginAt: idleSince,
+      status: LoginSessionStatus.active,
+    } as never);
+    vi.mocked(prisma.loginSession.update).mockResolvedValue({} as never);
+
+    await expect(resolveSessionFromToken(token)).resolves.toBeNull();
+
+    expect(prisma.loginSession.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "session-1" },
+        data: expect.objectContaining({ status: LoginSessionStatus.expired }),
+      })
+    );
+    // Idle session was rejected before any activity touch was attempted.
+    expect(prisma.loginSession.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("accepts a session active within the idle timeout window", async () => {
+    const token = await createSessionToken(baseUser, "session-1");
+    const recentActivity = new Date(Date.now() - 10 * 60 * 1000); // 10 min < 30 min timeout
+    vi.mocked(prisma.user.findUnique).mockResolvedValue(dbUser() as never);
+    vi.mocked(prisma.loginSession.findFirst).mockResolvedValue({
+      lastActivityAt: recentActivity,
+    } as never);
+
+    const session = await resolveSessionFromToken(token);
+
+    expect(session?.id).toBe("user-1");
+    expect(prisma.loginSession.findUnique).not.toHaveBeenCalled();
   });
 });
