@@ -68,6 +68,20 @@ export function canAccessEmployeeShell(role: AppUserRole): boolean {
   return isWorkforceMember(role);
 }
 
+/**
+ * HR/Super Admin viewing their OWN attendance/leave dashboard, when they also
+ * have an Employee record. Narrower than {@link canAccessEmployeeShell}: it
+ * only covers the self-service pages (dashboard/attendance/leaves/profile —
+ * see `isOwnWorkspaceSelfServicePath`), never the Manager-only My Team pages
+ * or the HR ticket queue, which stay on the existing role-only checks.
+ */
+export function canAccessOwnWorkspace(
+  role: AppUserRole,
+  employeeId: number | null | undefined
+): boolean {
+  return canAccessEmployeeShell(role) || (canAccessHRAdministration(role) && employeeId != null);
+}
+
 // --- HR operations -------------------------------------------------------
 
 export function canManageEmployee(role: AppUserRole): boolean {

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { verifySessionToken, COOKIE_NAME } from "@/lib/session";
 import { getRoleHomePath } from "@/lib/routing";
-import { canAccessAdmin, canAccessEmployeeShell } from "@/lib/permissions";
+import { canAccessAdmin, canAccessEmployeeShell, canAccessHRAdministration } from "@/lib/permissions";
 import {
   isAdminRecruitmentPath,
   isRecruitmentTestManager,
@@ -10,8 +10,10 @@ import {
 import { isSessionVersionStale } from "@/lib/session-version-cache";
 import type { AppUserRole } from "@/lib/roles";
 import {
+  isApplyPublicPath,
   isApprovalPublicPath,
   isCronPublicPath,
+  isOwnWorkspaceSelfServicePath,
   isPublicPath,
 } from "@/lib/public-routes";
 import {
@@ -84,8 +86,14 @@ export async function middleware(request: NextRequest) {
       });
       return response;
     }
-    // Cron process routes authenticate via Bearer secret; never bounce to role home.
-    if (session && !isApprovalPublicPath(pathname) && !isCronPublicPath(pathname)) {
+    // Cron process routes authenticate via Bearer secret; the public career
+    // portal is anonymous by design — neither should ever bounce to role home.
+    if (
+      session &&
+      !isApprovalPublicPath(pathname) &&
+      !isCronPublicPath(pathname) &&
+      !isApplyPublicPath(pathname)
+    ) {
       if (sessionRequiresPasswordChange(session)) {
         if (!isPasswordChangeAllowedPath(pathname)) {
           return NextResponse.redirect(new URL("/change-password", request.url));
@@ -119,7 +127,17 @@ export async function middleware(request: NextRequest) {
   }
 
   if (pathname.startsWith("/employee") && !canAccessEmployeeShell(session.role)) {
-    return redirectToRoleHome(request, session.role);
+    // Carve-out: HR/Super Admin may view their OWN self-service pages
+    // (dashboard/attendance/leaves/profile) when linked to an Employee
+    // record — everything else under /employee (My Team, tickets,
+    // approvals) stays Employee/Manager-only.
+    const isAdminSelfService =
+      canAccessHRAdministration(session.role) &&
+      session.employeeId != null &&
+      isOwnWorkspaceSelfServicePath(pathname);
+    if (!isAdminSelfService) {
+      return redirectToRoleHome(request, session.role);
+    }
   }
 
   return NextResponse.next();
