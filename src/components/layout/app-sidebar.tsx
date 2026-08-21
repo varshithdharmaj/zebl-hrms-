@@ -72,7 +72,8 @@ function groupedNavForRole(
   showMyTeamGroup: boolean,
   showRecruitmentNav: boolean,
   showPanelistInterviews = false,
-  recruitmentOpsOnly = false
+  recruitmentOpsOnly = false,
+  showOwnWorkspaceNav = false
 ): NavGroup[] {
   if (recruitmentOpsOnly) {
     return recruitmentOpsOnlyNav();
@@ -95,6 +96,21 @@ function groupedNavForRole(
             { href: "/admin/upload", label: "Upload Data", icon: Upload },
           ],
         },
+        // Own attendance/leave self-service, when linked to an Employee record.
+        // Deliberately just these four — My Team/tickets stay Manager/Employee-only.
+        ...(showOwnWorkspaceNav
+          ? [
+              {
+                group: "My Workspace",
+                items: [
+                  { href: "/employee/dashboard", label: "My Dashboard", icon: LayoutDashboard },
+                  { href: "/employee/attendance", label: "My Attendance", icon: ClipboardList },
+                  { href: "/employee/leaves", label: "My Leaves", icon: CalendarDays },
+                  { href: "/employee/profile", label: "My Profile", icon: UserRound },
+                ],
+              },
+            ]
+          : []),
         ...(showRecruitmentNav
           ? [
               {
@@ -177,6 +193,7 @@ export function AppSidebar({
   showRecruitmentNav = false,
   showPanelistInterviews = false,
   recruitmentOpsOnly = false,
+  showOwnWorkspaceNav = false,
 }: {
   role: AppUserRole;
   userName: string;
@@ -190,6 +207,8 @@ export function AppSidebar({
   showPanelistInterviews?: boolean;
   /** Recruitment test managers: Hiring Workspace only. */
   recruitmentOpsOnly?: boolean;
+  /** HR/Super Admin linked to an Employee record: "My Workspace" nav group. */
+  showOwnWorkspaceNav?: boolean;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const onMobileOpen = () => setMobileOpen(true);
@@ -200,7 +219,8 @@ export function AppSidebar({
     showMyTeamGroup,
     showRecruitmentNav,
     showPanelistInterviews,
-    recruitmentOpsOnly
+    recruitmentOpsOnly,
+    showOwnWorkspaceNav
   );
   const home = recruitmentOpsOnly
     ? "/admin/recruitment"

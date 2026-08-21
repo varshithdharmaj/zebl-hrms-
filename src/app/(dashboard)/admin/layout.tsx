@@ -3,7 +3,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { ListPageSkeleton } from "@/components/loading";
 import { getSession } from "@/lib/auth";
 import { redirectToLogin } from "@/lib/auth/redirect-login";
-import { canAccessAdmin } from "@/lib/permissions";
+import { canAccessAdmin, canAccessHRAdministration } from "@/lib/permissions";
 import { isRecruitmentModuleEnabled } from "@/lib/recruitment/config/feature-flags";
 import {
   canAccessRecruitmentAdministration,
@@ -32,6 +32,7 @@ export default async function AdminLayout({
       variant="wide"
       showRecruitmentNav={showRecruitmentNav}
       recruitmentOpsOnly={!isAdmin && isRecruitmentOpsTestManager}
+      showOwnWorkspaceNav={canAccessHRAdministration(session.role) && session.employeeId != null}
     >
       {/*
         Stable Suspense in the shared layout (not only leaf loading.tsx).
