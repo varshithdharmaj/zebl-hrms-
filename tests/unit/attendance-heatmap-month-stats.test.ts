@@ -3,6 +3,7 @@ import type { AttendanceDayResult } from "@/lib/attendance/day-classification";
 import {
   buildHeatmapMonthStats,
   buildMonthWeekRanges,
+  buildCycleWeekSpan,
   monthKeyFromDate,
 } from "@/lib/attendance/heatmap-month-stats";
 import { aggregateAttendanceForRange } from "@/lib/attendance/aggregate-range";
@@ -83,6 +84,25 @@ describe("buildMonthWeekRanges", () => {
       startWeek: 1,
       endWeek: 2,
     });
+  });
+});
+
+describe("buildCycleWeekSpan", () => {
+  const weeks: (AttendanceDayResult | null)[][] = [
+    [day("2026-06-28", "PRESENT", "target"), null, null, null, null, null, null],
+    [day("2026-07-05", "PRESENT", "target"), null, null, null, null, null, null],
+    [day("2026-07-12", "ABSENT"), null, null, null, null, null, null],
+    [day("2026-07-19", "ABSENT"), null, null, null, null, null, null],
+  ];
+
+  it("spans only the weeks containing a day inside [start, end], independent of month boundaries", () => {
+    const span = buildCycleWeekSpan(weeks, new Date(2026, 5, 25), new Date(2026, 6, 12));
+    expect(span).toEqual({ startWeek: 0, endWeek: 2 });
+  });
+
+  it("returns null when no day in the grid falls inside the range", () => {
+    const span = buildCycleWeekSpan(weeks, new Date(2026, 7, 1), new Date(2026, 7, 25));
+    expect(span).toBeNull();
   });
 });
 

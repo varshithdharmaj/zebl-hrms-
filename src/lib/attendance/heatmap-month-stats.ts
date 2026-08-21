@@ -149,3 +149,27 @@ export function buildMonthWeekRanges(
       endWeek: span.endWeek,
     }));
 }
+
+export type WeekSpan = { startWeek: number; endWeek: number };
+
+/**
+ * Week-index span covering every day that falls in [start, end] — used to overlay an
+ * arbitrary date range (the current attendance cycle) on the week grid, independent of
+ * calendar-month boundaries (unlike `buildMonthWeekRanges`, which groups by month).
+ */
+export function buildCycleWeekSpan(
+  weeks: (AttendanceDayResult | null)[][],
+  start: Date,
+  end: Date
+): WeekSpan | null {
+  let span: WeekSpan | null = null;
+
+  weeks.forEach((week, weekIndex) => {
+    const inRange = week.some((day) => day && day.date >= start && day.date <= end);
+    if (!inRange) return;
+    if (!span) span = { startWeek: weekIndex, endWeek: weekIndex };
+    else span.endWeek = weekIndex;
+  });
+
+  return span;
+}

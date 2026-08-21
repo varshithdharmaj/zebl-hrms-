@@ -41,10 +41,10 @@ describe("defaultDateRange / parseDateRange with a fixed clock", () => {
     vi.useRealTimers();
   });
 
-  it("resolves 'this month through today' to the correct calendar dates", () => {
-    // This is the exact scenario that was silently off by one day: month-start and
-    // today's date both need to reflect the LOCAL calendar day the clock is set to.
-    expect(defaultDateRange()).toEqual({ start: "2026-07-01", end: "2026-07-22" });
+  it("resolves the default range to the active 25th-to-25th cycle through today", () => {
+    // Before the 25th, the cycle started on the *previous* month's 25th; today's
+    // date must still reflect the LOCAL calendar day the clock is set to.
+    expect(defaultDateRange()).toEqual({ start: "2026-06-25", end: "2026-07-22" });
   });
 
   it("swaps an inverted range and still reports the corrected ISO bounds", () => {

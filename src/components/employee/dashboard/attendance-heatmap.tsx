@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -33,11 +33,10 @@ import {
 } from "@/lib/attendance/day-labels";
 import {
   buildHeatmapMonthStats,
-  buildMonthWeekRanges,
   monthKeyFromDate,
   type HeatmapMonthStats,
-  type MonthWeekRange,
 } from "@/lib/attendance/heatmap-month-stats";
+import { formatAttendanceCycleLabel } from "@/lib/attendance/attendance-cycle";
 
 const WEEKDAY_LABELS = ["", "Mon", "", "Wed", "", "Fri", ""];
 
@@ -45,8 +44,13 @@ const WEEKDAY_LABELS = ["", "Mon", "", "Wed", "", "Fri", ""];
 const CELL = 26;
 const GAP = 3;
 const STEP = CELL + GAP;
-const WEEKDAY_GUTTER = 32; // matches `w-8` weekday label column
 const MONTH_LABEL_ROW = 18;
+
+// useLayoutEffect warns "does nothing on the server" when it runs during SSR — this
+// component is server-rendered before hydration, so fall back to useEffect there (a
+// no-op either way, since there's no DOM to measure) and only use the real
+// useLayoutEffect once running in the browser.
+const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 export function isWorkedCategory(category: AttendanceDayResult["category"]): boolean {
   return isWorkedDayCategory(category);
@@ -54,10 +58,13 @@ export function isWorkedCategory(category: AttendanceDayResult["category"]): boo
 
 /**
  * An active hover/focus interaction always wins over a pinned month. The pin
- * is only a fallback once hoveredMonthKey is genuinely null (no pointer/focus
- * interaction anywhere in the interactive wrapper — see `shouldClearHoverOnFocusOut`
- * and the wrapper's onMouseLeave, which are the only two places hoveredMonthKey
- * is cleared).
+ * is only a fallback once hoveredMonthKey is genuinely null — no pointer/focus
+ * interaction owns a specific month. hoveredMonthKey is cleared by: the wrapper's
+ * onMouseLeave, `shouldClearHoverOnFocusOut` (focus leaving the wrapper), and
+ * hovering a grid position that owns no month (a blank range-boundary cell or an
+ * unlabeled week-header slot) — every hoverable surface in the wrapper has
+ * well-defined hover behavior, so hoveredMonthKey can never get "stuck" showing a
+ * month the pointer isn't actually over.
  */
 export function resolveActiveMonthKey(
   hoveredMonthKey: string | null,
@@ -95,13 +102,22 @@ export function getCellColor(day: AttendanceDayResult): string {
   return CATEGORY_COLOR[day.category] ?? HEATMAP_COLOR.empty;
 }
 
-export function buildTooltipText(day: AttendanceDayResult, expectedWorkMinutes: number): string {
+export function buildTooltipText(
+  day: AttendanceDayResult,
+  expectedWorkMinutes: number,
+  isFuture = false
+): string {
   const dateLabel = day.date.toLocaleDateString("en-IN", {
     weekday: "long",
     day: "numeric",
     month: "long",
     year: "numeric",
   });
+
+  // Future dates never show a category (absent/leave/holiday) — there's nothing to
+  // report yet, and showing one would misleadingly imply a known outcome.
+  if (isFuture) return `${dateLabel} · Upcoming`;
+
   const parts = [`${dateLabel}`, CATEGORY_LABEL[day.category]];
 
   if (isWorkedDayCategory(day.category)) {
@@ -136,6 +152,7 @@ function ContributionCell({
   expectedWorkMinutes,
   isSelected,
   isToday,
+  isFuture,
   dimmed,
   href,
   onMonthIntent,
@@ -144,15 +161,18 @@ function ContributionCell({
   expectedWorkMinutes: number;
   isSelected: boolean;
   isToday: boolean;
+  isFuture: boolean;
   dimmed: boolean;
   href: string;
   onMonthIntent: (monthKey: string | null) => void;
 }) {
-  const color = getCellColor(day);
-  const fg = heatmapCellForeground(
-    isWorkedDayCategory(day.category) ? day.ratioTier : null
-  );
-  const tooltip = buildTooltipText(day, expectedWorkMinutes);
+  // Upcoming dates always render as the neutral "empty" swatch — the classifier's
+  // category (which may say ABSENT/LEAVE/HOLIDAY) describes a day that hasn't happened.
+  const color = isFuture ? HEATMAP_COLOR.empty : getCellColor(day);
+  const fg = isFuture
+    ? HEATMAP_COLOR.cellFg
+    : heatmapCellForeground(isWorkedDayCategory(day.category) ? day.ratioTier : null);
+  const tooltip = buildTooltipText(day, expectedWorkMinutes, isFuture);
   const dateNum = day.date.getDate();
   const monthKey = monthKeyFromDate(day.date);
 
@@ -176,8 +196,8 @@ function ContributionCell({
           dimmed && "opacity-35"
         )}
         style={{ backgroundColor: color, color: fg }}
-        aria-label={tooltip}
-        aria-current={isToday ? "date" : undefined}
+        aria-label={isSelected ? `${tooltip} · Selected` : tooltip}
+        aria-current={isSelected ? "date" : isToday ? "date" : undefined}
       >
         <span className="select-none text-[0.5rem] font-semibold tabular-nums opacity-90">
           {dateNum}
@@ -360,7 +380,7 @@ function MonthSummaryBar({ stats }: { stats: HeatmapMonthStats }) {
 
 function AttendanceHeatmapErrorNotice() {
   return (
-    <SectionCard title="Attendance activity" description="Daily working-hour effectiveness over the current year.">
+    <SectionCard title="Attendance activity" description="Daily working-hour effectiveness for the current attendance cycle.">
       <div className="flex items-start gap-3 rounded-xl border border-warning/25 bg-warning-muted px-4 py-3">
         <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
         <div>
@@ -444,35 +464,6 @@ function getMonthLabels(weeks: (AttendanceDayResult | null)[][]): { label: strin
   return labels;
 }
 
-function MonthWindowOverlay({
-  range,
-  weekCount,
-}: {
-  range: MonthWeekRange;
-  weekCount: number;
-}) {
-  if (weekCount === 0) return null;
-  const left = WEEKDAY_GUTTER + range.startWeek * STEP;
-  const width = (range.endWeek - range.startWeek + 1) * STEP - GAP;
-  const top = MONTH_LABEL_ROW + GAP;
-  const height = 7 * STEP - GAP;
-
-  return (
-    <div
-      aria-hidden
-      className="pointer-events-none absolute z-0 rounded-lg transition-[opacity,transform] duration-200 motion-reduce:transition-none"
-      style={{
-        left,
-        top,
-        width,
-        height,
-        backgroundColor: "var(--heatmap-month-tint)",
-        boxShadow: "inset 0 0 0 1px var(--heatmap-month-outline)",
-      }}
-    />
-  );
-}
-
 export function AttendanceHeatmap({ month }: { month: AttendanceHeatmapMonth | null }) {
   const searchParams = useSearchParams();
   const selectedDate = searchParams.get("date");
@@ -483,17 +474,44 @@ export function AttendanceHeatmap({ month }: { month: AttendanceHeatmapMonth | n
 
   const activeMonthKey = resolveActiveMonthKey(hoveredMonthKey, pinnedMonthKey);
 
+  // Scroll position only, never the data range: the heatmap still fetches/renders the
+  // full Jan 1 → today span (see heatmap-data.ts); this just moves the *viewport* over
+  // that unchanged content so the most recent ~4 months are visible without the user
+  // having to scroll manually every time.
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const hasSetInitialScroll = useRef(false);
+
   const derived = useMemo(() => {
     if (!month) return null;
     const weeks = organizeIntoWeeks(month.days);
+    const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    // Hover-month stats must never count future dates as absent — only classify
+    // what's actually happened so far this cycle.
+    const relevantDays = month.days.filter((d) => d.date <= todayMidnight);
     return {
-      streaks: calculateStreaks(month.days, today),
+      streaks: calculateStreaks(relevantDays, today),
       weeks,
       monthLabels: getMonthLabels(weeks),
-      monthRanges: buildMonthWeekRanges(weeks),
-      monthStats: buildHeatmapMonthStats(month.days),
+      monthStats: buildHeatmapMonthStats(relevantDays),
+      todayMidnight,
     };
   }, [month, today]);
+
+  // Runs once, after layout, to land the viewport on the latest data instead of Jan 1.
+  // Guarded by hasSetInitialScroll so later re-renders (hover, pin, selecting a
+  // different day) never yank the scroll position back — only the very first
+  // successful measurement ever moves it. Derived from the container's actual
+  // scrollWidth/clientWidth (not a hard-coded pixel offset or month count), so it
+  // adapts to however wide the rendered range and viewport actually are; when there's
+  // nothing to scroll (e.g. only a few months of data), the clamp below is a no-op.
+  useIsomorphicLayoutEffect(() => {
+    if (hasSetInitialScroll.current) return;
+    const el = scrollContainerRef.current;
+    if (!el || !derived) return;
+
+    el.scrollLeft = el.scrollWidth - el.clientWidth;
+    hasSetInitialScroll.current = true;
+  }, [derived]);
 
   const searchParamsString = searchParams.toString();
   const cellHref = useMemo(() => {
@@ -508,17 +526,19 @@ export function AttendanceHeatmap({ month }: { month: AttendanceHeatmapMonth | n
     return <AttendanceHeatmapErrorNotice />;
   }
 
-  const { streaks, weeks, monthLabels, monthRanges, monthStats } = derived;
+  const { streaks, weeks, monthLabels, monthStats, todayMidnight } = derived;
   const { currentStreak, bestStreak, targetDaysCount } = streaks;
-  const activeRange = activeMonthKey
-    ? monthRanges.find((r) => r.monthKey === activeMonthKey) ?? null
-    : null;
   const activeStats = activeMonthKey ? monthStats.get(activeMonthKey) ?? null : null;
+  const cycleLabel = formatAttendanceCycleLabel({
+    startDate: month.cycleStartDate,
+    endDate: month.cycleEndDate,
+    dates: [],
+  });
 
   return (
     <SectionCard
       title="Attendance activity"
-      description="Daily working-hour effectiveness over the current year"
+      description={`Daily working-hour effectiveness over the current year · current cycle: ${cycleLabel}`}
       action={
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Info className="h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -544,15 +564,19 @@ export function AttendanceHeatmap({ month }: { month: AttendanceHeatmapMonth | n
       >
         {activeStats && <MonthSummaryBar stats={activeStats} />}
 
-        <div className="overflow-x-auto pb-2">
+        <div ref={scrollContainerRef} className="overflow-x-auto pb-2">
           <div className="relative inline-flex flex-col gap-[3px]">
-          {activeRange && <MonthWindowOverlay range={activeRange} weekCount={weeks.length} />}
-
           <div className="relative z-[1] flex items-center gap-[3px] pl-9" style={{ minHeight: MONTH_LABEL_ROW }}>
             {weeks.map((_, weekIndex) => {
               const label = monthLabels.find((m) => m.weekIndex === weekIndex);
               return (
-                <div key={weekIndex} className="w-[26px] text-left">
+                <div
+                  key={weekIndex}
+                  className="w-[26px] text-left"
+                  // Unlabeled weeks own no month — hovering them shouldn't leave
+                  // hoveredMonthKey stuck on whatever was last actively hovered.
+                  onMouseEnter={label ? undefined : () => setHoveredMonthKey(null)}
+                >
                   {label && (
                     <button
                       type="button"
@@ -588,7 +612,15 @@ export function AttendanceHeatmap({ month }: { month: AttendanceHeatmapMonth | n
               {weeks.map((week, weekIndex) => {
                 const day = week[dayIndex];
                 if (!day) {
-                  return <div key={weekIndex} className="h-[26px] w-[26px]" />;
+                  // No day at this grid position (range boundary) — owns no month,
+                  // so hovering it must not leave a stale month summary showing.
+                  return (
+                    <div
+                      key={weekIndex}
+                      className="h-[26px] w-[26px]"
+                      onMouseEnter={() => setHoveredMonthKey(null)}
+                    />
+                  );
                 }
 
                 const dayStr = toISODate(day.date);
@@ -597,6 +629,7 @@ export function AttendanceHeatmap({ month }: { month: AttendanceHeatmapMonth | n
                   day.date.getDate() === today.getDate() &&
                   day.date.getMonth() === today.getMonth() &&
                   day.date.getFullYear() === today.getFullYear();
+                const isFuture = day.date > todayMidnight;
                 const dimmed = Boolean(
                   activeMonthKey && monthKeyFromDate(day.date) !== activeMonthKey
                 );
@@ -608,6 +641,7 @@ export function AttendanceHeatmap({ month }: { month: AttendanceHeatmapMonth | n
                     expectedWorkMinutes={month.expectedWorkMinutes}
                     isSelected={isSelected}
                     isToday={isToday}
+                    isFuture={isFuture}
                     dimmed={dimmed}
                     href={cellHref(day)}
                     onMonthIntent={setHoveredMonthKey}

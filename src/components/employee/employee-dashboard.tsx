@@ -10,6 +10,7 @@ import { getEmployeeAttendanceHeatmapData, type AttendanceHeatmapMonth } from "@
 import { getAttendanceDayStatus, findHeatmapDayStatus } from "@/lib/attendance/day-status";
 import { getHeroStatus, type HeroStatus } from "@/lib/attendance/hero-status";
 import { startOfDay, toISODate } from "@/lib/utils";
+import { prisma } from "@/lib/prisma";
 
 export async function EmployeeDashboard({
   employeeId,
@@ -28,7 +29,7 @@ export async function EmployeeDashboard({
   endDate?: string;
   heatmapMonth?: string;
 }) {
-  const [data, balances, heatmap] = await Promise.all([
+  const [data, balances, heatmap, employee] = await Promise.all([
     getEmployeeDashboardData(employeeId, selectedDate, startDate, endDate),
     // Same accrual-before-read path as /employee/leaves so remaining days match.
     getLeaveBalanceSummaries(employeeId, { processAccruals: true }),
@@ -40,6 +41,7 @@ export async function EmployeeDashboard({
         return null;
       }
     ),
+    prisma.employee.findUnique({ where: { id: employeeId }, select: { shift: true } }),
   ]);
 
   const isToday = data.selectedDate === toISODate(startOfDay());
@@ -92,7 +94,10 @@ export async function EmployeeDashboard({
 
   return (
     <div className="hr-dashboard">
-      <div className="hr-dashboard__main">
+      {/* Top row: current status is the strongest signal on the page; leave
+          balances stay visible right alongside it (secondary, not competing)
+          at every breakpoint, since DOM order here is also the visual order. */}
+      <div className="hr-dashboard__top">
         {/* A. Header / today's status + the one authoritative filter control */}
         <AttendanceHero
           firstName={firstName}
@@ -100,23 +105,37 @@ export async function EmployeeDashboard({
           profilePhotoUrl={profilePhotoUrl}
           displayDate={displayDate}
           dateIso={data.selectedDate}
+          shift={employee?.shift ?? null}
           heroStatus={heroStatus}
           defaultStart={data.selectedStart}
           defaultEnd={data.selectedEnd}
         />
 
-        {/* C. Today's attendance */}
+        <aside className="hr-dashboard__rail">
+          {/* B. Leave / upcoming information */}
+          <DashboardWidgets balances={balances} />
+        </aside>
+      </div>
+
+      <div className="hr-dashboard__main">
+        {/* C. Attendance heatmap — the primary navigation surface for picking a day, so
+            it leads the column; selecting a cell updates the details section right
+            below it via the `date` URL param (see AttendanceTimeline). */}
+        <AttendanceHeatmap month={heatmap} />
+
+        {/* D. Selected-day details (attendance / login / logout / activity) — always
+            immediately follows the heatmap so the cause → effect relationship of
+            clicking a cell is visually obvious. */}
         <AttendanceTimeline
           heroStatus={heroStatus}
           sessions={data.day.sessions}
-          overtimeMinutes={data.day.overtimeMinutes}
           expectedWorkMinutes={expectedWorkMinutes}
           totalWorkedMinutes={data.day.workedMinutes}
           isToday={isToday}
           selectedDateLabel={selectedDayLabel}
         />
 
-        {/* D. Core KPI summary */}
+        {/* E. Core KPI summary */}
         <StatsGridSection
           presentDays={data.period.presentDays}
           dayWorkedMinutes={data.day.workedMinutes}
@@ -125,9 +144,6 @@ export async function EmployeeDashboard({
           selectedDateLabel={selectedDayLabel}
         />
 
-        {/* E. Attendance heatmap */}
-        <AttendanceHeatmap month={heatmap} />
-
         {/* F. Attendance history */}
         <HistorySection
           rangeLabel={data.period.rangeLabel}
@@ -135,11 +151,6 @@ export async function EmployeeDashboard({
           totalCount={data.recentRecordsTotal}
         />
       </div>
-
-      <aside className="hr-dashboard__rail">
-        {/* G. Leave / upcoming information */}
-        <DashboardWidgets balances={balances} />
-      </aside>
     </div>
   );
 }

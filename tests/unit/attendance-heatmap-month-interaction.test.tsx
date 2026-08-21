@@ -70,6 +70,16 @@ describe("resolveActiveMonthKey", () => {
     expect(resolveActiveMonthKey("2026-05", null)).toBe("2026-05");
     expect(resolveActiveMonthKey("2026-06", null)).toBe("2026-06");
   });
+
+  it("reasserts the pinned month when the pointer moves over a grid position that owns no month (blank range-boundary cell or unlabeled week-header slot) — this is correct, not a stale flash: no specific month is being hovered", () => {
+    const pinnedMonthKey = "2026-05";
+    // Blank-cell onMouseEnter handlers explicitly set hoveredMonthKey to null.
+    expect(resolveActiveMonthKey(null, pinnedMonthKey)).toBe("2026-05");
+  });
+
+  it("shows no summary when hovering a blank grid position with nothing pinned", () => {
+    expect(resolveActiveMonthKey(null, null)).toBeNull();
+  });
 });
 
 describe("shouldClearHoverOnFocusOut", () => {
