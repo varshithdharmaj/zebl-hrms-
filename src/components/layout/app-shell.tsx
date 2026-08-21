@@ -21,6 +21,8 @@ export function AppShell({
   deferMyTeamNav = false,
   /** Recruitment test managers: Hiring Workspace only (no other /admin nav). */
   recruitmentOpsOnly = false,
+  /** HR/Super Admin linked to an Employee record: "My Workspace" nav group. */
+  showOwnWorkspaceNav = false,
 }: {
   user: SessionUser;
   children: React.ReactNode;
@@ -32,6 +34,7 @@ export function AppShell({
   showPanelistInterviews?: boolean;
   deferMyTeamNav?: boolean;
   recruitmentOpsOnly?: boolean;
+  showOwnWorkspaceNav?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [myTeamVisible, setMyTeamVisible] = useState(
@@ -68,6 +71,7 @@ export function AppShell({
         showRecruitmentNav={showRecruitmentNav}
         showPanelistInterviews={showPanelistInterviews}
         recruitmentOpsOnly={recruitmentOpsOnly}
+        showOwnWorkspaceNav={showOwnWorkspaceNav}
       />
       <div
         className={cn(

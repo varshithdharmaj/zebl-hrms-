@@ -3,7 +3,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { DashboardPageSkeleton } from "@/components/loading";
 import { getSession } from "@/lib/auth";
 import { redirectToLogin } from "@/lib/auth/redirect-login";
-import { canAccessEmployeeShell } from "@/lib/permissions";
+import { canAccessHRAdministration, canAccessOwnWorkspace } from "@/lib/permissions";
 import { isRecruitmentModuleEnabled } from "@/lib/recruitment/config/feature-flags";
 import { hasPanelistInterviewAssignment } from "@/lib/recruitment/interview/queries";
 import { isRecruitmentTestManager } from "@/lib/recruitment/permissions/recruitment-test-manager";
@@ -14,7 +14,7 @@ export default async function EmployeeLayout({
   children: React.ReactNode;
 }) {
   const session = await getSession();
-  if (!session || !canAccessEmployeeShell(session.role)) return redirectToLogin();
+  if (!session || !canAccessOwnWorkspace(session.role, session.employeeId)) return redirectToLogin();
 
   const recruitmentOn = isRecruitmentModuleEnabled();
   const showPanelistInterviews =
@@ -29,6 +29,7 @@ export default async function EmployeeLayout({
       deferMyTeamNav
       showPanelistInterviews={showPanelistInterviews}
       showRecruitmentNav={recruitmentOn && isRecruitmentTestManager(session)}
+      showOwnWorkspaceNav={canAccessHRAdministration(session.role)}
     >
       <Suspense
         fallback={
