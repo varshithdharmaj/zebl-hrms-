@@ -27,7 +27,7 @@ const DASHBOARD_PRESETS: {
   { id: "today", label: "1D" },
   { id: "last-7-days", label: "7D" },
   { id: "last-30-days", label: "30D" },
-  { id: "this-month", label: "MTD" },
+  { id: "this-month", label: "Cycle" },
   { id: "last-month", label: "Last Month" },
 ];
 

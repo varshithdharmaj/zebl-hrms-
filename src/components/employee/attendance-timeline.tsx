@@ -2,7 +2,7 @@ import {
   LogIn,
   LogOut,
   Clock,
-  Timer,
+  Coffee,
   AlertTriangle,
   CalendarX2,
   PartyPopper,
@@ -18,6 +18,7 @@ import {
   shouldShowAttendancePeriods,
   type AttendancePeriodSession,
 } from "@/lib/attendance/attendance-periods-display";
+import { totalBreakMinutesFromSessions } from "@/lib/attendance/session-duration";
 import type { HeroStatus } from "@/lib/attendance/hero-status";
 import { cn, minutesToHours } from "@/lib/utils";
 
@@ -29,7 +30,7 @@ function StepTag({ label }: { label: string }) {
   );
 }
 
-function buildSteps(heroStatus: HeroStatus, overtimeMinutes: number, expectedWorkMinutes: number | null) {
+function buildSteps(heroStatus: HeroStatus, breakMinutes: number, expectedWorkMinutes: number | null) {
   return [
     {
       key: "checkIn",
@@ -65,12 +66,12 @@ function buildSteps(heroStatus: HeroStatus, overtimeMinutes: number, expectedWor
           : null,
     },
     {
-      key: "overtime",
-      icon: Timer,
-      label: "Overtime",
+      key: "break",
+      icon: Coffee,
+      label: "Break",
       accent: "bg-accent-amber-muted text-accent-amber",
-      value: minutesToHours(overtimeMinutes),
-      active: overtimeMinutes > 0,
+      value: minutesToHours(breakMinutes),
+      active: breakMinutes > 0,
       tag: null as string | null,
       caption: null as string | null,
     },
@@ -249,7 +250,6 @@ function SummarySteps({
 export function AttendanceTimeline({
   heroStatus,
   sessions = [],
-  overtimeMinutes,
   expectedWorkMinutes,
   totalWorkedMinutes: _totalWorkedMinutes = 0,
   isToday,
@@ -259,7 +259,6 @@ export function AttendanceTimeline({
   heroStatus: HeroStatus | null;
   /** Sessions for the selected date only (from getEmployeeDashboardData). */
   sessions?: AttendancePeriodSession[];
-  overtimeMinutes: number;
   expectedWorkMinutes: number | null;
   /** Daily total from AttendanceRecord — shown via hero worked label in the summary steps. */
   totalWorkedMinutes?: number;
@@ -288,7 +287,8 @@ export function AttendanceTimeline({
 
   const hasCheckIn = Boolean(heroStatus.checkInTime);
   const showPeriods = shouldShowAttendancePeriods(sessions);
-  const steps = buildSteps(heroStatus, overtimeMinutes, expectedWorkMinutes);
+  const breakMinutes = totalBreakMinutesFromSessions(sessions);
+  const steps = buildSteps(heroStatus, breakMinutes, expectedWorkMinutes);
 
   const contextNote =
     heroStatus.category === "WORKED_ON_HOLIDAY" || heroStatus.category === "WORKED_ON_WEEKLY_OFF"

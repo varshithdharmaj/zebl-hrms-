@@ -1,8 +1,10 @@
-import { startOfMonth, endOfMonth, startOfDay, isSameDay } from "@/lib/utils";
+import { startOfDay, isSameDay } from "@/lib/utils";
 import { getAttendanceSettings, getDateOverridesForRange } from "@/lib/attendance/attendance-settings";
 import { getHolidaysForRange, getApprovedLeaveForEmployeeRange } from "@/lib/leave/leave-calendar";
 import { getEmployeeAttendanceRecordsForRange } from "@/lib/attendance/employee-attendance-year-cache";
 import { getEffectiveAttendanceDayType, type AttendanceDayResult } from "@/lib/attendance/day-classification";
+import { getAttendanceCycleWindow } from "@/lib/attendance/attendance-cycle";
+import { resolveHeatmapStartDate } from "@/lib/attendance/heatmap-start-date";
 
 export type AttendanceHeatmapMonth = {
   monthKey: string;
@@ -13,16 +15,11 @@ export type AttendanceHeatmapMonth = {
   /** Same org-wide setting passed to the classifier for every day this month — surfaced
    *  so the UI can show "of Xh expected" without re-fetching or re-deriving it. */
   expectedWorkMinutes: number;
+  /** The active 25th-to-25th attendance cycle containing today — the heatmap highlights
+   *  this as a band over the full year view (see AttendanceHeatmap's cycle overlay). */
+  cycleStartDate: Date;
+  cycleEndDate: Date;
 };
-
-function parseMonthParam(monthStr?: string): Date {
-  if (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) {
-    const [year, month] = monthStr.split("-").map(Number);
-    const candidate = new Date(year, month - 1, 1);
-    if (!Number.isNaN(candidate.getTime())) return candidate;
-  }
-  return startOfMonth(new Date());
-}
 
 function monthKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -33,22 +30,34 @@ function addMonths(date: Date, delta: number): Date {
 }
 
 /**
- * Fetches everything the heatmap needs for the current calendar year (Jan 1 → today)
- * in a single round-trip, then classifies every day via the canonical classifier.
- * Used for year-to-date contribution graph.
+ * Fetches everything the heatmap needs for the year-to-date contribution graph, then
+ * classifies every day via the canonical classifier. The lower bound is the fixed
+ * `HEATMAP_DISPLAY_START_DATE` for every employee, regardless of joining date (see
+ * `resolveHeatmapStartDate`).
+ * The cycle is still computed (`getAttendanceCycleWindow`) and surfaced via
+ * `cycleStartDate`/`cycleEndDate` so the UI can highlight it as a band over the visible
+ * range, independent of where that range starts.
+ *
+ * The fetch range's tail extends past today only far enough to cover the active cycle's
+ * remaining days (so the heatmap can render them "upcoming" instead of just omitting
+ * them) — never further, so this stays a small, bounded addition to year-to-date.
+ *
+ * `monthParam` is accepted for call-site/back-compat only — month navigation was
+ * already removed from the UI before the cycle-window work.
  */
 export async function getEmployeeAttendanceHeatmapData(
   employeeId: number,
   monthParam?: string
 ): Promise<AttendanceHeatmapMonth> {
-  const today = new Date();
+  void monthParam;
+  const today = startOfDay(new Date());
   const currentYear = today.getFullYear();
+  const cycleWindow = getAttendanceCycleWindow(today);
 
-  // Year-to-date range: January 1 of current year → today
-  const startDate = new Date(currentYear, 0, 1);
-  const endDate = new Date(today);
+  const startDate = resolveHeatmapStartDate(today);
+  const endDate = cycleWindow.endDate > today ? cycleWindow.endDate : today;
 
-  // endDate is inclusive (today). Year-cache API uses exclusive end — add one day.
+  // endDate is inclusive. Year-cache API uses exclusive end — add one day.
   const endExclusive = startOfDay(
     new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate() + 1)
   );
@@ -64,7 +73,10 @@ export async function getEmployeeAttendanceHeatmapData(
   const days: AttendanceDayResult[] = [];
   const currentDate = new Date(startDate);
 
-  // Generate all days from year start to today (exclude future dates)
+  // Generate every day from the start of the year through endDate (which may extend a
+  // few days past today to cover the active cycle's tail) — the classifier only sees
+  // date/schedule/holiday/leave/record inputs, so future dates with no attendance
+  // record simply classify the same way "no data yet" always has.
   while (currentDate <= endDate) {
     const date = new Date(currentDate);
 
@@ -98,7 +110,6 @@ export async function getEmployeeAttendanceHeatmapData(
     currentDate.setDate(currentDate.getDate() + 1);
   }
 
-  // For compatibility with existing navigation (though arrows are now removed)
   const referenceMonth = new Date(currentYear, today.getMonth(), 1);
 
   return {
@@ -108,5 +119,7 @@ export async function getEmployeeAttendanceHeatmapData(
     nextMonthKey: monthKey(addMonths(referenceMonth, 1)),
     days,
     expectedWorkMinutes: settings.expectedWorkMinutes,
+    cycleStartDate: cycleWindow.startDate,
+    cycleEndDate: cycleWindow.endDate,
   };
 }

@@ -6,6 +6,7 @@ import {
   startOfMonth,
   toISODate,
 } from "@/lib/utils";
+import { getAttendanceCycleWindow } from "@/lib/attendance/attendance-cycle";
 
 export const DATE_RANGE_PRESETS = [
   "today",
@@ -36,7 +37,7 @@ export const DATE_RANGE_PRESET_LABELS: Record<DateRangePreset, string> = {
   yesterday: "Yesterday",
   "last-7-days": "Last 7 days",
   "last-30-days": "Last 30 days",
-  "this-month": "This month",
+  "this-month": "This cycle",
   "last-month": "Last month",
   custom: "Custom",
 };
@@ -109,7 +110,11 @@ export function getPresetRange(
       return { from: toISODate(from), to: todayStr };
     }
     case "this-month": {
-      return { from: toISODate(startOfMonth(today)), to: todayStr };
+      // "This month" means the active 25th-to-25th attendance cycle, not the
+      // calendar month — clamped to today since the cycle's tail may be future-dated.
+      const cycle = getAttendanceCycleWindow(today);
+      const cycleEnd = cycle.endDate > today ? today : cycle.endDate;
+      return { from: toISODate(cycle.startDate), to: toISODate(cycleEnd) };
     }
     case "last-month": {
       const firstOfThisMonth = startOfMonth(today);

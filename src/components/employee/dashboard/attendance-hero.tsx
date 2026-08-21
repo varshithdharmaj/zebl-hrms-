@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProfileAvatar } from "@/components/shared/profile-avatar";
 import { DashboardDateRangeFilter } from "@/components/employee/dashboard/dashboard-date-range-filter";
+import { AttendanceShiftCell } from "@/components/attendance/attendance-shift-cell";
 import { cn } from "@/lib/utils";
 import type { HeroStatus, HeroTone } from "@/lib/attendance/hero-status";
 
@@ -94,6 +95,7 @@ export function AttendanceHero({
   profileHref = "/employee/profile",
   displayDate,
   dateIso,
+  shift = null,
   heroStatus,
   defaultStart,
   defaultEnd,
@@ -105,6 +107,8 @@ export function AttendanceHero({
   profileHref?: string;
   displayDate: string;
   dateIso: string;
+  /** Employee.shift assigned on profile (shown for both employee and manager views). */
+  shift?: string | null;
   /** null = the status computation failed; the hero renders a scoped error + retry. */
   heroStatus: HeroStatus | null;
   defaultStart: string;
@@ -162,6 +166,7 @@ export function AttendanceHero({
                   <span className="text-muted-foreground"> · {fullName.split(" ").slice(1).join(" ")}</span>
                 ) : null}
               </h1>
+              {shift && <AttendanceShiftCell shift={shift} compact />}
               <p>
                 <Link
                   href={profileHref}

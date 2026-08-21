@@ -92,28 +92,30 @@
   --heatmap-empty: #f8fafc;
   --heatmap-cell-fg: #0f172a;
   --heatmap-excellent-fg: #ffffff;
-  --heatmap-month-tint: rgb(15 23 42 / 0.045);
-  --heatmap-month-outline: rgb(15 23 42 / 0.1);
+  /* Attendance cycle window (25th-to-25th) — the heatmap's one persistent range
+     highlight. Outline only, no fill: attendance-color intensity stays dominant. */
+  --heatmap-cycle-outline: rgb(15 23 42 / 0.1);
+  --heatmap-cycle-edge: rgb(15 23 42 / 0.22);
   color-scheme: light;
 }
 
 .dark {
-  --background: #0a0e17;
-  --foreground: #e6e9ef;
-  --card: #121826;
-  --muted: #1b2333;
-  --muted-foreground: #97a2b8;
-  --border: #262f42;
-  --input: #262f42;
-  --ring: #7c8aa8;
-  --primary: #e2e8f0;
-  --primary-hover: #cbd5e1;
-  --primary-muted: #1b2333;
-  --primary-foreground: #0f172a;
-  --sidebar: #0d1420;
-  --sidebar-foreground: #b8c2d6;
-  --sidebar-border: #1f2739;
-  --sidebar-accent: #182131;
+  --background: #000000;
+  --foreground: #f2f2f2;
+  --card: #0d0d0d;
+  --muted: #1a1a1a;
+  --muted-foreground: #a3a3a3;
+  --border: #2b2b2b;
+  --input: #2b2b2b;
+  --ring: #8a8a8a;
+  --primary: #f2f2f2;
+  --primary-hover: #d4d4d4;
+  --primary-muted: #1a1a1a;
+  --primary-foreground: #0a0a0a;
+  --sidebar: #000000;
+  --sidebar-foreground: #c7c7c7;
+  --sidebar-border: #1f1f1f;
+  --sidebar-accent: #171717;
   --accent-blue: #5b9bf7;
   --accent-blue-muted: #17233d;
   --accent-green: #34d399;
@@ -135,14 +137,14 @@
   --heatmap-excellent: #34d399;
   --heatmap-absent: #9f1239;
   --heatmap-leave: #e11d48;
-  --heatmap-holiday: #334155;
-  --heatmap-weekly-off: #1e293b;
+  --heatmap-holiday: #333333;
+  --heatmap-weekly-off: #1f1f1f;
   --heatmap-insufficient: #b45309;
-  --heatmap-empty: #121826;
-  --heatmap-cell-fg: #f1f5f9;
-  --heatmap-excellent-fg: #0f172a;
-  --heatmap-month-tint: rgb(226 232 240 / 0.07);
-  --heatmap-month-outline: rgb(226 232 240 / 0.14);
+  --heatmap-empty: #0d0d0d;
+  --heatmap-cell-fg: #f2f2f2;
+  --heatmap-excellent-fg: #0a0a0a;
+  --heatmap-cycle-outline: rgb(242 242 242 / 0.14);
+  --heatmap-cycle-edge: rgb(242 242 242 / 0.32);
   color-scheme: dark;
 }
 
@@ -200,6 +202,16 @@ body {
 
 /* Premium HR dashboard shell */
 .hr-dashboard {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: var(--dashboard-gap-lg);
+}
+
+/* Hero + leave balance stay visually adjacent at every breakpoint (DOM order
+   already puts leave balance right after the hero, so this only affects
+   width/alignment, not reading order). */
+.hr-dashboard__top {
   display: grid;
   width: 100%;
   gap: var(--dashboard-gap-lg);
@@ -207,7 +219,7 @@ body {
 }
 
 @media (min-width: 1280px) {
-  .hr-dashboard {
+  .hr-dashboard__top {
     grid-template-columns: minmax(0, 1fr) 19.5rem;
   }
 }

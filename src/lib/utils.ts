@@ -76,7 +76,11 @@ export function parseISODate(str?: string): Date | null {
 /** Default period: 1st of current month through today */
 export function defaultDateRange(): { start: string; end: string } {
   const end = startOfDay();
-  const start = startOfMonth(end);
+  // Mirrors the 25th-to-25th attendance cycle in lib/attendance/attendance-cycle.ts
+  // (duplicated inline — this foundational utils module can't import that domain file
+  // without creating a cycle back through the many modules that import from here).
+  const cycleMonthOffset = end.getDate() >= 25 ? 0 : -1;
+  const start = new Date(end.getFullYear(), end.getMonth() + cycleMonthOffset, 25);
   return { start: toISODate(start), end: toISODate(end) };
 }
 

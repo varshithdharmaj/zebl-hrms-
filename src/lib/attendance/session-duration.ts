@@ -89,3 +89,24 @@ export function totalWorkedMinutesFromSessions(
   }
   return total;
 }
+
+/**
+ * Total break minutes: gaps between one session's checkout and the next
+ * session's checkin, for consecutive completed sessions on the same day.
+ */
+export function totalBreakMinutesFromSessions(sessions: SessionLike[]): number {
+  const sorted = [...sessions].sort(
+    (a, b) => (parseTimeToMinutes(a.checkIn) ?? 0) - (parseTimeToMinutes(b.checkIn) ?? 0)
+  );
+
+  let total = 0;
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const current = sorted[i];
+    const next = sorted[i + 1];
+    if (!current.checkOut) continue;
+
+    const gap = sessionDurationMinutes(current.checkOut, next.checkIn);
+    if (gap > 0) total += gap;
+  }
+  return total;
+}

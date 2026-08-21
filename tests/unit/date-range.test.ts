@@ -39,8 +39,8 @@ describe("getPresetRange", () => {
     expect(getPresetRange("last-30-days")).toEqual({ from: "2026-06-24", to: "2026-07-23" });
   });
 
-  it("resolves this month through today", () => {
-    expect(getPresetRange("this-month")).toEqual({ from: "2026-07-01", to: "2026-07-23" });
+  it("resolves this-month to the active 25th-to-25th cycle through today", () => {
+    expect(getPresetRange("this-month")).toEqual({ from: "2026-06-25", to: "2026-07-23" });
   });
 
   it("resolves last month across the full previous month", () => {
@@ -73,10 +73,10 @@ describe("parseDateRangeQuery", () => {
     vi.useRealTimers();
   });
 
-  it("defaults to this month when params are missing", () => {
+  it("defaults to this-month (the active cycle) when params are missing", () => {
     const parsed = parseDateRangeQuery({});
     expect(parsed).toMatchObject({
-      from: "2026-07-01",
+      from: "2026-06-25",
       to: "2026-07-23",
       preset: "this-month",
     });
@@ -120,7 +120,7 @@ describe("parseDateRangeQuery", () => {
 
   it("falls back on invalid dates", () => {
     const parsed = parseDateRangeQuery({ from: "not-a-date", to: "2026-13-40" });
-    expect(parsed.from).toBe("2026-07-01");
+    expect(parsed.from).toBe("2026-06-25");
     expect(parsed.to).toBe("2026-07-23");
     expect(parsed.preset).toBe("this-month");
   });
@@ -146,7 +146,7 @@ describe("parseDateRangeQuery", () => {
   });
 
   it("matches this-month when dates equal the preset", () => {
-    expect(matchPreset("2026-07-01", "2026-07-23")).toBe("this-month");
+    expect(matchPreset("2026-06-25", "2026-07-23")).toBe("this-month");
   });
 });
 
@@ -207,7 +207,7 @@ describe("toExclusiveUpperBound / helpers", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 6, 23, 12, 0, 0));
     const value = defaultDateRangeValue();
-    expect(parseISODate(value.from)?.getDate()).toBe(1);
+    expect(parseISODate(value.from)?.getDate()).toBe(25);
     expect(parseISODate(value.to)?.getDate()).toBe(23);
     vi.useRealTimers();
   });

@@ -115,6 +115,22 @@ describe("buildTooltipText", () => {
     );
     expect(text).toContain("approved leave date");
   });
+
+  it("never surfaces a category for future dates, regardless of what the classifier says", () => {
+    const futureAbsent = buildTooltipText(baseDay({ category: "ABSENT" }), 480, true);
+    const futureHoliday = buildTooltipText(
+      baseDay({ category: "HOLIDAY", holidayName: "Festival" }),
+      480,
+      true
+    );
+    const futureLeave = buildTooltipText(baseDay({ category: "LEAVE", leaveType: "EL" }), 480, true);
+
+    for (const text of [futureAbsent, futureHoliday, futureLeave]) {
+      expect(text).toContain("Upcoming");
+      expect(text).not.toMatch(/Absent|Holiday|Approved leave/);
+    }
+  });
+
 });
 
 describe("RATIO_TIER_COLOR coverage", () => {
