@@ -8,6 +8,7 @@ import {
 } from "@/lib/recruitment/job/labels";
 import { JobStatusBadge } from "@/components/recruitment/jobs/job-status-badge";
 import { JobOpeningActions } from "@/components/recruitment/jobs/job-opening-actions";
+import { JobPublicApplicationSection } from "@/components/recruitment/jobs/job-public-application-section";
 import { SectionCard } from "@/components/ui/section-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
@@ -40,10 +41,12 @@ export function JobOpeningDetailView({
   job,
   timeline,
   showCompensation,
+  appBaseUrl,
 }: {
   job: JobOpeningDetail;
   timeline: readonly TimelineItem[];
   showCompensation: boolean;
+  appBaseUrl: string;
 }) {
   return (
     <div className="space-y-6">
@@ -116,6 +119,19 @@ export function JobOpeningDetailView({
             </Link>
           </Button>
         </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Public Application"
+        description="Let candidates apply directly from a shareable link — no HRMS account needed."
+      >
+        <JobPublicApplicationSection
+          jobId={job.id}
+          jobStatus={job.status}
+          appBaseUrl={appBaseUrl}
+          isPubliclyListed={job.isPubliclyListed}
+          publicSlug={job.publicSlug}
+        />
       </SectionCard>
 
       <SectionCard title="Hiring Team">

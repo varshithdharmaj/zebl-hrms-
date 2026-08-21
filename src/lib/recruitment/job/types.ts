@@ -109,6 +109,8 @@ export type JobOpeningListItem = {
   hiringManagerName: string | null;
   hiringManagerEmployeeId: number | null;
   applicationCount: number;
+  isPubliclyListed: boolean;
+  publicSlug: string | null;
 };
 
 export type JobOpeningDetail = JobOpeningListItem & {

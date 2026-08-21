@@ -60,11 +60,19 @@ export async function parseResumeDocument(input: {
   semanticGenerate?: SemanticVerifyGenerator;
   /** Test seam for LLM resume parser Gemini call. */
   llmGenerate?: LlmResumeGenerator;
+  /**
+   * When true, always uses the deterministic pipeline regardless of the
+   * global RESUME_PARSE_MODE env var. Public /apply intake is deterministic
+   * and cost-free by requirement — a global LLM-mode toggle (meant for the
+   * authenticated HR upload flow) must never silently apply to anonymous
+   * public submissions.
+   */
+  forceDeterministic?: boolean;
 }): Promise<{
   result: ResumeParseResult;
   draftContent: ResumeImportDraftContent;
 }> {
-  const parseMode = getResumeParseMode();
+  const parseMode = input.forceDeterministic ? "deterministic" : getResumeParseMode();
 
   // --- LLM path: send original uploaded PDF/DOCX file directly to Gemini ---
   if (parseMode === "llm") {

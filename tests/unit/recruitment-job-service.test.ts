@@ -28,6 +28,11 @@ vi.mock("@/lib/recruitment/shared/transaction", () => ({
   withRecruitmentTransaction: async <T>(work: (tx: unknown) => Promise<T>) => work({}),
 }));
 
+const { jobOpeningFindUnique, jobOpeningUpdate } = vi.hoisted(() => ({
+  jobOpeningFindUnique: vi.fn(async () => ({ publicSlug: null as string | null })),
+  jobOpeningUpdate: vi.fn(async () => ({})),
+}));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     recruitmentSettings: {
@@ -49,6 +54,10 @@ vi.mock("@/lib/prisma", () => ({
     },
     employee: {
       findFirst: vi.fn(async ({ where }: { where: { id: number } }) => ({ id: where.id })),
+    },
+    jobOpening: {
+      findUnique: jobOpeningFindUnique,
+      update: jobOpeningUpdate,
     },
   },
 }));
@@ -100,6 +109,8 @@ function baseJob(overrides: Partial<JobOpeningDetail> = {}): JobOpeningDetail {
     pipelineTemplateName: "Default",
     createdByUserId: "user-hr",
     filledAt: null,
+    isPubliclyListed: false,
+    publicSlug: null,
     stages: [
       {
         id: "st-1",
@@ -162,6 +173,9 @@ describe("JobOpeningService", () => {
     (repo.getJob as ReturnType<typeof vi.fn>).mockResolvedValue(baseJob());
     (repo.findByCode as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     (repo.countHiringManagers as ReturnType<typeof vi.fn>).mockResolvedValue(0);
+    jobOpeningFindUnique.mockReset();
+    jobOpeningUpdate.mockReset();
+    jobOpeningUpdate.mockResolvedValue({});
   });
 
   it("creates a job opening", async () => {
@@ -225,5 +239,119 @@ describe("JobOpeningService", () => {
     await expect(
       service.addHiringTeamMember(hrSession, "job-1", 10, "hiring_manager")
     ).rejects.toMatchObject({ code: "REC_JOB_SINGLE_HM" });
+  });
+
+  describe("setPublicListing", () => {
+    it("rejects publishing a job that is not open", async () => {
+      (repo.getJob as ReturnType<typeof vi.fn>).mockResolvedValue(
+        baseJob({ status: JobOpeningStatus.draft })
+      );
+      const service = createJobOpeningService(repo);
+      await expect(
+        service.setPublicListing(hrSession, "job-1", { isPubliclyListed: true })
+      ).rejects.toMatchObject({ code: "REC_JOB_ILLEGAL_STATUS" });
+      expect(jobOpeningUpdate).not.toHaveBeenCalled();
+    });
+
+    it("generates a stable slug the first time an open job is published", async () => {
+      (repo.getJob as ReturnType<typeof vi.fn>).mockResolvedValue(
+        baseJob({ status: JobOpeningStatus.open, title: "Senior Backend Engineer" })
+      );
+      jobOpeningFindUnique.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+        if ("id" in where) return { publicSlug: null };
+        return null; // no collision for the generated slug candidate
+      });
+
+      const service = createJobOpeningService(repo);
+      const result = await service.setPublicListing(hrSession, "job-1", { isPubliclyListed: true });
+
+      expect(result).toEqual({ isPubliclyListed: true, publicSlug: "senior-backend-engineer" });
+      expect(jobOpeningUpdate).toHaveBeenCalledWith({
+        where: { id: "job-1" },
+        data: { isPubliclyListed: true, publicSlug: "senior-backend-engineer" },
+      });
+    });
+
+    it("resolves a slug collision with a numeric suffix", async () => {
+      (repo.getJob as ReturnType<typeof vi.fn>).mockResolvedValue(
+        baseJob({ status: JobOpeningStatus.open, title: "Backend Engineer" })
+      );
+      jobOpeningFindUnique.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+        if ("id" in where) return { publicSlug: null };
+        if (where.publicSlug === "backend-engineer") return { id: "some-other-job" };
+        return null;
+      });
+
+      const service = createJobOpeningService(repo);
+      const result = await service.setPublicListing(hrSession, "job-1", { isPubliclyListed: true });
+
+      expect(result.publicSlug).toBe("backend-engineer-2");
+    });
+
+    it("preserves the existing slug on republish rather than generating a new one", async () => {
+      (repo.getJob as ReturnType<typeof vi.fn>).mockResolvedValue(
+        baseJob({ status: JobOpeningStatus.open, title: "Backend Engineer" })
+      );
+      jobOpeningFindUnique.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+        if ("id" in where) return { publicSlug: "backend-engineer" };
+        return null;
+      });
+
+      const service = createJobOpeningService(repo);
+      const result = await service.setPublicListing(hrSession, "job-1", { isPubliclyListed: true });
+
+      expect(result.publicSlug).toBe("backend-engineer");
+    });
+
+    it("keeps the slug when unpublishing (does not delete it)", async () => {
+      (repo.getJob as ReturnType<typeof vi.fn>).mockResolvedValue(
+        baseJob({ status: JobOpeningStatus.open, title: "Backend Engineer" })
+      );
+      jobOpeningFindUnique.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+        if ("id" in where) return { publicSlug: "backend-engineer" };
+        return null;
+      });
+
+      const service = createJobOpeningService(repo);
+      const result = await service.setPublicListing(hrSession, "job-1", { isPubliclyListed: false });
+
+      expect(result).toEqual({ isPubliclyListed: false, publicSlug: "backend-engineer" });
+      expect(jobOpeningUpdate).toHaveBeenCalledWith({
+        where: { id: "job-1" },
+        data: { isPubliclyListed: false, publicSlug: "backend-engineer" },
+      });
+    });
+
+    it("allows unpublishing even when the job is not open (e.g. already closed)", async () => {
+      (repo.getJob as ReturnType<typeof vi.fn>).mockResolvedValue(
+        baseJob({ status: JobOpeningStatus.closed, title: "Backend Engineer" })
+      );
+      jobOpeningFindUnique.mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+        if ("id" in where) return { publicSlug: "backend-engineer" };
+        return null;
+      });
+
+      const service = createJobOpeningService(repo);
+      await expect(
+        service.setPublicListing(hrSession, "job-1", { isPubliclyListed: false })
+      ).resolves.toEqual({ isPubliclyListed: false, publicSlug: "backend-engineer" });
+    });
+
+    it("enforces the same RBAC as other job-management actions", async () => {
+      const service = createJobOpeningService(repo);
+      const employeeSession: SessionUser = { ...hrSession, id: "user-emp", role: "employee" };
+      await expect(
+        service.setPublicListing(employeeSession, "job-1", { isPubliclyListed: true })
+      ).rejects.toThrow();
+      expect(jobOpeningUpdate).not.toHaveBeenCalled();
+    });
+
+    it("rejects publishing a job that does not exist", async () => {
+      (repo.getJob as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+      const service = createJobOpeningService(repo);
+      await expect(
+        service.setPublicListing(hrSession, "missing-job", { isPubliclyListed: true })
+      ).rejects.toMatchObject({ code: "REC_NOT_FOUND" });
+    });
   });
 });

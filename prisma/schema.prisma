@@ -981,6 +981,8 @@ enum CandidateSource {
   import
   employee_referral
   career_portal_future
+  /// Anonymous public /apply submission (see PublicApplicationSubmission).
+  career_portal
 }
 
 enum PreferredWorkMode {
@@ -1239,6 +1241,11 @@ model JobOpening {
   publishedAt        DateTime?        @map("published_at")
   closedAt           DateTime?        @map("closed_at")
   filledAt           DateTime?        @map("filled_at")
+  /// Public career-portal visibility (independent of `status`) — a job can be
+  /// `open` internally without being publicly listed (confidential/internal-only reqs).
+  isPubliclyListed   Boolean          @default(false) @map("is_publicly_listed")
+  /// Unique, URL-safe slug for /apply/[publicSlug]. Null until first published publicly.
+  publicSlug         String?          @unique @map("public_slug")
   createdByUserId    String?          @map("created_by_user_id")
   createdBy          User?            @relation("JobOpeningCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   createdAt          DateTime         @default(now()) @map("created_at")
@@ -1252,12 +1259,14 @@ model JobOpening {
   applications Application[]
   intakeItems  IntakeItem[]
   communications RecruitmentCommunication[]
+  publicApplicationSubmissions PublicApplicationSubmission[]
 
   @@index([status, deletedAt])
   @@index([department])
   @@index([ownerRecruiterUserId, status])
   @@index([createdAt])
   @@index([deletedAt])
+  @@index([isPubliclyListed, status])
   @@map("job_openings")
 }
 
@@ -1678,6 +1687,82 @@ model IntakeItem {
   @@index([jobOpeningId])
   @@index([candidateId])
   @@map("recruitment_intake_items")
+}
+
+/// Anonymous public-intake session for /apply. Deliberately NOT IntakeItem —
+/// IntakeItem is HR-initiated; this is candidate-initiated and unauthenticated.
+/// Holds only lifecycle/audit JSON snapshots; the permanent source of truth on
+/// successful submit is always Candidate/CandidateDocument/Application, never
+/// these JSON columns (see parsedProposalJson/candidateEditedJson/submittedSnapshotJson).
+enum PublicSubmissionStatus {
+  started
+  basic_info_complete
+  resume_uploaded
+  parsing
+  ready_for_review
+  candidate_edited
+  parse_failed
+  upload_failed
+  submission_failed
+  submitted
+  job_closed
+  expired
+}
+
+model PublicApplicationSubmission {
+  id           String                 @id @default(cuid())
+  status       PublicSubmissionStatus @default(started)
+
+  jobOpeningId String                 @map("job_opening_id")
+  jobOpening   JobOpening             @relation(fields: [jobOpeningId], references: [id], onDelete: Restrict)
+
+  // --- Basic info (§4B) ---
+  fullName        String? @map("full_name")
+  email           String?
+  phone           String?
+  normalizedEmail String? @map("normalized_email")
+  normalizedPhone String? @map("normalized_phone")
+
+  // --- Resume file (temp storage — public-intake/YYYY-MM/{id}/, deleted after
+  // permanent copy on submit or on lazy expiry) ---
+  resumeFileName   String? @map("resume_file_name")
+  resumeMimeType   String? @map("resume_mime_type")
+  resumeSizeBytes  Int?    @map("resume_size_bytes")
+  resumeStorageKey String? @map("resume_storage_key")
+  resumeChecksum   String? @map("resume_checksum")
+
+  // --- Parsing / review chain (§9 trust boundary — audit snapshots only) ---
+  parserVersion         String? @map("parser_version")
+  parseFailureReason    String? @map("parse_failure_reason")
+  parsedProposalJson    Json?   @map("parsed_proposal_json")
+  candidateEditedJson   Json?   @map("candidate_edited_json")
+  submittedSnapshotJson Json?   @map("submitted_snapshot_json")
+
+  consentGivenAt DateTime? @map("consent_given_at")
+
+  // --- Dedup signal (mirrors IntakeItem's duplicate fields; kept separate
+  // per PublicApplicationSubmission not being IntakeItem) ---
+  duplicateOfCandidateId String? @map("duplicate_of_candidate_id")
+  duplicateConfidence    Float?  @map("duplicate_confidence")
+
+  // --- Resolution outcome (set only at successful submit) ---
+  resolvedCandidateId   String? @map("resolved_candidate_id")
+  resolvedApplicationId String? @map("resolved_application_id")
+  referenceCode         String? @map("reference_code")
+
+  // --- Token/lifecycle (signature itself is never stored — see token-service.ts) ---
+  expiresAt  DateTime  @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  ipHash     String?   @map("ip_hash")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([jobOpeningId, status])
+  @@index([status, expiresAt])
+  @@index([normalizedEmail])
+  @@index([createdAt])
+  @@map("public_application_submissions")
 }
 
 // --- Application & pipeline --------------------------------------------------

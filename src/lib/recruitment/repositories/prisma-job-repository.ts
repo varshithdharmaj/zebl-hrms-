@@ -135,6 +135,8 @@ function mapListItem(
       employee: { id: number; name: string; employeeCode: string; department: string | null };
     }[];
     _count: { applications: number };
+    isPubliclyListed: boolean;
+    publicSlug: string | null;
   }
 ): JobOpeningListItem {
   const hm = row.hiringTeam[0];
@@ -158,6 +160,8 @@ function mapListItem(
     hiringManagerName: hm?.employee.name ?? null,
     hiringManagerEmployeeId: hm?.employeeId ?? null,
     applicationCount: row._count.applications,
+    isPubliclyListed: row.isPubliclyListed,
+    publicSlug: row.publicSlug,
   };
 }
 
@@ -444,6 +448,8 @@ export const prismaJobRepository: JobRepository = {
       pipelineTemplateName: row.pipelineTemplate?.name ?? null,
       createdByUserId: row.createdByUserId,
       filledAt: row.filledAt,
+      isPubliclyListed: row.isPubliclyListed,
+      publicSlug: row.publicSlug,
       stages: row.stages.map(mapStage),
       hiringTeam: row.hiringTeam.map(mapTeamMember),
       notes: row.notes.map((n) => ({

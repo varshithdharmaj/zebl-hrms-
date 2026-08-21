@@ -1,3 +1,4 @@
+import type { Prisma } from "@/generated/prisma/client";
 import {
   ApplicationPriority,
   ApplicationStatus,
@@ -23,6 +24,7 @@ import { RecruitmentDomainError } from "@/lib/recruitment/shared/errors";
 import { withRecruitmentTransaction } from "@/lib/recruitment/shared/transaction";
 import { createAfterCommitBuffer } from "@/lib/recruitment/shared/after-commit";
 import { RecruitmentEventFactory } from "@/lib/recruitment/events/factory";
+import type { RecruitmentActor } from "@/lib/recruitment/types/actor";
 import { RecruitmentTimelineService } from "@/lib/recruitment/services/timeline-service";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
 import { PermissionError } from "@/lib/permissions";
@@ -35,6 +37,106 @@ import {
   updateApplicationAssessmentSchema,
   type UpdateApplicationAssessmentInput,
 } from "@/lib/validation/schemas/recruitment/applications";
+
+export type AfterCommitBuffer = ReturnType<typeof createAfterCommitBuffer>;
+
+/** Minimal shape createApplicationCore needs from a job — matches JobOpeningDetail. */
+export type ApplicationCoreJob = {
+  title: string;
+  stages: readonly { stage: RecruitmentPipelineStage; sortOrder: number }[];
+};
+
+export type CreateApplicationCoreInput = {
+  candidateId: string;
+  jobOpeningId: string;
+  job: ApplicationCoreJob;
+  assignedRecruiterUserId?: string | null;
+  assignedManagerEmployeeId?: number | null;
+  priority?: ApplicationPriority;
+  source: CandidateSource | null;
+  /** Null for anonymous public submissions — ApplicationStageHistory.actorUserId is nullable. */
+  createdByUserId: string | null;
+  actor: RecruitmentActor;
+  /** Overrides the default "Applied for job: {title}" timeline summary. */
+  summary?: string;
+};
+
+/**
+ * Shared pipeline-initialization core — the ONE place stage resolution +
+ * Application row + initial ApplicationStageHistory + timeline event + domain
+ * event happen. Used by both the internal, session-gated createApplication()
+ * below and the public /apply submit flow (public-application-service.ts),
+ * so a publicly-sourced application enters the pipeline exactly where an
+ * internally-created one would for the same job. See Phase-3 design §11 —
+ * "don't duplicate pipeline creation logic."
+ *
+ * Caller owns the transaction (`tx`) and the after-commit event buffer
+ * (`events`) — this function only appends to them.
+ */
+export async function createApplicationCore(
+  repository: ApplicationRepository,
+  tx: Prisma.TransactionClient,
+  events: AfterCommitBuffer,
+  input: CreateApplicationCoreInput
+): Promise<{ id: string; initialStage: RecruitmentPipelineStage }> {
+  let initialStage: RecruitmentPipelineStage = RecruitmentPipelineStage.resume_received;
+  if (input.job.stages && input.job.stages.length > 0) {
+    const sortedStages = [...input.job.stages].sort((a, b) => a.sortOrder - b.sortOrder);
+    if (sortedStages[0]) {
+      initialStage = sortedStages[0].stage;
+    }
+  }
+
+  const { id } = await repository.createApplication(
+    {
+      candidateId: input.candidateId,
+      jobOpeningId: input.jobOpeningId,
+      assignedRecruiterUserId: input.assignedRecruiterUserId ?? null,
+      assignedManagerEmployeeId: input.assignedManagerEmployeeId ?? null,
+      priority: input.priority,
+      source: input.source,
+      currentStage: initialStage,
+      status: ApplicationStatus.active,
+      stageEnteredAt: new Date(),
+      createdByUserId: input.createdByUserId,
+    },
+    tx
+  );
+
+  await tx.applicationStageHistory.create({
+    data: {
+      applicationId: id,
+      fromStage: null,
+      toStage: initialStage,
+      actorUserId: input.createdByUserId,
+    },
+  });
+
+  await RecruitmentTimelineService.append(
+    {
+      entityType: "application",
+      entityId: id,
+      applicationId: id,
+      candidateId: input.candidateId,
+      jobOpeningId: input.jobOpeningId,
+      eventType: "application_created",
+      summary: input.summary ?? `Applied for job: ${input.job.title}`,
+      actorUserId: input.createdByUserId,
+      metadata: { initialStage },
+    },
+    tx
+  );
+
+  events.enqueue(
+    RecruitmentEventFactory.applicationCreated(input.actor, {
+      applicationId: id,
+      candidateId: input.candidateId,
+      jobOpeningId: input.jobOpeningId,
+    })
+  );
+
+  return { id, initialStage };
+}
 
 export function createApplicationService(
   repository: ApplicationRepository = prismaApplicationRepository
@@ -76,65 +178,19 @@ export function createApplicationService(
         throw new RecruitmentDomainError("REC_NOT_FOUND", "Job opening not found.");
       }
 
-      // First stage automatically assigned
-      let initialStage: RecruitmentPipelineStage = RecruitmentPipelineStage.resume_received;
-      if (job.stages && job.stages.length > 0) {
-        // Sort stages by sortOrder to find the first one
-        const sortedStages = [...job.stages].sort((a, b) => a.sortOrder - b.sortOrder);
-        if (sortedStages[0]) {
-          initialStage = sortedStages[0].stage;
-        }
-      }
-
       const events = createAfterCommitBuffer();
-      const applicationId = await withRecruitmentTransaction(async (tx) => {
-        const { id } = await repository.createApplication(
-          {
-            ...parsed,
-            currentStage: initialStage,
-            status: ApplicationStatus.active,
-            stageEnteredAt: new Date(),
-            createdByUserId: session.id,
-          },
-          tx
-        );
-
-        // Record initial stage in history
-        await tx.applicationStageHistory.create({
-          data: {
-            applicationId: id,
-            fromStage: null,
-            toStage: initialStage,
-            actorUserId: session.id,
-          },
+      const { id: applicationId } = await withRecruitmentTransaction(async (tx) => {
+        return createApplicationCore(repository, tx, events, {
+          candidateId: parsed.candidateId,
+          jobOpeningId: parsed.jobOpeningId,
+          job,
+          assignedRecruiterUserId: parsed.assignedRecruiterUserId,
+          assignedManagerEmployeeId: parsed.assignedManagerEmployeeId,
+          priority: parsed.priority,
+          source: parsed.source ?? null,
+          createdByUserId: session.id,
+          actor,
         });
-
-        // Timeline Event
-        await RecruitmentTimelineService.append(
-          {
-            entityType: "application",
-            entityId: id,
-            applicationId: id,
-            candidateId: parsed.candidateId,
-            jobOpeningId: parsed.jobOpeningId,
-            eventType: "application_created",
-            summary: `Applied for job: ${job.title}`,
-            actorUserId: session.id,
-            metadata: { initialStage },
-          },
-          tx
-        );
-
-        // Publish event
-        events.enqueue(
-          RecruitmentEventFactory.applicationCreated(actor, {
-            applicationId: id,
-            candidateId: parsed.candidateId,
-            jobOpeningId: parsed.jobOpeningId,
-          })
-        );
-
-        return id;
       });
 
       await events.flush();

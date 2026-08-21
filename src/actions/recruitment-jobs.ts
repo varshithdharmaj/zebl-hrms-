@@ -201,6 +201,38 @@ export async function changeJobOpeningStatusAction(
   }
 }
 
+export type SetPublicListingActionState = RecruitmentJobActionState & {
+  isPubliclyListed?: boolean;
+  publicSlug?: string | null;
+};
+
+export async function setPublicListingAction(
+  _prev: SetPublicListingActionState,
+  formData: FormData
+): Promise<SetPublicListingActionState> {
+  try {
+    const session = await requireRecruitmentAdminSession();
+    const parsed = safeParseWithSchema(jobOpeningIdSchema, { id: formString(formData, "id") });
+    if (!parsed.ok) return { error: parsed.error };
+
+    const isPubliclyListed = formBoolean(formData, "isPubliclyListed");
+    const result = await JobOpeningService.setPublicListing(session, parsed.data.id, {
+      isPubliclyListed,
+    });
+    revalidateJobs(parsed.data.id);
+    return {
+      success: isPubliclyListed
+        ? "This job is now accepting public applications."
+        : "This job no longer accepts public applications.",
+      jobId: parsed.data.id,
+      isPubliclyListed: result.isPubliclyListed,
+      publicSlug: result.publicSlug,
+    };
+  } catch (error) {
+    return mapUnknownToActionState(error);
+  }
+}
+
 export async function getJobOpeningAction(jobId: string) {
   try {
     const session = await requireRecruitmentAdminSession();

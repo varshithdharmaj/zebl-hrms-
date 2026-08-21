@@ -19,4 +19,5 @@ export const CANDIDATE_SOURCE_LABELS: Record<CandidateSource, string> = {
   import: "Import",
   employee_referral: "Employee Referral",
   career_portal_future: "Career Portal Future",
+  career_portal: "Career Portal",
 };
