@@ -4,7 +4,6 @@ import { isUniqueConstraintError } from "@/lib/db/prisma-errors";
 import {
   DEFAULT_CL_ANNUAL,
   DEFAULT_SL_ANNUAL,
-  EL_MONTHLY_ACCRUAL,
   type LeaveType,
   LEAVE_TYPES,
   leaveTypeToBalanceField,
@@ -12,6 +11,12 @@ import {
 } from "@/lib/leave-types";
 import { startOfDay } from "@/lib/utils";
 import { LeaveRequestStatus } from "@/generated/prisma/enums";
+import { getElEligibilityDate } from "@/lib/leave/el-dates";
+import { getLeavePolicySettings } from "@/lib/leave/leave-policy";
+import { getOrCreateLeaveBalanceRow } from "@/lib/leave/balance-row";
+import { runElAccrualForEmployee } from "@/lib/leave/el-accrual-engine";
+
+export { getOrCreateLeaveBalanceRow } from "@/lib/leave/balance-row";
 
 export type LeaveBalanceSummary = {
   leaveType: LeaveType;
@@ -35,56 +40,19 @@ export function countLeaveDays(startDate: Date, endDate: Date): number {
   return Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
 }
 
-export function getEligibilityDate(joiningDate: Date): Date {
-  const d = new Date(joiningDate);
-  d.setFullYear(d.getFullYear() + 1);
-  return startOfDay(d);
-}
-
-export function isEligibleForEL(joiningDate: Date, asOf: Date = new Date()): boolean {
-  return startOfDay(asOf) >= getEligibilityDate(joiningDate);
-}
-
-export function getElAccrualMonthKeys(joiningDate: Date, asOf: Date = new Date()): string[] {
-  const eligibility = getEligibilityDate(joiningDate);
-  if (startOfDay(asOf) < eligibility) return [];
-
-  const keys: string[] = [];
-  let cursor = new Date(eligibility.getFullYear(), eligibility.getMonth(), 1);
-  const end = new Date(asOf.getFullYear(), asOf.getMonth(), 1);
-
-  while (cursor <= end) {
-    keys.push(formatMonthKey(cursor));
-    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
-  }
-  return keys;
-}
-
-function formatMonthKey(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  return `${y}-${m}`;
-}
-
-export async function getOrCreateLeaveBalanceRow(employeeId: number, tx?: TxClient) {
-  const client = tx ?? prisma;
-  const existing = await client.employeeLeaveBalance.findUnique({
-    where: { employeeId },
-  });
-  if (existing) return existing;
-
-  try {
-    return await client.employeeLeaveBalance.create({
-      data: { employeeId },
-    });
-  } catch (error) {
-    if (isUniqueConstraintError(error)) {
-      return client.employeeLeaveBalance.findUniqueOrThrow({
-        where: { employeeId },
-      });
-    }
-    throw error;
-  }
+/**
+ * EL eligibility per the configurable Leave Settings (DOJ + elEligibilityMonths).
+ * Async (reads policy from DB) — callers needing a pure/sync summary builder
+ * (buildLeaveBalanceSummariesFromParts) must resolve this first and pass the
+ * result in, rather than calling this from inside that pure function.
+ */
+export async function getElEligibilityInfo(
+  joiningDate: Date,
+  asOf: Date = new Date()
+): Promise<{ eligible: boolean; eligibilityDate: Date }> {
+  const policy = await getLeavePolicySettings();
+  const eligibilityDate = getElEligibilityDate(joiningDate, policy);
+  return { eligible: startOfDay(asOf) >= eligibilityDate, eligibilityDate };
 }
 
 async function applyBalanceDeltaAtomic(
@@ -191,13 +159,15 @@ export async function recordLeaveTransaction(params: {
   });
 }
 
-/** Candidate accrual reason strings for the current calendar year / EL months. */
+/**
+ * Candidate CL/SL yearly accrual reason strings for the given calendar year.
+ * EL is no longer part of this flat-accrual path — EL accrual is lot-based
+ * (see el-accrual-engine.ts) with its own 26th/14-month/36-month rules.
+ */
 export function buildPendingAccrualReasons(
-  joiningDate: Date,
-  year: number = getCalendarYear(),
-  asOf: Date = new Date()
+  year: number = getCalendarYear()
 ): { reason: string; leaveType: LeaveType; amount: number }[] {
-  const pending: { reason: string; leaveType: LeaveType; amount: number }[] = [
+  return [
     {
       reason: `CL yearly allocation ${year}`,
       leaveType: "CL",
@@ -209,24 +179,15 @@ export function buildPendingAccrualReasons(
       amount: DEFAULT_SL_ANNUAL,
     },
   ];
-
-  if (isEligibleForEL(joiningDate, asOf)) {
-    for (const monthKey of getElAccrualMonthKeys(joiningDate, asOf)) {
-      pending.push({
-        reason: `EL monthly accrual ${monthKey}`,
-        leaveType: "EL",
-        amount: EL_MONTHLY_ACCRUAL,
-      });
-    }
-  }
-
-  return pending;
 }
 
 /**
- * Process pending CL/SL yearly and EL monthly accruals.
+ * Process pending CL/SL yearly accruals only. EL accrual is handled
+ * separately by runElAccrualForEmployee (lot-based, policy-driven) — callers
+ * that need both should call that alongside this, not instead of it.
  * Prefer calling from actions; leave page may still process for balance freshness.
- * Returns joiningDate so callers can avoid a second employee round-trip.
+ * Returns joiningDate/isActive so callers can avoid a second employee round-trip
+ * (e.g. to also trigger EL lot accrual without re-fetching the employee).
  *
  * When `tx` is provided, accruals run inside that transaction (no nested $transaction).
  * Concurrent inserts of the same reason are rejected by the system-accrual unique index.
@@ -234,13 +195,14 @@ export function buildPendingAccrualReasons(
 export async function processPendingLeaveAccruals(
   employeeId: number,
   tx?: TxClient
-): Promise<{ joiningDate: Date }> {
+): Promise<{ joiningDate: Date; isActive: boolean }> {
   const client = tx ?? prisma;
   const employee = await client.employee.findUnique({ where: { id: employeeId } });
   if (!employee) throw new Error("Employee not found");
 
   const joiningDate = employee.joiningDate;
-  const pending = buildPendingAccrualReasons(joiningDate);
+  const isActive = employee.isActive;
+  const pending = buildPendingAccrualReasons();
   const candidateReasons = pending.map((p) => p.reason);
 
   const run = async (inner: TxClient) => {
@@ -292,7 +254,7 @@ export async function processPendingLeaveAccruals(
     await prisma.$transaction(run);
   }
 
-  return { joiningDate };
+  return { joiningDate, isActive };
 }
 
 export async function getLeaveBalanceSummaries(
@@ -303,7 +265,17 @@ export async function getLeaveBalanceSummaries(
 
   if (options?.processAccruals) {
     // Accrual path already loaded the employee — reuse joiningDate (no second findUnique).
-    ({ joiningDate } = await processPendingLeaveAccruals(employeeId));
+    const employeeInfo = await processPendingLeaveAccruals(employeeId);
+    joiningDate = employeeInfo.joiningDate;
+
+    // EL is lot-based and not covered by processPendingLeaveAccruals above —
+    // trigger it here too so balance reads stay fresh between cron runs,
+    // reusing employeeInfo instead of a second employee.findUnique.
+    const policy = await getLeavePolicySettings();
+    await runElAccrualForEmployee(
+      { id: employeeId, joiningDate: employeeInfo.joiningDate, isActive: employeeInfo.isActive },
+      policy
+    );
   } else {
     const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
     if (!employee) throw new Error("Employee not found");
@@ -333,8 +305,10 @@ export async function getLeaveBalanceSummaries(
     }),
   ]);
 
+  const elEligibility = await getElEligibilityInfo(joiningDate);
+
   return buildLeaveBalanceSummariesFromParts(
-    joiningDate,
+    elEligibility,
     balance,
     aggregations,
     manualAdjustments
@@ -343,10 +317,12 @@ export async function getLeaveBalanceSummaries(
 
 /**
  * Pure leave-balance summary math shared by single-employee and batch overview paths.
- * Must stay bit-equivalent for the same inputs.
+ * Must stay bit-equivalent for the same inputs. EL eligibility is resolved by the
+ * caller (it depends on the DB-backed Leave Settings policy) and passed in so this
+ * function itself stays synchronous and side-effect free.
  */
 export function buildLeaveBalanceSummariesFromParts(
-  joiningDate: Date,
+  elEligibility: { eligible: boolean; eligibilityDate: Date },
   balance: { elBalance: number; clBalance: number; slBalance: number },
   aggregations: Array<{
     leaveType: string;
@@ -355,7 +331,7 @@ export function buildLeaveBalanceSummariesFromParts(
   }>,
   manualAdjustments: Array<{ leaveType: string; amount: number }>
 ): LeaveBalanceSummary[] {
-  const elEligible = isEligibleForEL(joiningDate);
+  const { eligible: elEligible, eligibilityDate } = elEligibility;
 
   const remainingMap: Record<LeaveType, number> = {
     EL: balance.elBalance,
@@ -374,6 +350,11 @@ export function buildLeaveBalanceSummariesFromParts(
         used += sum;
       } else if (group.transactionType === "accrual") {
         accrued += sum;
+      } else if (group.transactionType === "expiry") {
+        // Expired-unused EL still counts against "total" for display purposes,
+        // bucketed alongside "used" (it's no longer available, even though it
+        // wasn't literally consumed by a leave request).
+        used += sum;
       }
     }
 
@@ -391,8 +372,7 @@ export function buildLeaveBalanceSummariesFromParts(
 
     let note: string | undefined;
     if (leaveType === "EL" && !elEligible) {
-      const eligibility = getEligibilityDate(joiningDate);
-      note = `Eligible from ${eligibility.toLocaleDateString("en-IN", {
+      note = `Eligible from ${eligibilityDate.toLocaleDateString("en-IN", {
         day: "2-digit",
         month: "short",
         year: "numeric",
@@ -427,6 +407,7 @@ export async function getLeaveBalanceSummariesForEmployees(
   if (employees.length === 0) return result;
 
   const employeeIds = employees.map((e) => e.id);
+  const policy = await getLeavePolicySettings();
 
   // Same side effect as N× getOrCreateLeaveBalanceRow: ensure a balance row exists.
   await prisma.employeeLeaveBalance.createMany({
@@ -488,10 +469,11 @@ export async function getLeaveBalanceSummariesForEmployees(
       clBalance: 0,
       slBalance: 0,
     };
+    const eligibilityDate = getElEligibilityDate(emp.joiningDate, policy);
     result.set(
       emp.id,
       buildLeaveBalanceSummariesFromParts(
-        emp.joiningDate,
+        { eligible: startOfDay(new Date()) >= eligibilityDate, eligibilityDate },
         balance,
         aggsByEmployee.get(emp.id) ?? [],
         manualsByEmployee.get(emp.id) ?? []
@@ -586,6 +568,11 @@ export async function adminAdjustLeaveBalance(params: {
   if (adjustment === 0) {
     throw new Error("Adjustment amount cannot be zero.");
   }
+  if (leaveType === "EL") {
+    throw new Error(
+      "Use adminAdjustElBalance (el-fifo.ts) for Earned Leave — EL is lot-based and a flat balance edit would desync it from its accrual lots."
+    );
+  }
 
   await getOrCreateLeaveBalanceRow(employeeId);
 
@@ -599,16 +586,20 @@ export async function adminAdjustLeaveBalance(params: {
   });
 }
 
+/**
+ * Seeds optional initial CL/SL balances on employee creation. EL is deliberately
+ * excluded — an initial EL balance must be seeded as a lot (see
+ * seedInitialElLot in el-fifo.ts) so it participates in FIFO/expiry correctly.
+ */
 export async function initializeEmployeeLeaveBalances(
   employeeId: number,
-  initial?: { el?: number; cl?: number; sl?: number },
+  initial?: { cl?: number; sl?: number },
   createdBy = "system"
 ) {
   await getOrCreateLeaveBalanceRow(employeeId);
   await processPendingLeaveAccruals(employeeId);
 
   const entries: { type: LeaveType; amount: number }[] = [];
-  if (initial?.el && initial.el > 0) entries.push({ type: "EL", amount: initial.el });
   if (initial?.cl && initial.cl > 0) entries.push({ type: "CL", amount: initial.cl });
   if (initial?.sl && initial.sl > 0) entries.push({ type: "SL", amount: initial.sl });
 

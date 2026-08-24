@@ -72,6 +72,8 @@ export const AUDIT_ACTIONS = {
   ATTENDANCE_CLOCK_IN: "attendance.clock_in",
   ATTENDANCE_CLOCK_OUT: "attendance.clock_out",
   ATTENDANCE_REGULARIZATION: "attendance.regularization",
+  ATTENDANCE_REGULARIZATION_CANCELLED: "attendance.regularization.cancelled",
+  ATTENDANCE_REGULARIZATION_REJECTED: "attendance.regularization.rejected",
   ATTENDANCE_APPROVED: "attendance.approved",
   ATTENDANCE_UPLOAD_COMPLETED: "attendance.upload.completed",
   EMPLOYEE_CREATED: "employee.created",
@@ -143,6 +145,7 @@ export const AUDIT_ACTIONS = {
   RECRUITMENT_TEMPLATE_CREATED: "recruitment.template.created",
   RECRUITMENT_TEMPLATE_UPDATED: "recruitment.template.updated",
   RECRUITMENT_TEMPLATE_DELETED: "recruitment.template.deleted",
+  LEAVE_POLICY_SETTINGS_UPDATED: "leave.policy_settings.updated",
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -85,6 +85,9 @@ export function PublicApplyFlow({ jobPublicSlug, jobTitle }: { jobPublicSlug: st
   const [parseNote, setParseNote] = useState<string | null>(null);
   const [review, setReview] = useState<ReviewPayload | null>(null);
   const [consent, setConsent] = useState(false);
+  // Honeypot — real candidates never see or fill this field.
+  const [website, setWebsite] = useState("");
+  const formRenderedAtRef = useRef(Date.now());
 
   const storageKey = `public-apply:${jobPublicSlug}`;
 
@@ -104,7 +107,7 @@ export function PublicApplyFlow({ jobPublicSlug, jobTitle }: { jobPublicSlug: st
     const result = await callApi<{ token: string; expiresAt: string }>("/api/public/applications/start", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jobPublicSlug }),
+      body: JSON.stringify({ jobPublicSlug, website, formRenderedAt: formRenderedAtRef.current }),
     });
     setToken(result.token);
     if (typeof window !== "undefined") {
@@ -239,6 +242,20 @@ export function PublicApplyFlow({ jobPublicSlug, jobTitle }: { jobPublicSlug: st
 
         {step === "basic" && (
           <div className="flex flex-col gap-4">
+            {/* Honeypot — hidden from sighted users and screen readers alike;
+                a filled-in value means a bot, not a candidate. */}
+            <div aria-hidden="true" className="absolute left-[-9999px] top-auto h-0 w-0 overflow-hidden">
+              <label htmlFor="website">Website</label>
+              <input
+                id="website"
+                name="website"
+                type="text"
+                tabIndex={-1}
+                autoComplete="off"
+                value={website}
+                onChange={(e) => setWebsite(e.target.value)}
+              />
+            </div>
             <Field label="Full name">
               <Input
                 value={basic.fullName}

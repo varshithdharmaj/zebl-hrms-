@@ -11,6 +11,7 @@ export const TRANSACTION_TYPES = [
   "accrual",
   "deduction",
   "manual_adjustment",
+  "expiry",
 ] as const;
 export type LeaveTransactionType = (typeof TRANSACTION_TYPES)[number];
 

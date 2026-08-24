@@ -141,6 +141,7 @@ function groupedNavForRole(
             { href: "/admin/settings", label: "System Settings", icon: Settings },
             { href: "/admin/payroll-settings", label: "Payroll Settings", icon: Settings },
             { href: "/admin/attendance-settings", label: "Attendance Settings", icon: CalendarClock },
+            { href: "/admin/leave-settings", label: "Leave Settings", icon: CalendarDays },
             ...(showRecruitmentNav
               ? [
                   {

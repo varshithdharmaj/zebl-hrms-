@@ -15,7 +15,9 @@ import { RecruitmentEventFactory } from "@/lib/recruitment/events/factory";
 import { RecruitmentTimelineService } from "@/lib/recruitment/services/timeline-service";
 import { convertEmployeeSchema } from "@/lib/validation/schemas/recruitment/conversions";
 import { initializeEmployeeLeaveBalances } from "@/lib/leave";
+import { seedInitialElLot } from "@/lib/leave/el-fifo";
 import { provisionEmployeeLogin } from "@/lib/admin/user-management";
+import { backfillBiometricPunchesForEmployee } from "@/lib/integrations/biometric-ingestion";
 import { copyRecruitmentDocsToEmployee } from "@/lib/recruitment/services/conversion-document-transfer";
 import { getRecruitmentStorage, type StorageAdapter } from "@/lib/recruitment/storage";
 import type {
@@ -401,13 +403,21 @@ export function createEmployeeConversionService(
       });
 
       // 3. Post-transaction tasks
+      // Relink historical biometric punches ingested under this employeeCode before the employee existed
+      try {
+        await backfillBiometricPunchesForEmployee(employeeId, parsed.employeeCode);
+      } catch (err) {
+        console.error("Failed to backfill biometric punches for converted employee:", err);
+      }
+
       // Initialize leave balances
       try {
         await initializeEmployeeLeaveBalances(
           employeeId,
-          { el: 15, cl: 12, sl: 12 }, // standard default balances
+          { cl: 12, sl: 12 }, // standard default balances
           session.email
         );
+        await seedInitialElLot(employeeId, 15, session.email); // standard default EL balance
       } catch (err) {
         console.error("Failed to initialize leave balances:", err);
       }

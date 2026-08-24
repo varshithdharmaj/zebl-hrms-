@@ -1,6 +1,11 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { deriveAttendanceStatus } from "@/lib/attendance";
 import {
+  applyRegularizationOverlay,
+  type OverlayInput,
+  type OverlaySession,
+} from "@/lib/attendance/regularization/overlay";
+import {
   sessionDurationMinutes,
   totalWorkedMinutesFromSessions,
 } from "@/lib/attendance/session-duration";
@@ -79,6 +84,89 @@ export type AffectedEmployeeDateGroup = {
 };
 
 /**
+ * Persists the overlay result (session list + recomputed totals) for one
+ * AttendanceRecord. Reused by both branches of deriveAttendanceForEmployeeDate
+ * (zero-punch and punch-derived) so there is one place that turns a session
+ * list into AttendanceRecord totals — the same math the punch-only path uses.
+ */
+async function applyOverlayToRecord(
+  tx: Tx,
+  recordId: number,
+  baseSessions: OverlaySession[],
+  correction: OverlayInput
+): Promise<void> {
+  const overlaid = applyRegularizationOverlay(baseSessions, correction);
+
+  await tx.attendanceSession.deleteMany({ where: { attendanceId: recordId } });
+
+  const sessionRows = overlaid.map((s) => ({
+    attendanceId: recordId,
+    checkIn: s.checkIn,
+    checkOut: s.checkOut,
+    workedMinutes: s.checkOut ? sessionDurationMinutes(s.checkIn, s.checkOut) : 0,
+  }));
+  if (sessionRows.length > 0) {
+    await tx.attendanceSession.createMany({ data: sessionRows });
+  }
+
+  const completed = sessionRows.filter((s) => s.checkOut !== null);
+  const open = sessionRows.find((s) => s.checkOut === null);
+  const workedMinutes = totalWorkedMinutesFromSessions(sessionRows, { includeOpenElapsed: false });
+  const firstCheckIn = sessionRows[0]?.checkIn ?? null;
+  const lastCompletedOut = [...completed].reverse().find((s) => s.checkOut)?.checkOut ?? null;
+  const checkOut = open ? null : lastCompletedOut;
+  const checkIn = firstCheckIn;
+  const status = deriveAttendanceStatus(checkIn, workedMinutes);
+
+  await tx.attendanceRecord.update({
+    where: { id: recordId },
+    data: {
+      checkIn,
+      checkOut,
+      workedMinutes,
+      workDuration: durationLabel(workedMinutes),
+      status,
+      remarks: "HR Regularised",
+    },
+  });
+}
+
+/**
+ * Approval-time entry point: points the day's AttendanceRecord at the newly
+ * approved correction, then re-runs derivation so the overlay logic above
+ * (shared with every future re-derivation of this day) produces the final
+ * sessions/totals. Called inside the same transaction as the approval state
+ * change — see attendance regularisation service.
+ */
+export async function applyApprovedRegularization(
+  tx: Tx,
+  request: { id: number; employeeId: number; attendanceDate: Date }
+): Promise<void> {
+  const dateParts = getISTDateParts(request.attendanceDate);
+
+  await tx.attendanceRecord.upsert({
+    where: {
+      employeeId_attendanceDate: {
+        employeeId: request.employeeId,
+        attendanceDate: dateParts.attendanceDate,
+      },
+    },
+    create: {
+      employeeId: request.employeeId,
+      attendanceDate: dateParts.attendanceDate,
+      status: "Absent",
+      remarks: "HR Regularised",
+      activeRegularizationId: request.id,
+    },
+    update: {
+      activeRegularizationId: request.id,
+    },
+  });
+
+  await deriveAttendanceForEmployeeDate(request.employeeId, dateParts.attendanceDate, tx);
+}
+
+/**
  * Rebuild AttendanceRecord and AttendanceSession rows for a single employee and attendance date
  * from their full chronological BiometricPunch history.
  *
@@ -126,14 +214,34 @@ export async function deriveAttendanceForEmployeeDate(
       (p) => getISTDateParts(p.punchedAt).dateString === dateParts.dateString
     );
 
+    // Approved regularisation, if any, always wins over late-arriving raw
+    // punches for this day — resolve it once up front so both the zero-punch
+    // and punch-derived branches below can defer to it.
+    const existingRecordForCorrection = await tx.attendanceRecord.findUnique({
+      where: { employeeId_attendanceDate: { employeeId, attendanceDate } },
+      select: { id: true, remarks: true, activeRegularizationId: true },
+    });
+    const activeCorrection = existingRecordForCorrection?.activeRegularizationId
+      ? await tx.attendanceRegularizationRequest.findUnique({
+          where: { id: existingRecordForCorrection.activeRegularizationId },
+          select: { status: true, requestType: true, requestedCheckIn: true, requestedCheckOut: true },
+        })
+      : null;
+    const correctionOverlay =
+      activeCorrection && activeCorrection.status === "approved" ? activeCorrection : null;
+
     if (dayPunches.length === 0) {
+      // An approved regularisation governs this day regardless of punch
+      // history (e.g. attendance_missing/device_failure with no punches at
+      // all) — never delete the record out from under HR's correction.
+      if (correctionOverlay) {
+        await applyOverlayToRecord(tx, existingRecordForCorrection!.id, [], correctionOverlay);
+        return;
+      }
       // If all biometric punches for this date were deleted, remove sessions & record if biometric-derived
-      const existingRecord = await tx.attendanceRecord.findUnique({
-        where: { employeeId_attendanceDate: { employeeId, attendanceDate } },
-      });
-      if (existingRecord && existingRecord.remarks === "Biometric Device Ingestion") {
-        await tx.attendanceSession.deleteMany({ where: { attendanceId: existingRecord.id } });
-        await tx.attendanceRecord.delete({ where: { id: existingRecord.id } });
+      if (existingRecordForCorrection && existingRecordForCorrection.remarks === "Biometric Device Ingestion") {
+        await tx.attendanceSession.deleteMany({ where: { attendanceId: existingRecordForCorrection.id } });
+        await tx.attendanceRecord.delete({ where: { id: existingRecordForCorrection.id } });
       }
       return;
     }
@@ -194,6 +302,19 @@ export async function deriveAttendanceForEmployeeDate(
       await tx.attendanceSession.createMany({
         data: sessionDataToCreate,
       });
+    }
+
+    // 6b. An approved regularisation always wins over punch-derived sessions,
+    // including punches that arrived after approval — re-layer it every time
+    // this function runs, not just at approval time.
+    if (correctionOverlay) {
+      await applyOverlayToRecord(
+        tx,
+        record.id,
+        sessionDataToCreate.map(({ checkIn, checkOut }) => ({ checkIn, checkOut })),
+        correctionOverlay
+      );
+      return;
     }
 
     // 7. Recalculate daily totals and status on AttendanceRecord

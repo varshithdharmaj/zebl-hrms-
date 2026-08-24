@@ -80,18 +80,23 @@ export default async function AdminAttendancePage({
         title="Attendance"
         description={`Daily attendance records · ${total} total${filterHint}`}
         action={
-          <div className="w-full rounded-xl border border-border bg-muted/40 p-4 lg:min-w-[24rem]">
-            <Suspense fallback={null}>
-              <AttendanceFilters
-                defaultSearch={params.q}
-                defaultDate={params.date}
-                defaultPeriod={params.period ?? ""}
-                defaultShift={params.shift ?? ""}
-                defaultShortfall={params.shortfall === "1"}
-                defaultOt={params.ot === "1"}
-                periodOptions={periodOptions.map((p) => ({ key: p.key, label: p.label }))}
-              />
-            </Suspense>
+          <div className="flex w-full flex-col items-stretch gap-3 lg:min-w-[24rem] lg:items-end">
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/admin/attendance/regularization">Regularisation requests</Link>
+            </Button>
+            <div className="w-full rounded-xl border border-border bg-muted/40 p-4">
+              <Suspense fallback={null}>
+                <AttendanceFilters
+                  defaultSearch={params.q}
+                  defaultDate={params.date}
+                  defaultPeriod={params.period ?? ""}
+                  defaultShift={params.shift ?? ""}
+                  defaultShortfall={params.shortfall === "1"}
+                  defaultOt={params.ot === "1"}
+                  periodOptions={periodOptions.map((p) => ({ key: p.key, label: p.label }))}
+                />
+              </Suspense>
+            </div>
           </div>
         }
       />

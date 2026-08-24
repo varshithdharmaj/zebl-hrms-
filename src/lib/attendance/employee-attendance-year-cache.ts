@@ -9,9 +9,10 @@ function yearBoundsExclusive(year: number): { start: Date; endExclusive: Date } 
 }
 
 /**
- * Request-memoized attendance rows for one employee + calendar year (no sessions).
- * Employee dashboard period classify + YTD heatmap share one DB round-trip when
- * both ranges fall in the same year (the common case).
+ * Request-memoized attendance rows for one employee + calendar year, including
+ * sessions (needed to derive break minutes). Employee dashboard period classify +
+ * YTD heatmap share one DB round-trip when both ranges fall in the same year
+ * (the common case); the heatmap simply ignores the `sessions` field.
  */
 export const getEmployeeAttendanceRecordsForYear = cache(
   async (employeeId: number, year: number) => {
@@ -22,6 +23,9 @@ export const getEmployeeAttendanceRecordsForYear = cache(
         attendanceDate: { gte: start, lt: endExclusive },
       },
       orderBy: { attendanceDate: "asc" },
+      include: {
+        sessions: { orderBy: [{ checkIn: "asc" }, { id: "asc" }] },
+      },
     });
   }
 );

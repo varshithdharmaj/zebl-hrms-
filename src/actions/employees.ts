@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { initializeEmployeeLeaveBalances } from "@/lib/leave";
+import { seedInitialElLot } from "@/lib/leave/el-fifo";
 import { isValidEmployeeStatus, statusToIsActive } from "@/lib/employee-types";
 import { requireManageEmployeeSession } from "@/lib/auth-guards";
 import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
@@ -22,6 +23,7 @@ import {
   provisionEmployeeLogin,
   UserManagementError,
 } from "@/lib/admin/user-management";
+import { backfillBiometricPunchesForEmployee } from "@/lib/integrations/biometric-ingestion";
 
 export type ActionState = {
   error?: string;
@@ -98,6 +100,12 @@ export async function createEmployeeAction(
       },
     });
 
+    try {
+      await backfillBiometricPunchesForEmployee(employee.id, employeeCode);
+    } catch (error) {
+      console.error("Failed to backfill biometric punches for new employee:", error);
+    }
+
     let createdUserId: string | null = null;
     let loginWarning: string | undefined;
     if (createLogin && email && password) {
@@ -125,12 +133,15 @@ export async function createEmployeeAction(
     await initializeEmployeeLeaveBalances(
       employee.id,
       {
-        el: parseInitialBalance(formData, "initialEl"),
         cl: parseInitialBalance(formData, "initialCl"),
         sl: parseInitialBalance(formData, "initialSl"),
       },
       session.email
     );
+    const initialEl = parseInitialBalance(formData, "initialEl");
+    if (initialEl && initialEl > 0) {
+      await seedInitialElLot(employee.id, initialEl, session.email);
+    }
 
     await writeAuditLog({
       entityType: "employee",

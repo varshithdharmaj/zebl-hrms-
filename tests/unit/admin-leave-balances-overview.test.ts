@@ -12,6 +12,9 @@ vi.mock("@/lib/prisma", () => ({
       groupBy: vi.fn(),
       findMany: vi.fn(),
     },
+    leavePolicySettings: {
+      upsert: vi.fn(),
+    },
     employee: {
       findUnique: vi.fn(),
       findMany: vi.fn(),
@@ -19,6 +22,19 @@ vi.mock("@/lib/prisma", () => ({
     $transaction: vi.fn(),
   },
 }));
+
+const DEFAULT_POLICY_ROW = {
+  id: 1,
+  cycleStartDay: 26,
+  elAccrualAmount: 0.5,
+  elEligibilityMonths: 14,
+  elExpiryMonths: 36,
+  slAnnualEntitlement: 6,
+  slCarryForward: false,
+  slExpiryMonths: null,
+  updatedAt: new Date(),
+  updatedBy: null,
+};
 
 vi.mock("@/lib/auth", () => ({
   getApplicationSession: vi.fn(),
@@ -40,7 +56,7 @@ describe("buildLeaveBalanceSummariesFromParts", () => {
   it("aggregates deductions, accruals, and manual adjustments like the single-employee path", () => {
     const joiningDate = new Date("2020-01-01");
     const summaries = buildLeaveBalanceSummariesFromParts(
-      joiningDate,
+      { eligible: true, eligibilityDate: joiningDate },
       { elBalance: 5, clBalance: 22, slBalance: 8 },
       [
         { leaveType: "CL", transactionType: "accrual", _sum: { amount: 3 } },
@@ -60,10 +76,10 @@ describe("buildLeaveBalanceSummariesFromParts", () => {
   });
 
   it("marks EL ineligible before one year and attaches note", () => {
-    const joiningDate = new Date();
-    joiningDate.setMonth(joiningDate.getMonth() - 3);
+    const eligibilityDate = new Date();
+    eligibilityDate.setMonth(eligibilityDate.getMonth() + 11);
     const summaries = buildLeaveBalanceSummariesFromParts(
-      joiningDate,
+      { eligible: false, eligibilityDate },
       { elBalance: 0, clBalance: 0, slBalance: 0 },
       [],
       []
@@ -75,7 +91,7 @@ describe("buildLeaveBalanceSummariesFromParts", () => {
 
   it("handles zero balances and empty transaction sets", () => {
     const summaries = buildLeaveBalanceSummariesFromParts(
-      new Date("2018-01-01"),
+      { eligible: true, eligibilityDate: new Date("2018-01-01") },
       { elBalance: 0, clBalance: 0, slBalance: 0 },
       [],
       []
@@ -90,7 +106,7 @@ describe("buildLeaveBalanceSummariesFromParts", () => {
 
   it("supports negative remaining when present on the balance row", () => {
     const summaries = buildLeaveBalanceSummariesFromParts(
-      new Date("2018-01-01"),
+      { eligible: true, eligibilityDate: new Date("2018-01-01") },
       { elBalance: -1, clBalance: 0, slBalance: 0 },
       [{ leaveType: "EL", transactionType: "deduction", _sum: { amount: 2 } }],
       []
@@ -105,6 +121,7 @@ describe("buildLeaveBalanceSummariesFromParts", () => {
 describe("getLeaveBalanceSummariesForEmployees", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.leavePolicySettings.upsert).mockResolvedValue(DEFAULT_POLICY_ROW as never);
   });
 
   it("returns empty map for empty employee set without querying", async () => {
@@ -199,6 +216,7 @@ describe("getLeaveBalanceSummariesForEmployees", () => {
 describe("getAdminLeaveBalancesOverview", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.leavePolicySettings.upsert).mockResolvedValue(DEFAULT_POLICY_ROW as never);
   });
 
   it("returns [] when unauthorized", async () => {
