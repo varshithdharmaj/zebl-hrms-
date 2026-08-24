@@ -9,6 +9,11 @@ const requiredPhone = z
 
 export const startPublicSubmissionSchema = z.object({
   jobPublicSlug: z.string().trim().min(1).max(160),
+  // Bot protection (Phase-3 hardening §5) — both optional so older/no-JS
+  // clients don't fail validation; absence is simply not treated as a signal
+  // either way, only a populated honeypot or suspiciously-fast timing is.
+  website: z.string().max(200).optional(),
+  formRenderedAt: z.number().int().nonnegative().optional(),
 });
 
 export const publicBasicInfoSchema = z.object({

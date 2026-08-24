@@ -1,37 +1,21 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import {
-  buildPendingAccrualReasons,
-  getCalendarYear,
-  getElAccrualMonthKeys,
-  isEligibleForEL,
-} from "@/lib/leave";
-import { DEFAULT_CL_ANNUAL, DEFAULT_SL_ANNUAL, EL_MONTHLY_ACCRUAL } from "@/lib/leave-types";
+import { buildPendingAccrualReasons, getCalendarYear } from "@/lib/leave";
+import { DEFAULT_CL_ANNUAL, DEFAULT_SL_ANNUAL } from "@/lib/leave-types";
 
 describe("buildPendingAccrualReasons", () => {
-  it("includes CL and SL yearly reasons for the given year", () => {
-    const joiningDate = new Date(); // not EL-eligible (< 1 year)
-    joiningDate.setMonth(joiningDate.getMonth() - 2);
-
-    const pending = buildPendingAccrualReasons(joiningDate, 2026, new Date("2026-07-01"));
+  it("includes only CL and SL yearly reasons for the given year (EL is lot-based, handled separately)", () => {
+    const pending = buildPendingAccrualReasons(2026);
     expect(pending).toEqual([
       { reason: "CL yearly allocation 2026", leaveType: "CL", amount: DEFAULT_CL_ANNUAL },
       { reason: "SL yearly allocation 2026", leaveType: "SL", amount: DEFAULT_SL_ANNUAL },
     ]);
   });
 
-  it("adds EL monthly reasons when eligible, matching getElAccrualMonthKeys", () => {
-    const asOf = new Date("2026-07-15");
-    const joiningDate = new Date("2024-01-10");
-    expect(isEligibleForEL(joiningDate, asOf)).toBe(true);
-
-    const pending = buildPendingAccrualReasons(joiningDate, 2026, asOf);
-    const el = pending.filter((p) => p.leaveType === "EL");
-    const keys = getElAccrualMonthKeys(joiningDate, asOf);
-
-    expect(el.map((p) => p.reason)).toEqual(keys.map((k) => `EL monthly accrual ${k}`));
-    expect(el.every((p) => p.amount === EL_MONTHLY_ACCRUAL)).toBe(true);
-    expect(pending[0]?.reason).toBe("CL yearly allocation 2026");
-    expect(pending[1]?.reason).toBe("SL yearly allocation 2026");
+  it("defaults to the current calendar year", () => {
+    const pending = buildPendingAccrualReasons();
+    const year = getCalendarYear();
+    expect(pending[0]?.reason).toBe(`CL yearly allocation ${year}`);
+    expect(pending[1]?.reason).toBe(`SL yearly allocation ${year}`);
   });
 });
 
@@ -47,6 +31,9 @@ vi.mock("@/lib/prisma", () => ({
       findMany: vi.fn(),
       create: vi.fn(),
       groupBy: vi.fn(),
+    },
+    leavePolicySettings: {
+      upsert: vi.fn(),
     },
     $transaction: vi.fn(),
   },
@@ -213,6 +200,18 @@ describe("getLeaveBalanceSummaries with processAccruals", () => {
     } as never);
     vi.mocked(prisma.leaveTransaction.groupBy).mockResolvedValue([] as never);
     vi.mocked(prisma.leaveTransaction.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.leavePolicySettings.upsert).mockResolvedValue({
+      id: 1,
+      cycleStartDay: 26,
+      elAccrualAmount: 0.5,
+      elEligibilityMonths: 14,
+      elExpiryMonths: 36,
+      slAnnualEntitlement: 6,
+      slCarryForward: false,
+      slExpiryMonths: null,
+      updatedAt: new Date(),
+      updatedBy: null,
+    } as never);
 
     const summaries = await getLeaveBalanceSummaries(5, { processAccruals: true });
 

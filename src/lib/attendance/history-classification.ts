@@ -11,6 +11,7 @@ export type AttendanceHistoryRecordInput = {
   checkOut: string | null;
   workedMinutes: number;
   overtimeMinutes: number;
+  breakMinutes: number;
   remarks: string | null;
   /** Raw upload-time status, kept only for callers still on the legacy field (e.g. the
    *  admin employee-profile attendance tab) — not used by the canonical classification

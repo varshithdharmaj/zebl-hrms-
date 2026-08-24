@@ -324,6 +324,90 @@ describe("Biometric Attendance Derivation Logic", () => {
     });
   });
 
+  it("19. Resending already-ingested punches (all reported as duplicate) still re-derives attendance, repairing a stuck record", async () => {
+    // Regression test: a batch that inserted punches 1-5 for an employee/day
+    // succeeded, but its derivation step failed to persist the later
+    // punches (6-7) that arrived in the same request. HR resends the full
+    // set; the ingestion endpoint correctly reports every event as
+    // "duplicate" (rows already exist), but must still rebuild the day's
+    // AttendanceRecord from the full punch history rather than leaving it
+    // stuck on the stale open session.
+    vi.mocked(prisma.employee.findMany).mockResolvedValue([
+      { id: 421, employeeCode: "660099" },
+    ] as any);
+
+    const deviceLogIds = [14267, 14337, 14339, 14387, 14447, 14514, 14518];
+    const punchTimes = [
+      "2026-08-24T04:28:02.000Z",
+      "2026-08-24T06:29:47.000Z",
+      "2026-08-24T06:32:59.000Z",
+      "2026-08-24T07:20:24.000Z",
+      "2026-08-24T07:45:40.000Z",
+      "2026-08-24T09:33:43.000Z",
+      "2026-08-24T09:36:22.000Z",
+    ];
+
+    // All 7 rows already exist in the DB (this is the "duplicate on resend"
+    // confirmation) — the resend inserts nothing new.
+    vi.mocked(prisma.biometricPunch.findMany).mockImplementation((args: any) => {
+      // First call: idempotency-key lookup used by ingestBiometricPunches.
+      if (args?.where?.OR) {
+        return Promise.resolve(
+          deviceLogIds.map((deviceLogId) => ({
+            source: "ESSL",
+            tableName: "dbo.DeviceLogs_8_2026",
+            deviceLogId,
+          }))
+        ) as any;
+      }
+      // Second call: full-day punch history read by deriveAttendanceForEmployeeDate.
+      return Promise.resolve(
+        punchTimes.map((t, i) => ({ id: 100 + i, punchedAt: new Date(t) }))
+      ) as any;
+    });
+
+    vi.mocked(prisma.attendanceRecord.findUnique).mockResolvedValue({
+      id: 3508,
+      remarks: "Biometric Device Ingestion",
+    } as any);
+    vi.mocked(prisma.attendanceSession.findMany).mockResolvedValue([
+      { id: 1, checkIn: "09:58", checkOut: "11:59", workedMinutes: 121 },
+      { id: 2, checkIn: "12:02", checkOut: "12:50", workedMinutes: 48 },
+      { id: 3, checkIn: "13:15", checkOut: "15:03", workedMinutes: 108 },
+      { id: 4, checkIn: "15:06", checkOut: null, workedMinutes: 0 },
+    ] as any);
+
+    const payload = {
+      events: deviceLogIds.map((deviceLogId, i) => ({
+        source: "ESSL",
+        tableName: "dbo.DeviceLogs_8_2026",
+        deviceLogId,
+        employeeCode: "660099",
+        punchedAt: punchTimes[i],
+        deviceId: 14,
+      })),
+    };
+
+    const res = await ingestBiometricPunches(payload);
+
+    expect(res.duplicateCount).toBe(7);
+    expect(res.processedCount).toBe(0);
+    expect(prisma.biometricPunch.createMany).not.toHaveBeenCalled();
+
+    // The record must be rebuilt from the FULL punch history (276 worked
+    // minutes across 3 completed sessions), not left at the stale
+    // 5-punch/169-minute state.
+    expect(prisma.attendanceRecord.update).toHaveBeenCalledWith({
+      where: { id: 3508 },
+      data: expect.objectContaining({
+        checkIn: "09:58",
+        checkOut: null,
+        workedMinutes: 277,
+        status: expect.any(String),
+      }),
+    });
+  });
+
   it("17-18. Unmapped employee punches do not create AttendanceRecord or AttendanceSession", async () => {
     vi.mocked(prisma.employee.findMany).mockResolvedValue([]);
     vi.mocked(prisma.biometricPunch.findMany).mockResolvedValue([]);

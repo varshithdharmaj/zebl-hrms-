@@ -57,6 +57,11 @@ import type {
   PublicReviewPayloadInput,
 } from "@/lib/validation/schemas/recruitment/public-apply";
 import { publicReviewPayloadSchema } from "@/lib/validation/schemas/recruitment/public-apply";
+import {
+  queueCandidateConfirmation,
+  queueHrPublicApplicationAlert,
+} from "@/lib/recruitment/public-apply/notifications";
+import { checkForBot } from "@/lib/recruitment/public-apply/bot-check";
 
 const SUBMISSION_TTL_MS = 48 * 60 * 60 * 1000; // 48h — see Phase-3 design §5
 
@@ -172,7 +177,20 @@ function assertTransition(from: PublicSubmissionStatus, to: PublicSubmissionStat
 export async function startPublicSubmission(input: {
   jobPublicSlug: string;
   ipHash: string | null;
+  /** Honeypot — a real candidate never sees or fills this field. */
+  website?: string;
+  /** Client-recorded Date.now() when the form mounted. */
+  formRenderedAt?: number;
 }): Promise<{ token: string; expiresAt: string; job: PublicJobOpeningDTO }> {
+  const botCheck = checkForBot(input);
+  if (botCheck.blocked) {
+    logger.info("recruitment.public_apply.bot_rejected", {
+      entityType: "public_application_submission",
+      reason: botCheck.reason,
+    });
+    throw new PublicApplyError("VALIDATION_FAILED", "Unable to start your application. Please try again.");
+  }
+
   const job = await resolvePublicJobBySlug(input.jobPublicSlug);
   if (!job) {
     throw new PublicApplyError("JOB_UNAVAILABLE", "This job posting is no longer available.", 404);
@@ -189,7 +207,27 @@ export async function startPublicSubmission(input: {
     select: { id: true },
   });
 
-  return { token: buildSubmissionToken(created.id), expiresAt: expiresAt.toISOString(), job };
+  // `job` here is PublicJobOpeningDTO & { id } — resolvePublicJobBySlug()
+  // deliberately keeps the internal id for this write-side call (needed
+  // above for jobOpeningId), but the response to the anonymous client must
+  // never include it. Reconstruct explicitly rather than spreading `job` —
+  // TS's structural typing does NOT strip excess properties from a
+  // variable of a wider type, only from object literals, so `return {
+  // ..., job }` would silently leak `id` despite the PublicJobOpeningDTO
+  // return-type annotation. (Caught via real HTTP verification — the
+  // response body genuinely included `job.id`.)
+  const publicJob: PublicJobOpeningDTO = {
+    publicSlug: job.publicSlug,
+    title: job.title,
+    department: job.department,
+    location: job.location,
+    workMode: job.workMode,
+    employmentType: job.employmentType,
+    description: job.description,
+    publishedAt: job.publishedAt,
+  };
+
+  return { token: buildSubmissionToken(created.id), expiresAt: expiresAt.toISOString(), job: publicJob };
 }
 
 // --- B. Save basic information (§4B) ----------------------------------------
@@ -707,6 +745,24 @@ export async function submitPublicApplication(token: string): Promise<SubmitResu
       candidateEditedJson: review,
     });
   }
+
+  // --- P1 notifications (after commit, non-blocking) — see Phase-3
+  // hardening §3/§4: queued via the existing notification queue, never
+  // awaited in a way that could roll back or fail the submission itself
+  // (both functions already swallow their own errors internally). ---
+  await queueCandidateConfirmation({
+    candidateEmail: review.personal.email,
+    candidateName: review.personal.fullName,
+    jobTitle: openJob.title,
+    referenceCode: outcome.referenceCode,
+  });
+  await queueHrPublicApplicationAlert({
+    ownerRecruiterUserId: openJob.ownerRecruiterUserId,
+    candidateName: review.personal.fullName,
+    jobTitle: openJob.title,
+    applicationId: outcome.applicationId,
+    referenceCode: outcome.referenceCode,
+  });
 
   logger.info("recruitment.public_apply.submit_succeeded", {
     entityType: "public_application_submission",

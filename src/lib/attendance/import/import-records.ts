@@ -7,6 +7,7 @@ import {
   UserManagementError,
 } from "@/lib/admin/user-management";
 import { EXCEL_UPLOAD_DEFAULT_PASSWORD } from "@/lib/admin/account-lifecycle";
+import { backfillBiometricPunchesForEmployee } from "@/lib/integrations/biometric-ingestion";
 import type { SessionUser } from "@/lib/session";
 import { ATTENDANCE_UPLOAD_MAX_ROWS } from "./file-validation";
 import { importAttendanceRowBatch } from "./import-batch";
@@ -134,6 +135,12 @@ export async function importAttendanceRows(params: {
 
     const provisioningErrors: string[] = [];
     for (const created of txResult.newEmployees) {
+      try {
+        await backfillBiometricPunchesForEmployee(created.id, created.employeeCode);
+      } catch (error) {
+        console.error("Failed to backfill biometric punches for new employee:", error);
+      }
+
       const email = `${created.employeeCode.toLowerCase()}@zebl.com`;
       try {
         const provisioned = await provisionEmployeeLogin(session, {

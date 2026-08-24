@@ -5,6 +5,7 @@ import { parsePayrollPeriodKey } from "@/lib/payroll/payroll-period";
 import { getPayrollSettings } from "@/lib/payroll/payroll-settings";
 import { aggregateAttendanceForRange } from "@/lib/attendance/aggregate-range";
 import { classifyAttendanceRecords, dateSpanOf } from "@/lib/attendance/history-classification";
+import { totalBreakMinutesFromSessions } from "@/lib/attendance/session-duration";
 import { getEmployeeAttendanceRecordsForRange } from "@/lib/attendance/employee-attendance-year-cache";
 import {
   startOfDay,
@@ -17,6 +18,13 @@ import {
   RANGE_RECORD_LIMIT,
   DASHBOARD_HISTORY_PREVIEW_LIMIT,
 } from "@/lib/data/constants";
+
+/** Break minutes are gaps between sessions within a day — only derivable when sessions were fetched. */
+function withBreakMinutes<T>(
+  record: T & { sessions?: { checkIn: string; checkOut: string | null; workedMinutes: number }[] }
+): T & { breakMinutes: number } {
+  return { ...record, breakMinutes: record.sessions ? totalBreakMinutesFromSessions(record.sessions) : 0 };
+}
 
 export async function getEmployeeDashboardData(
   employeeId: number,
@@ -57,7 +65,7 @@ export async function getEmployeeDashboardData(
   // Classified once for the whole period — KPIs use the full list; history preview is sliced below.
   const classifiedPeriodRecords = await classifyAttendanceRecords(
     employeeId,
-    periodRecords,
+    periodRecords.map(withBreakMinutes),
     rangeStart,
     rangeEnd
   );
@@ -139,7 +147,12 @@ export async function getEmployeeAttendanceSummary(
     take: RANGE_RECORD_LIMIT,
   });
 
-  const classifiedRecords = await classifyAttendanceRecords(employeeId, records, rangeStart, rangeEnd);
+  const classifiedRecords = await classifyAttendanceRecords(
+    employeeId,
+    records.map(withBreakMinutes),
+    rangeStart,
+    rangeEnd
+  );
   const aggregate = aggregateAttendanceForRange(classifiedRecords);
 
   const lastRecord = await prisma.attendanceRecord.findFirst({
@@ -329,6 +342,9 @@ export async function getEmployeeAttendanceHistory(
       orderBy: { attendanceDate: "desc" },
       skip,
       take: PAGE_SIZE,
+      include: {
+        sessions: { orderBy: [{ checkIn: "asc" }, { id: "asc" }] },
+      },
     }),
     prisma.attendanceRecord.count({ where }),
   ]);
@@ -338,7 +354,12 @@ export async function getEmployeeAttendanceHistory(
   const { start, end } = explicitRange
     ? { start: explicitRange.rangeStart, end: explicitRange.rangeEnd }
     : dateSpanOf(records);
-  const classifiedRecords = await classifyAttendanceRecords(employeeId, records, start, end);
+  const classifiedRecords = await classifyAttendanceRecords(
+    employeeId,
+    records.map(withBreakMinutes),
+    start,
+    end
+  );
 
   return {
     records: classifiedRecords,

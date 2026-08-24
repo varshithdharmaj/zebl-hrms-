@@ -41,7 +41,14 @@ export function guardPublicApplyRequest(
   request: Request,
   scope: Parameters<typeof checkPublicApplyRateLimit>[0]
 ): NextResponse | null {
-  if (!isAllowedOrigin(request.headers.get("origin"))) {
+  const originHeader = request.headers.get("origin");
+  if (!isAllowedOrigin(originHeader, request)) {
+    // Hostnames only — never log full URLs with query strings or bodies.
+    logger.warn("recruitment.public_apply.origin_rejected", {
+      entityType: "public_application_submission",
+      origin: originHeader,
+      host: request.headers.get("x-forwarded-host") ?? request.headers.get("host"),
+    });
     return NextResponse.json(
       { error: { code: "ORIGIN_INVALID", message: "Request origin not allowed." } },
       { status: 403 }

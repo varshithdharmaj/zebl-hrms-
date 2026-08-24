@@ -113,12 +113,20 @@ export async function ingestBiometricPunches(
     metadata: Prisma.InputJsonValue;
   }> = [];
 
+  // Every mapped event in the batch — new or duplicate — feeds re-derivation
+  // below. A resend of already-ingested punches must be able to repair an
+  // attendance record that was left stale by a prior failed/partial
+  // derivation; re-deriving is idempotent, so there's no correctness cost to
+  // doing it for duplicates too.
+  const affectedGroupSource: Array<{ employeeId: number; punchedAt: Date }> = [];
+
   let processedCount = 0;
   let duplicateCount = 0;
   let unmappedCount = 0;
 
   for (const event of normalizedEvents) {
     const key = `${event.source}|${event.tableName}|${event.deviceLogId}`;
+    const employeeId = employeeIdMap.get(event.employeeCode) ?? null;
 
     if (existingDbKeys.has(key) || seenKeysInBatch.has(key)) {
       duplicateCount++;
@@ -126,16 +134,19 @@ export async function ingestBiometricPunches(
         deviceLogId: event.deviceLogId,
         status: "duplicate",
       });
+      if (employeeId !== null) {
+        affectedGroupSource.push({ employeeId, punchedAt: event.punchedAt });
+      }
       continue;
     }
 
     seenKeysInBatch.add(key);
 
-    const employeeId = employeeIdMap.get(event.employeeCode) ?? null;
     const status: IngestEventStatus = employeeId !== null ? "success" : "unmapped";
 
     if (status === "success") {
       processedCount++;
+      affectedGroupSource.push({ employeeId: employeeId!, punchedAt: event.punchedAt });
     } else {
       unmappedCount++;
     }
@@ -163,24 +174,21 @@ export async function ingestBiometricPunches(
       data: recordsToInsert,
       skipDuplicates: true,
     });
+  }
 
-    // 6. Derive attendance for affected employee/date groups
-    const affectedMappedRecords = recordsToInsert.filter(
-      (r): r is typeof r & { employeeId: number } => r.employeeId !== null
-    );
+  // 6. Derive attendance for every affected employee/date group, including
+  // groups whose punches were all duplicates this call — see comment above.
+  if (affectedGroupSource.length > 0) {
+    const affectedGroups: AffectedEmployeeDateGroup[] = affectedGroupSource.map((r) => {
+      const parts = getISTDateParts(r.punchedAt);
+      return {
+        employeeId: r.employeeId,
+        attendanceDate: parts.attendanceDate,
+        dateString: parts.dateString,
+      };
+    });
 
-    if (affectedMappedRecords.length > 0) {
-      const affectedGroups: AffectedEmployeeDateGroup[] = affectedMappedRecords.map((r) => {
-        const parts = getISTDateParts(r.punchedAt);
-        return {
-          employeeId: r.employeeId,
-          attendanceDate: parts.attendanceDate,
-          dateString: parts.dateString,
-        };
-      });
-
-      await deriveAttendanceForAffectedGroups(affectedGroups);
-    }
+    await deriveAttendanceForAffectedGroups(affectedGroups);
   }
 
   return {
@@ -189,4 +197,43 @@ export async function ingestBiometricPunches(
     unmappedCount,
     results,
   };
+}
+
+export type BackfillBiometricPunchesResult = {
+  backfilledCount: number;
+};
+
+/**
+ * Relink historical BiometricPunch rows (employeeId = null) that match a newly
+ * created/known employeeCode, then rebuild attendance for every affected day.
+ * Call this right after an Employee row is created so past device punches
+ * ingested before the Employee existed become visible immediately.
+ */
+export async function backfillBiometricPunchesForEmployee(
+  employeeId: number,
+  employeeCode: string
+): Promise<BackfillBiometricPunchesResult> {
+  const trimmedCode = employeeCode.trim();
+  if (!trimmedCode) return { backfilledCount: 0 };
+
+  const orphanPunches = await prisma.biometricPunch.findMany({
+    where: { employeeCode: trimmedCode, employeeId: null },
+    select: { id: true, punchedAt: true },
+  });
+
+  if (orphanPunches.length === 0) return { backfilledCount: 0 };
+
+  await prisma.biometricPunch.updateMany({
+    where: { id: { in: orphanPunches.map((p) => p.id) } },
+    data: { employeeId },
+  });
+
+  const affectedGroups: AffectedEmployeeDateGroup[] = orphanPunches.map((p) => {
+    const parts = getISTDateParts(p.punchedAt);
+    return { employeeId, attendanceDate: parts.attendanceDate, dateString: parts.dateString };
+  });
+
+  await deriveAttendanceForAffectedGroups(affectedGroups);
+
+  return { backfilledCount: orphanPunches.length };
 }

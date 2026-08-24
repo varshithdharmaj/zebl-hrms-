@@ -12,6 +12,9 @@ import {
   processPendingLeaveAccruals,
   restoreLeaveBalanceForCancellation,
 } from "@/lib/leave";
+import { consumeElFifo, restoreElForCancellation } from "@/lib/leave/el-fifo";
+import { runElAccrualForEmployeeInTx } from "@/lib/leave/el-accrual-engine";
+import { getLeavePolicySettings } from "@/lib/leave/leave-policy";
 import { isValidLeaveType, type LeaveType } from "@/lib/leave-types";
 import { buildApprovalChain } from "@/lib/workflow/approval-routing";
 import {
@@ -203,14 +206,29 @@ async function finalizeApproval(
     // Same outer transaction — no nested $transaction (avoids partial commits).
     await processPendingLeaveAccruals(leave.employeeId, tx);
 
-    await deductLeaveForApproval({
-      employeeId: leave.employeeId,
-      leaveType: leave.leaveType,
-      days,
-      leaveRequestId: leave.id,
-      createdBy: actor.email,
-      tx,
-    });
+    if (leave.leaveType === "EL") {
+      const policy = await getLeavePolicySettings();
+      await runElAccrualForEmployeeInTx(
+        tx,
+        { id: leave.employeeId, joiningDate: leave.employee.joiningDate, isActive: leave.employee.isActive },
+        policy
+      );
+      await consumeElFifo(tx, {
+        employeeId: leave.employeeId,
+        days,
+        leaveRequestId: leave.id,
+        createdBy: actor.email,
+      });
+    } else {
+      await deductLeaveForApproval({
+        employeeId: leave.employeeId,
+        leaveType: leave.leaveType,
+        days,
+        leaveRequestId: leave.id,
+        createdBy: actor.email,
+        tx,
+      });
+    }
   } catch (error) {
     toWorkflowDomainError(error);
   }
@@ -627,15 +645,24 @@ export async function cancelWorkflow(
     });
 
     try {
-      await restoreLeaveBalanceForCancellation({
-        employeeId: leave.employeeId,
-        leaveType: leave.leaveType as LeaveType,
-        days,
-        leaveRequestId: leave.id,
-        createdBy: actor.email,
-        reason: trimmed,
-        tx,
-      });
+      if (leave.leaveType === "EL") {
+        await restoreElForCancellation(tx, {
+          employeeId: leave.employeeId,
+          leaveRequestId: leave.id,
+          createdBy: actor.email,
+          reason: trimmed,
+        });
+      } else {
+        await restoreLeaveBalanceForCancellation({
+          employeeId: leave.employeeId,
+          leaveType: leave.leaveType as LeaveType,
+          days,
+          leaveRequestId: leave.id,
+          createdBy: actor.email,
+          reason: trimmed,
+          tx,
+        });
+      }
     } catch (error) {
       toWorkflowDomainError(error);
     }

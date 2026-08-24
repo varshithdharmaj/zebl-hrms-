@@ -8,6 +8,8 @@ import {
   getLeaveTransactionHistory,
   processPendingLeaveAccruals,
 } from "@/lib/leave";
+import { adminAdjustElBalance } from "@/lib/leave/el-fifo";
+import { runElAccrualForEmployeeId } from "@/lib/leave/el-accrual-engine";
 import { isValidLeaveType } from "@/lib/leave-types";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/auth-guards";
@@ -39,13 +41,22 @@ export async function adjustLeaveBalanceAction(
       return { error: "Enter a non-zero adjustment (+ add / − deduct)." };
     }
 
-    await adminAdjustLeaveBalance({
-      employeeId,
-      leaveType,
-      adjustment,
-      reason: reason || "Manual HR adjustment",
-      createdBy: session.email,
-    });
+    if (leaveType === "EL") {
+      await adminAdjustElBalance({
+        employeeId,
+        adjustment,
+        reason: reason || "Manual HR adjustment",
+        createdBy: session.email,
+      });
+    } else {
+      await adminAdjustLeaveBalance({
+        employeeId,
+        leaveType,
+        adjustment,
+        reason: reason || "Manual HR adjustment",
+        createdBy: session.email,
+      });
+    }
 
     revalidatePath("/admin/leaves");
     revalidatePath(`/admin/employees/${employeeId}`);
@@ -64,6 +75,7 @@ export async function syncEmployeeAccrualsAction(employeeId: number): Promise<Ac
   try {
     await requireAdminSession();
     await processPendingLeaveAccruals(employeeId);
+    await runElAccrualForEmployeeId(employeeId);
     revalidatePath(`/admin/employees/${employeeId}`);
     revalidatePath("/employee/leaves");
     revalidatePath("/employee/dashboard");
@@ -92,6 +104,7 @@ export async function getEmployeeProfileLeaveData(employeeId: number) {
   if (!canAccess) return { balances: [], history: [] };
 
   await processPendingLeaveAccruals(employeeId);
+  await runElAccrualForEmployeeId(employeeId);
   const [balances, history] = await Promise.all([
     getLeaveBalanceSummaries(employeeId),
     getLeaveTransactionHistory(employeeId),

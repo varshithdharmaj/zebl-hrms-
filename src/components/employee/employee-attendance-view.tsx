@@ -19,10 +19,12 @@ import { Button } from "@/components/ui/button";
 import { DateRangeFilter } from "@/components/ui/date-range-filter";
 import { ChartCard } from "@/components/ui/chart-card";
 import { AttendanceHistoryTableRows, HISTORY_TABLE_COLUMNS } from "@/components/employee/attendance-history-table";
+import { AttendanceRegularizationPanel } from "@/components/employee/attendance-regularization-panel";
 import {
   getEmployeeAttendanceHistory,
   getEmployeeAttendanceSummary,
 } from "@/lib/data";
+import { listOwnRegularizationRequests } from "@/lib/attendance/regularization/regularization-service";
 import { formatDate, minutesToHours } from "@/lib/utils";
 
 export async function EmployeeAttendanceView({
@@ -36,9 +38,10 @@ export async function EmployeeAttendanceView({
   endDate?: string;
   page: number;
 }) {
-  const [summary, history] = await Promise.all([
+  const [summary, history, regularizationRequests] = await Promise.all([
     getEmployeeAttendanceSummary(employeeId, startDate, endDate),
     getEmployeeAttendanceHistory(employeeId, page, startDate, endDate),
+    listOwnRegularizationRequests(employeeId),
   ]);
 
   const rangeLabel = summary.rangeLabel;
@@ -168,6 +171,8 @@ export async function EmployeeAttendanceView({
           </>
         )}
       </SectionCard>
+
+      <AttendanceRegularizationPanel requests={regularizationRequests} />
 
       {summary.lastAttendanceDate && (
         <p className="text-center text-sm text-muted-foreground">

@@ -53,12 +53,12 @@ describe("public job query — visibility filter", () => {
     expect(result).toBeNull();
   });
 
-  it("getOpenPublicJobById never returns internal-only fields", async () => {
-    findFirst.mockResolvedValue({ id: "job-1", title: "Engineer" });
+  it("getOpenPublicJobById returns only write-path fields (id/title/ownerRecruiterUserId), never candidate-facing-DTO extras", async () => {
+    findFirst.mockResolvedValue({ id: "job-1", title: "Engineer", ownerRecruiterUserId: "user-1" });
     const result = await getOpenPublicJobById("job-1");
-    expect(result).toEqual({ id: "job-1", title: "Engineer" });
+    expect(result).toEqual({ id: "job-1", title: "Engineer", ownerRecruiterUserId: "user-1" });
     const selectArg = findFirst.mock.calls[0][0].select;
-    expect(selectArg).toEqual({ id: true, title: true });
+    expect(selectArg).toEqual({ id: true, title: true, ownerRecruiterUserId: true });
   });
 
   it("resolvePublicJobBySlug returns a DTO with no internal status/compensation fields when found", async () => {

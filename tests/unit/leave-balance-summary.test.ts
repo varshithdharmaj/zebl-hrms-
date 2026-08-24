@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { buildLeaveBalanceSummariesFromParts } from "@/lib/leave";
 
 const joiningEligible = new Date("2018-01-01");
+const eligibleInfo = { eligible: true, eligibilityDate: joiningEligible };
 
 function byType(
   summaries: ReturnType<typeof buildLeaveBalanceSummariesFromParts>,
@@ -17,7 +18,7 @@ function byType(
 describe("buildLeaveBalanceSummariesFromParts — authoritative remaining math", () => {
   it("Case 1 — no leave used: remaining equals balance row, used is 0", () => {
     const summaries = buildLeaveBalanceSummariesFromParts(
-      joiningEligible,
+      eligibleInfo,
       { elBalance: 20, clBalance: 12, slBalance: 12 },
       [
         { leaveType: "CL", transactionType: "accrual", _sum: { amount: 12 } },
@@ -35,7 +36,7 @@ describe("buildLeaveBalanceSummariesFromParts — authoritative remaining math",
   it("Case 2 — approved leave (deduction): used increases, remaining comes from balance row", () => {
     // Entitlement 20, approved deduction 5 → remaining 15 stored on balance row
     const summaries = buildLeaveBalanceSummariesFromParts(
-      joiningEligible,
+      eligibleInfo,
       { elBalance: 15, clBalance: 0, slBalance: 0 },
       [
         { leaveType: "EL", transactionType: "accrual", _sum: { amount: 20 } },
@@ -53,7 +54,7 @@ describe("buildLeaveBalanceSummariesFromParts — authoritative remaining math",
   it("Case 3 — pending leave: no deduction transaction, remaining unchanged", () => {
     // Pending requests never write LeaveTransaction deductions; balance row is unchanged.
     const summaries = buildLeaveBalanceSummariesFromParts(
-      joiningEligible,
+      eligibleInfo,
       { elBalance: 20, clBalance: 12, slBalance: 12 },
       [
         { leaveType: "CL", transactionType: "accrual", _sum: { amount: 12 } },
@@ -70,7 +71,7 @@ describe("buildLeaveBalanceSummariesFromParts — authoritative remaining math",
   it("Case 4 — rejected/cancelled-before-approval: no deduction, remaining unchanged", () => {
     // Reject / withdraw before final approval do not create deduction txs.
     const summaries = buildLeaveBalanceSummariesFromParts(
-      joiningEligible,
+      eligibleInfo,
       { elBalance: 10, clBalance: 8, slBalance: 9 },
       [
         { leaveType: "EL", transactionType: "accrual", _sum: { amount: 10 } },
@@ -89,7 +90,7 @@ describe("buildLeaveBalanceSummariesFromParts — authoritative remaining math",
   it("Case 5 — fractional (EL monthly 0.5) balances are preserved", () => {
     // Product has no half-day leave requests; EL accrues 0.5/month. Fractional remaining must round-trip.
     const summaries = buildLeaveBalanceSummariesFromParts(
-      joiningEligible,
+      eligibleInfo,
       { elBalance: 3.5, clBalance: 0, slBalance: 0 },
       [
         { leaveType: "EL", transactionType: "accrual", _sum: { amount: 4 } },
@@ -108,7 +109,7 @@ describe("buildLeaveBalanceSummariesFromParts — authoritative remaining math",
     // Cancel of approved leave posts a restore accrual; remaining reflects the credit on the balance row.
     // Note: used still counts the original deduction (ledger design).
     const summaries = buildLeaveBalanceSummariesFromParts(
-      joiningEligible,
+      eligibleInfo,
       { elBalance: 20, clBalance: 0, slBalance: 0 },
       [
         { leaveType: "EL", transactionType: "accrual", _sum: { amount: 25 } }, // 20 entitlement + 5 restore
@@ -125,7 +126,7 @@ describe("buildLeaveBalanceSummariesFromParts — authoritative remaining math",
 
   it("Case 7 — each leave type is calculated independently", () => {
     const summaries = buildLeaveBalanceSummariesFromParts(
-      joiningEligible,
+      eligibleInfo,
       { elBalance: 4, clBalance: 10, slBalance: 7 },
       [
         { leaveType: "EL", transactionType: "accrual", _sum: { amount: 6 } },
@@ -145,7 +146,7 @@ describe("buildLeaveBalanceSummariesFromParts — authoritative remaining math",
 
   it("negative manual adjustments count toward used; positive toward accrued/total fallback", () => {
     const summaries = buildLeaveBalanceSummariesFromParts(
-      joiningEligible,
+      eligibleInfo,
       { elBalance: 0, clBalance: 9.5, slBalance: 0 },
       [{ leaveType: "CL", transactionType: "accrual", _sum: { amount: 12 } }],
       [

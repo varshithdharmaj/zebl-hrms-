@@ -20,6 +20,8 @@ export async function POST(request: Request) {
     const result = await startPublicSubmission({
       jobPublicSlug: parsed.data.jobPublicSlug,
       ipHash: hashClientIp(request),
+      website: parsed.data.website,
+      formRenderedAt: parsed.data.formRenderedAt,
     });
     return NextResponse.json(result);
   } catch (err) {

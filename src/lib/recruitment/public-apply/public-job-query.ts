@@ -65,13 +65,16 @@ export async function listPublicJobs(): Promise<PublicJobOpeningDTO[]> {
  * Resolves a job by its internal id for the write-side flow (start/submit),
  * returning only what those flows need to validate against — never the
  * candidate-facing DTO shape, and never exposed over an API by id.
+ * `ownerRecruiterUserId` is included solely so the post-submit HR
+ * notification (Phase-3 hardening §4) can target the job's owner without a
+ * second query — never returned to the anonymous client.
  */
 export async function getOpenPublicJobById(
   jobOpeningId: string
-): Promise<{ id: string; title: string } | null> {
+): Promise<{ id: string; title: string; ownerRecruiterUserId: string | null } | null> {
   const job = await prisma.jobOpening.findFirst({
     where: { id: jobOpeningId, ...publicVisibilityWhere() },
-    select: { id: true, title: true },
+    select: { id: true, title: true, ownerRecruiterUserId: true },
   });
   return job;
 }

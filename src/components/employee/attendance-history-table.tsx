@@ -52,7 +52,7 @@ export function isShortHoursDay(record: ClassifiedAttendanceRecord): boolean {
   );
 }
 
-export const HISTORY_TABLE_COLUMNS = ["Date", "Check in", "Check out", "Worked", "Overtime", "Status"];
+export const HISTORY_TABLE_COLUMNS = ["Date", "Check in", "Check out", "Worked", "Break", "Status"];
 
 export function AttendanceHistoryTableRows({ records }: { records: ClassifiedAttendanceRecord[] }) {
   return (
@@ -75,7 +75,7 @@ export function AttendanceHistoryTableRows({ records }: { records: ClassifiedAtt
           >
             {minutesToHours(record.workedMinutes)}
           </DataTableCell>
-          <DataTableCell className="tabular-nums">{minutesToHours(record.overtimeMinutes)}</DataTableCell>
+          <DataTableCell className="tabular-nums">{minutesToHours(record.breakMinutes)}</DataTableCell>
           <DataTableCell>
             <CategoryBadge category={record.category} />
           </DataTableCell>
