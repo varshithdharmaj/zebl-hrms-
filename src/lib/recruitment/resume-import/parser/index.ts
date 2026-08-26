@@ -14,6 +14,7 @@ import { runSemanticVerificationPipeline } from "../semantic";
 import type { SemanticVerifyGenerator } from "../semantic/llm-verify";
 import { getResumeParseMode } from "./parse-mode";
 import { parseResumeWithLlm, type LlmResumeGenerator } from "./llm-parse-resume";
+import { assessExtractionQuality } from "./extraction-quality";
 import { logger } from "@/lib/observability/logger";
 
 export type { ResumeParseResult, ResumeParserError, ParsedResumeDraft } from "./types";
@@ -121,6 +122,45 @@ export async function parseResumeDocument(input: {
   }
 
   const cleaned = cleanupResumeText(extracted.extraction.text);
+
+  // Extraction-quality gate: decides whether the extracted TEXT is trustworthy
+  // enough to hand to the deterministic parser — never whether the candidate's
+  // information is semantically correct (that is the parser/merge layer's job).
+  const quality = assessExtractionQuality(cleaned);
+
+  if (!quality.trustworthy) {
+    logger.info("recruitment.resume.quality_gate_fallback", {
+      entityType: "resume",
+      fileName: input.fileName,
+      reasons: quality.reasons,
+      forceDeterministic: input.forceDeterministic ?? false,
+    });
+
+    // Public /apply intake must stay deterministic and cost-free — never
+    // silently escalate an anonymous submission to a paid AI call. It falls
+    // through to the existing EMPTY_DOCUMENT/deterministic-failure handling
+    // below, which the UI already degrades to manual entry for.
+    if (!input.forceDeterministic) {
+      const fallback = await parseResumeWithLlm(
+        {
+          content: input.content,
+          fileName: input.fileName,
+          mimeType: input.mimeType,
+          documentId: input.documentId ?? null,
+        },
+        { generate: input.llmGenerate }
+      );
+      if (fallback.result.ok) {
+        return fallback;
+      }
+      logger.info("recruitment.resume.quality_gate_fallback_failed", {
+        entityType: "resume",
+        fileName: input.fileName,
+        error: fallback.result.error.message,
+      });
+    }
+  }
+
   if (!cleaned) {
     const empty = EMPTY_PARSED_RESUME_DRAFT();
     const result: ResumeParseResult = {

@@ -10,6 +10,7 @@ import {
   totalWorkedMinutesFromSessions,
 } from "@/lib/attendance/session-duration";
 import { prisma } from "@/lib/prisma";
+import { resolveDatabasePoolMax } from "@/lib/prisma-pool";
 import { startOfDay } from "@/lib/utils";
 
 type Tx = Prisma.TransactionClient;
@@ -362,8 +363,47 @@ export async function deriveAttendanceForEmployeeDate(
 }
 
 /**
+ * Runs `worker` over `items` with at most `concurrency` in flight at once.
+ * Each item's own promise settles independently; the first rejection is
+ * rethrown once every in-flight worker has settled (no unhandled rejections).
+ */
+async function runWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>
+): Promise<void> {
+  let cursor = 0;
+  let firstError: unknown;
+
+  async function runNext(): Promise<void> {
+    while (cursor < items.length) {
+      const item = items[cursor];
+      cursor += 1;
+      try {
+        await worker(item);
+      } catch (e) {
+        firstError ??= e;
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, () => runNext())
+  );
+
+  if (firstError !== undefined) throw firstError;
+}
+
+/**
  * Batch derivation for multiple affected employee/date groups.
  * Groups by employeeId + attendanceDate to avoid redundant rebuilds.
+ *
+ * Each group re-derives inside its own transaction, serialized only against
+ * itself via a (employeeId, date)-scoped advisory lock — different groups
+ * are independent, so running them one-at-a-time here was the real ceiling
+ * on ingest throughput, not any transaction timeout. Bounded by the DB pool
+ * size (minus headroom for the rest of the app on the same task) so a large
+ * batch can't exhaust the connection pool.
  */
 export async function deriveAttendanceForAffectedGroups(
   groups: AffectedEmployeeDateGroup[]
@@ -380,8 +420,9 @@ export async function deriveAttendanceForAffectedGroups(
   }
 
   const uniqueGroups = Array.from(uniqueGroupsMap.values());
+  const concurrency = Math.max(1, resolveDatabasePoolMax() - 1);
 
-  for (const group of uniqueGroups) {
-    await deriveAttendanceForEmployeeDate(group.employeeId, group.attendanceDate);
-  }
+  await runWithConcurrency(uniqueGroups, concurrency, (group) =>
+    deriveAttendanceForEmployeeDate(group.employeeId, group.attendanceDate)
+  );
 }

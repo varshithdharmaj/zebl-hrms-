@@ -457,7 +457,8 @@ export function createJobOpeningService(repository: JobRepository = prismaJobRep
 
       if (toStatus === JobOpeningStatus.open) {
         const stages = await repository.listStages(jobId);
-        if (!existing.title.trim() || stages.length === 0 || existing.openingsCount < 1) {
+        const activeStageCount = stages.filter((s) => !s.isArchived).length;
+        if (!existing.title.trim() || activeStageCount === 0 || existing.openingsCount < 1) {
           throw new RecruitmentDomainError(
             "REC_PRECONDITION",
             "Cannot open job: title, stages, and openings count are required."

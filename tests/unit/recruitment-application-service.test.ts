@@ -43,6 +43,9 @@ vi.mock("@/lib/recruitment/shared/transaction", () => ({
       candidate: {
         update: vi.fn(async () => ({})),
       },
+      jobOpeningStage: {
+        findUnique: vi.fn(async () => null),
+      },
     };
     return work(mockTx);
   },
@@ -109,6 +112,17 @@ describe("ApplicationService", () => {
       setStatus: vi.fn(async () => undefined),
       setAggregateScore: vi.fn(async () => undefined),
       moveApplicationStage: vi.fn(async () => undefined),
+      moveApplicationsStageBulk: vi.fn(async (ids: string[]) =>
+        ids.map((id) => ({
+          id,
+          candidateId: `cand-${id}`,
+          jobOpeningId: "job-1",
+          fromStage: RecruitmentPipelineStage.resume_received,
+        }))
+      ),
+      assignRecruiterBulk: vi.fn(async (ids: string[]) =>
+        ids.map((id) => ({ id, candidateId: `cand-${id}`, jobOpeningId: "job-1" }))
+      ),
       countApplications: vi.fn(async () => ({})),
     } as unknown as ApplicationRepository;
   });
@@ -235,5 +249,95 @@ describe("ApplicationService", () => {
       })
     ).rejects.toThrow(RecruitmentDomainError);
     expect(mockRepo.moveApplicationStage).not.toHaveBeenCalled();
+  });
+
+  describe("bulk actions", () => {
+    const employeeSession: SessionUser = { ...hrSession, id: "user-emp", role: "employee" };
+
+    it("moves a batch of applications to a non-terminal stage and writes per-item history via the repository", async () => {
+      const service = createApplicationService(mockRepo);
+      const result = await service.moveApplicationsStageBulk(hrSession, {
+        ids: ["app-1", "app-2"],
+        stage: RecruitmentPipelineStage.technical_round,
+      });
+
+      expect(result.processed).toBe(2);
+      expect(mockRepo.moveApplicationsStageBulk).toHaveBeenCalledWith(
+        ["app-1", "app-2"],
+        RecruitmentPipelineStage.technical_round,
+        hrSession.id,
+        null,
+        expect.anything()
+      );
+    });
+
+    it.each([
+      RecruitmentPipelineStage.hired,
+      RecruitmentPipelineStage.rejected,
+      RecruitmentPipelineStage.on_hold,
+      RecruitmentPipelineStage.withdrawn,
+    ])("refuses bulk move to terminal/system stage %s", async (stage) => {
+      const service = createApplicationService(mockRepo);
+      await expect(
+        service.moveApplicationsStageBulk(hrSession, { ids: ["app-1"], stage })
+      ).rejects.toBeInstanceOf(RecruitmentDomainError);
+      expect(mockRepo.moveApplicationsStageBulk).not.toHaveBeenCalled();
+    });
+
+    it("blocks bulk stage move for non-HR/admin sessions", async () => {
+      const service = createApplicationService(mockRepo);
+      await expect(
+        service.moveApplicationsStageBulk(employeeSession, {
+          ids: ["app-1"],
+          stage: RecruitmentPipelineStage.screening,
+        })
+      ).rejects.toThrow();
+      expect(mockRepo.moveApplicationsStageBulk).not.toHaveBeenCalled();
+    });
+
+    it("refuses a bulk move when a selected application is not active", async () => {
+      mockRepo.getApplication = vi.fn(async (id: string) => ({
+        id,
+        candidateId: `cand-${id}`,
+        jobOpeningId: "job-1",
+        status: ApplicationStatus.rejected,
+        currentStage: RecruitmentPipelineStage.rejected,
+      })) as unknown as ApplicationRepository["getApplication"];
+
+      const service = createApplicationService(mockRepo);
+      await expect(
+        service.moveApplicationsStageBulk(hrSession, {
+          ids: ["app-1"],
+          stage: RecruitmentPipelineStage.screening,
+        })
+      ).rejects.toBeInstanceOf(RecruitmentDomainError);
+      expect(mockRepo.moveApplicationsStageBulk).not.toHaveBeenCalled();
+    });
+
+    it("bulk-assigns a recruiter", async () => {
+      const service = createApplicationService(mockRepo);
+      const result = await service.assignRecruiterBulk(hrSession, {
+        ids: ["app-1", "app-2"],
+        recruiterUserId: "user-recruiter",
+      });
+
+      expect(result.processed).toBe(2);
+      expect(mockRepo.assignRecruiterBulk).toHaveBeenCalledWith(
+        ["app-1", "app-2"],
+        "user-recruiter",
+        expect.anything()
+      );
+    });
+
+    it("blocks bulk recruiter assignment for non-HR/admin sessions", async () => {
+      const service = createApplicationService(mockRepo);
+      await expect(
+        service.assignRecruiterBulk(employeeSession, {
+          ids: ["app-1"],
+          recruiterUserId: "user-recruiter",
+        })
+      ).rejects.toThrow();
+      expect(mockRepo.assignRecruiterBulk).not.toHaveBeenCalled();
+    });
   });
 });

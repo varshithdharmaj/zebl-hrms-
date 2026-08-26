@@ -12,7 +12,10 @@ import {
   toRecruitmentActor,
 } from "@/lib/recruitment/permissions/permission-service";
 import { RecruitmentScopeEngine } from "@/lib/recruitment/permissions/recruitment-scope-engine";
-import { prismaApplicationRepository } from "@/lib/recruitment/repositories/prisma-application-repository";
+import {
+  prismaApplicationRepository,
+  resolveJobStageId,
+} from "@/lib/recruitment/repositories/prisma-application-repository";
 import type {
   ApplicationDetail,
   ApplicationListFilters,
@@ -40,10 +43,24 @@ import {
 
 export type AfterCommitBuffer = ReturnType<typeof createAfterCommitBuffer>;
 
+/**
+ * Stages a bulk "Move Stage" action may never target — Hired is Employee-
+ * Conversion-owned, and Rejected/On Hold/Withdrawn each require a per-
+ * candidate reason and are single-candidate-only flows (rejectApplication/
+ * withdrawApplication). The bulk UI never offers these; this set is the
+ * server-side backstop.
+ */
+const BULK_BLOCKED_STAGES: ReadonlySet<RecruitmentPipelineStage> = new Set([
+  RecruitmentPipelineStage.hired,
+  RecruitmentPipelineStage.rejected,
+  RecruitmentPipelineStage.on_hold,
+  RecruitmentPipelineStage.withdrawn,
+]);
+
 /** Minimal shape createApplicationCore needs from a job — matches JobOpeningDetail. */
 export type ApplicationCoreJob = {
   title: string;
-  stages: readonly { stage: RecruitmentPipelineStage; sortOrder: number }[];
+  stages: readonly { stage: RecruitmentPipelineStage; sortOrder: number; isArchived: boolean }[];
 };
 
 export type CreateApplicationCoreInput = {
@@ -80,8 +97,9 @@ export async function createApplicationCore(
   input: CreateApplicationCoreInput
 ): Promise<{ id: string; initialStage: RecruitmentPipelineStage }> {
   let initialStage: RecruitmentPipelineStage = RecruitmentPipelineStage.resume_received;
-  if (input.job.stages && input.job.stages.length > 0) {
-    const sortedStages = [...input.job.stages].sort((a, b) => a.sortOrder - b.sortOrder);
+  const activeJobStages = (input.job.stages ?? []).filter((s) => !s.isArchived);
+  if (activeJobStages.length > 0) {
+    const sortedStages = [...activeJobStages].sort((a, b) => a.sortOrder - b.sortOrder);
     if (sortedStages[0]) {
       initialStage = sortedStages[0].stage;
     }
@@ -103,11 +121,13 @@ export async function createApplicationCore(
     tx
   );
 
+  const initialStageId = await resolveJobStageId(tx, input.jobOpeningId, initialStage);
   await tx.applicationStageHistory.create({
     data: {
       applicationId: id,
       fromStage: null,
       toStage: initialStage,
+      toStageId: initialStageId,
       actorUserId: input.createdByUserId,
     },
   });
@@ -264,7 +284,7 @@ export function createApplicationService(
       const isTerminal = terminalStages.includes(parsed.stage);
 
       if (!isTerminal && job.stages && job.stages.length > 0) {
-        const hasStage = job.stages.some((s) => s.stage === parsed.stage);
+        const hasStage = job.stages.some((s) => s.stage === parsed.stage && !s.isArchived);
         if (!hasStage) {
           throw new RecruitmentDomainError(
             "REC_VALIDATION",
@@ -278,12 +298,19 @@ export function createApplicationService(
         const fromStage = app.currentStage;
         await repository.moveApplicationStage(parsed.id, parsed.stage, new Date(), undefined, tx);
 
+        const [fromStageId, toStageId] = await Promise.all([
+          resolveJobStageId(tx, app.jobOpeningId, fromStage),
+          resolveJobStageId(tx, app.jobOpeningId, parsed.stage),
+        ]);
+
         // Record stage history with actor
         await tx.applicationStageHistory.create({
           data: {
             applicationId: parsed.id,
             fromStage,
             toStage: parsed.stage,
+            fromStageId,
+            toStageId,
             note: parsed.note ?? null,
             actorUserId: session.id,
           },
@@ -321,6 +348,129 @@ export function createApplicationService(
       await events.flush();
     },
 
+    /**
+     * Bulk stage move — safe subset only. Explicitly refuses `hired`
+     * (Employee Conversion-owned) and `rejected`/`on_hold`/`withdrawn`
+     * (single-candidate flows that require a reason) — those never appear
+     * bulk-selectable, this is defense in depth against a crafted request.
+     * All-or-nothing: every id is validated before the transaction opens,
+     * and the whole batch is one `withRecruitmentTransaction` — either
+     * every application moves (with its own ApplicationStageHistory row and
+     * timeline entry) or none do.
+     */
+    async moveApplicationsStageBulk(
+      session: SessionUser,
+      input: { ids: string[]; stage: RecruitmentPipelineStage; note?: string }
+    ): Promise<{ processed: number }> {
+      RecruitmentPermissionService.requireModuleEnabled();
+      await RecruitmentPermissionService.assertCanManageCandidates(session);
+      const actor = toRecruitmentActor(session);
+
+      if (BULK_BLOCKED_STAGES.has(input.stage)) {
+        throw new RecruitmentDomainError(
+          "REC_VALIDATION",
+          "This stage cannot be used for bulk moves. Reject, withdraw, hold, and Joined are single-candidate actions."
+        );
+      }
+
+      const ids = [...new Set(input.ids)];
+      const apps = await Promise.all(ids.map((id) => repository.getApplication(id)));
+      apps.forEach((app, index) => {
+        if (!app) {
+          throw new RecruitmentDomainError("REC_NOT_FOUND", `Application ${ids[index]} not found.`);
+        }
+        if (app.status !== ApplicationStatus.active && app.status !== ApplicationStatus.on_hold) {
+          throw new RecruitmentDomainError(
+            "REC_VALIDATION",
+            `${app.candidate?.fullName ?? "A candidate"} is not active — reopen the application first.`
+          );
+        }
+      });
+
+      const events = createAfterCommitBuffer();
+      await withRecruitmentTransaction(async (tx) => {
+        const results = await repository.moveApplicationsStageBulk(
+          ids,
+          input.stage,
+          session.id,
+          input.note ?? null,
+          tx
+        );
+
+        for (const result of results) {
+          await RecruitmentTimelineService.append(
+            {
+              entityType: "application",
+              entityId: result.id,
+              applicationId: result.id,
+              candidateId: result.candidateId,
+              jobOpeningId: result.jobOpeningId,
+              eventType: "application_stage_moved",
+              summary: `Moved stage from ${result.fromStage} to ${input.stage} (bulk)`,
+              actorUserId: session.id,
+              metadata: { fromStage: result.fromStage, toStage: input.stage, bulk: true },
+            },
+            tx
+          );
+
+          events.enqueue(
+            RecruitmentEventFactory.applicationStageChanged(actor, {
+              applicationId: result.id,
+              candidateId: result.candidateId,
+              jobOpeningId: result.jobOpeningId,
+              fromStage: result.fromStage,
+              toStage: input.stage,
+              isOverride: false,
+            })
+          );
+        }
+      });
+
+      await events.flush();
+      return { processed: ids.length };
+    },
+
+    /** Bulk recruiter (re)assignment — same all-or-nothing single-transaction shape as the stage-move bulk action. */
+    async assignRecruiterBulk(
+      session: SessionUser,
+      input: { ids: string[]; recruiterUserId: string | null }
+    ): Promise<{ processed: number }> {
+      RecruitmentPermissionService.requireModuleEnabled();
+      await RecruitmentPermissionService.assertCanManageCandidates(session);
+
+      const ids = [...new Set(input.ids)];
+      const apps = await Promise.all(ids.map((id) => repository.getApplication(id)));
+      apps.forEach((app, index) => {
+        if (!app) {
+          throw new RecruitmentDomainError("REC_NOT_FOUND", `Application ${ids[index]} not found.`);
+        }
+      });
+
+      await withRecruitmentTransaction(async (tx) => {
+        const results = await repository.assignRecruiterBulk(ids, input.recruiterUserId, tx);
+        for (const result of results) {
+          await RecruitmentTimelineService.append(
+            {
+              entityType: "application",
+              entityId: result.id,
+              applicationId: result.id,
+              candidateId: result.candidateId,
+              jobOpeningId: result.jobOpeningId,
+              eventType: "application_recruiter_assigned",
+              summary: input.recruiterUserId
+                ? "Recruiter assigned (bulk)"
+                : "Recruiter unassigned (bulk)",
+              actorUserId: session.id,
+              metadata: { recruiterUserId: input.recruiterUserId, bulk: true },
+            },
+            tx
+          );
+        }
+      });
+
+      return { processed: ids.length };
+    },
+
     async rejectApplication(
       session: SessionUser,
       input: { id: string; reason: string }
@@ -350,11 +500,18 @@ export function createApplicationService(
           tx
         );
 
+        const [fromStageId, toStageId] = await Promise.all([
+          resolveJobStageId(tx, app.jobOpeningId, fromStage),
+          resolveJobStageId(tx, app.jobOpeningId, RecruitmentPipelineStage.rejected),
+        ]);
+
         await tx.applicationStageHistory.create({
           data: {
             applicationId: parsed.id,
             fromStage,
             toStage: RecruitmentPipelineStage.rejected,
+            fromStageId,
+            toStageId,
             note: `Rejected: ${parsed.reason}`,
             actorUserId: session.id,
           },
@@ -421,11 +578,18 @@ export function createApplicationService(
           tx
         );
 
+        const [fromStageId, toStageId] = await Promise.all([
+          resolveJobStageId(tx, app.jobOpeningId, fromStage),
+          resolveJobStageId(tx, app.jobOpeningId, RecruitmentPipelineStage.withdrawn),
+        ]);
+
         await tx.applicationStageHistory.create({
           data: {
             applicationId: parsed.id,
             fromStage,
             toStage: RecruitmentPipelineStage.withdrawn,
+            fromStageId,
+            toStageId,
             note: `Withdrawn: ${parsed.reason}`,
             actorUserId: session.id,
           },
@@ -480,8 +644,9 @@ export function createApplicationService(
       }
 
       let targetStage: RecruitmentPipelineStage = RecruitmentPipelineStage.resume_received;
-      if (job.stages && job.stages.length > 0) {
-        const sortedStages = [...job.stages].sort((a, b) => a.sortOrder - b.sortOrder);
+      const activeJobStages = job.stages?.filter((s) => !s.isArchived) ?? [];
+      if (activeJobStages.length > 0) {
+        const sortedStages = [...activeJobStages].sort((a, b) => a.sortOrder - b.sortOrder);
         if (sortedStages[0]) {
           targetStage = sortedStages[0].stage;
         }
@@ -502,11 +667,18 @@ export function createApplicationService(
           tx
         );
 
+        const [fromStageId, toStageId] = await Promise.all([
+          resolveJobStageId(tx, app.jobOpeningId, fromStage),
+          resolveJobStageId(tx, app.jobOpeningId, targetStage),
+        ]);
+
         await tx.applicationStageHistory.create({
           data: {
             applicationId: id,
             fromStage,
             toStage: targetStage,
+            fromStageId,
+            toStageId,
             note: "Application reopened",
             actorUserId: session.id,
           },

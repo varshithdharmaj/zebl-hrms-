@@ -3,6 +3,7 @@ import type {
   JobOpeningStatus,
   HiringTeamRole,
   RecruitmentPipelineStage,
+  StageCategory,
   NoteVisibility,
 } from "@/generated/prisma/enums";
 import type { RecruitmentScope } from "@/lib/recruitment/types/scope";
@@ -21,6 +22,12 @@ export type JobOpeningListFilters = {
   includeArchived?: boolean;
 };
 
+/**
+ * "applicationCount" is deliberately NOT a sort field: Prisma's relation
+ * `_count` ordering (ApplicationOrderByRelationAggregateInput) has no `where`,
+ * so it would count soft-deleted applications while the displayed
+ * Applicants column excludes them — an unfixable mismatch without raw SQL.
+ */
 export type JobOpeningSortField = "createdAt" | "title" | "status" | "updatedAt" | "closedAt";
 
 export type JobOpeningSort = {
@@ -31,10 +38,26 @@ export type JobOpeningSort = {
 export type JobStageInput = {
   stage: RecruitmentPipelineStage;
   sortOrder: number;
+  category?: StageCategory;
   isOptional?: boolean;
   isEnabled?: boolean;
   label?: string | null;
   slaDays?: number | null;
+};
+
+export type InsertJobStageInput = {
+  stage: RecruitmentPipelineStage;
+  category: StageCategory;
+  label: string;
+  /** Insert immediately after this stage id (mutually exclusive with beforeStageId). */
+  afterStageId?: string | null;
+  /** Insert immediately before this stage id (mutually exclusive with afterStageId). */
+  beforeStageId?: string | null;
+};
+
+export type UpdateJobStagePatch = {
+  label?: string;
+  category?: StageCategory;
 };
 
 export type HiringTeamMemberInput = {
@@ -81,10 +104,13 @@ export type JobHiringTeamMemberView = {
 
 export type JobOpeningStageView = {
   id: string;
+  jobOpeningId: string;
   stage: RecruitmentPipelineStage;
+  category: StageCategory;
   sortOrder: number;
   isOptional: boolean;
   isEnabled: boolean;
+  isArchived: boolean;
   label: string | null;
   slaDays: number | null;
 };
@@ -109,6 +135,10 @@ export type JobOpeningListItem = {
   hiringManagerName: string | null;
   hiringManagerEmployeeId: number | null;
   applicationCount: number;
+  /** Distinct applications that have ever reached an interview stage (see INTERVIEW_STAGES). */
+  interviewedApplicationCount: number;
+  /** Applications with status = hired. */
+  hiredApplicationCount: number;
   isPubliclyListed: boolean;
   publicSlug: string | null;
 };
@@ -211,6 +241,24 @@ export type JobRepository = {
   findByCode(code: string): Promise<{ id: string } | null>;
 
   listStages(jobId: string): Promise<readonly JobOpeningStageView[]>;
+
+  /** Inserts a new custom stage (label/category, `stage` already resolved to a free enum slot) at the requested position, shifting siblings safely. */
+  insertJobStage(
+    jobId: string,
+    input: InsertJobStageInput,
+    tx?: RepositoryTx
+  ): Promise<{ id: string }>;
+
+  /** Renames a stage and/or changes its category. Does not touch sortOrder/isArchived. */
+  updateJobStage(stageId: string, patch: UpdateJobStagePatch, tx?: RepositoryTx): Promise<void>;
+
+  /** Swaps a stage with its immediate left/right neighbor among the job's non-archived stages. */
+  moveJobStage(stageId: string, direction: "left" | "right", tx?: RepositoryTx): Promise<void>;
+
+  /** Sets isArchived = true. Never deletes the row or touches Application/ApplicationStageHistory. */
+  archiveJobStage(stageId: string, tx?: RepositoryTx): Promise<void>;
+
+  getJobStage(stageId: string): Promise<JobOpeningStageView | null>;
 
   addHiringTeamMember(
     jobId: string,

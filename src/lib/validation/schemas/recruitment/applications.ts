@@ -52,3 +52,25 @@ export const updateApplicationAssessmentSchema = z.object({
 export type UpdateApplicationAssessmentInput = z.infer<
   typeof updateApplicationAssessmentSchema
 >;
+
+export const loadPipelineColumnSchema = z.object({
+  jobOpeningId: z.string().trim().min(1, "Job Opening ID is required."),
+  stage: z.nativeEnum(RecruitmentPipelineStage),
+  page: z.coerce.number().int().min(1).default(1),
+});
+
+const bulkIdsSchema = z
+  .array(z.string().trim().min(1))
+  .min(1, "Select at least one candidate.")
+  .max(100, "Select 100 or fewer candidates for a bulk action.");
+
+export const bulkMoveApplicationsStageSchema = z.object({
+  ids: bulkIdsSchema,
+  stage: z.nativeEnum(RecruitmentPipelineStage),
+  note: z.string().trim().max(500).optional(),
+});
+
+export const bulkAssignRecruiterSchema = z.object({
+  ids: bulkIdsSchema,
+  recruiterUserId: z.string().trim().min(1).nullable(),
+});

@@ -150,6 +150,8 @@ export type SectionMap = Record<ResumeSectionId, string[]>;
 export function detectResumeSections(lines: string[]): {
   headerLines: string[];
   sections: SectionMap;
+  /** False when no recognizable section heading appeared anywhere in the document. */
+  hasAnySectionHeader: boolean;
 } {
   const sections: SectionMap = {
     summary: [],
@@ -185,5 +187,5 @@ export function detectResumeSections(lines: string[]): {
     sections[current].push(line);
   }
 
-  return { headerLines, sections };
+  return { headerLines, sections, hasAnySectionHeader: seenSection };
 }

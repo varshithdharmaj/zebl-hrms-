@@ -75,7 +75,7 @@ export function AppShell({
       />
       <div
         className={cn(
-          "transition-[padding] duration-300 ease-in-out",
+          "min-w-0 max-w-full overflow-x-hidden transition-[padding] duration-300 ease-in-out",
           collapsed ? "lg:pl-20" : "lg:pl-64"
         )}
       >
@@ -83,8 +83,8 @@ export function AppShell({
         <main
           className={
             variant === "wide"
-              ? "min-h-screen w-full px-4 py-6 pt-[4.5rem] sm:px-6 lg:px-8 lg:py-8 lg:pt-8 xl:px-10"
-              : "mx-auto min-h-screen w-full max-w-[var(--page-max)] px-5 py-8 pt-16 lg:px-10 lg:pt-10"
+              ? "min-h-screen w-full min-w-0 max-w-full px-4 py-6 pt-[4.5rem] sm:px-6 lg:px-8 lg:py-8 lg:pt-8 xl:px-10"
+              : "mx-auto min-h-screen w-full min-w-0 max-w-[var(--page-max)] px-5 py-8 pt-16 lg:px-10 lg:pt-10"
           }
         >
           <AppTopBarDesktop />

@@ -16,7 +16,7 @@ export type JobListFilterState = {
 
 export function JobOpeningsFilters({ filters }: { filters: JobListFilterState }) {
   return (
-    <form className="grid gap-3 rounded-xl border border-border bg-card p-4 shadow-subtle md:grid-cols-6">
+    <form className="grid gap-3 rounded-xl border border-border bg-card p-4 shadow-subtle md:grid-cols-7">
       <div className="md:col-span-2">
         <label htmlFor="q" className="mb-1 block text-xs font-semibold text-muted-foreground">
           Search
@@ -70,11 +70,25 @@ export function JobOpeningsFilters({ filters }: { filters: JobListFilterState })
           defaultValue={filters.sort ?? "createdAt"}
           className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
         >
-          <option value="createdAt">Created</option>
+          <option value="createdAt">Age (created)</option>
           <option value="title">Title</option>
           <option value="status">Status</option>
           <option value="updatedAt">Updated</option>
           <option value="closedAt">Closed</option>
+        </select>
+      </div>
+      <div>
+        <label htmlFor="direction" className="mb-1 block text-xs font-semibold text-muted-foreground">
+          Order
+        </label>
+        <select
+          id="direction"
+          name="direction"
+          defaultValue={filters.direction ?? "desc"}
+          className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+        >
+          <option value="desc">Newest first</option>
+          <option value="asc">Oldest first</option>
         </select>
       </div>
       <div className="flex flex-col justify-end gap-2">
@@ -88,13 +102,12 @@ export function JobOpeningsFilters({ filters }: { filters: JobListFilterState })
           />
           Include archived
         </label>
-        <input type="hidden" name="direction" value={filters.direction ?? "desc"} />
         <Button type="submit" variant="secondary">
           Apply filters
         </Button>
       </div>
       {(filters.q || filters.status && filters.status !== "all" || filters.department) && (
-        <div className="md:col-span-6">
+        <div className="md:col-span-7">
           <Link href="/admin/recruitment/jobs" className="text-sm text-muted-foreground hover:underline">
             Clear filters
           </Link>

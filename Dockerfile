@@ -22,6 +22,12 @@ FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+# App-wide attendance/leave/payroll date logic assumes the process's local
+# timezone is IST (only the biometric ingestion path independently pins
+# itself to Asia/Kolkata via Intl). Without this, "today" boundaries drift
+# from IST by up to ~5.5h on a container that defaults to UTC, so live
+# check-ins near IST midnight land on the wrong day.
+ENV TZ=Asia/Kolkata
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/* \
   && groupadd --system --gid 1001 nodejs \

@@ -1,10 +1,15 @@
 import { Prisma } from "@/generated/prisma/client";
 import {
+  ApplicationStatus,
   HiringTeamRole,
   JobOpeningStatus,
   type NoteVisibility,
 } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
+import {
+  INTERVIEW_STAGES,
+  PIPELINE_STAGE_CATEGORY,
+} from "@/lib/recruitment/shared/pipeline-stage-groups";
 import type { RecruitmentScope } from "@/lib/recruitment/types/scope";
 import {
   normalizePagination,
@@ -15,6 +20,7 @@ import type { RepositoryTx } from "@/lib/recruitment/repositories/types";
 import { splitRequirements } from "@/lib/recruitment/job/requirements-skills";
 import type {
   HiringTeamMemberInput,
+  InsertJobStageInput,
   JobHiringTeamMemberView,
   JobListArgs,
   JobOpeningCreateData,
@@ -28,6 +34,7 @@ import type {
   JobSearchArgs,
   JobStageInput,
   JobStatusCounts,
+  UpdateJobStagePatch,
 } from "@/lib/recruitment/job/types";
 
 type Client = RepositoryTx;
@@ -41,8 +48,50 @@ const listInclude = {
       employee: { select: { id: true, name: true, employeeCode: true, department: true } },
     },
   },
-  _count: { select: { applications: true } },
+  _count: { select: { applications: { where: { deletedAt: null } } } },
 } as const;
+
+/**
+ * Applicants/Hired come from Application (never from Candidate — a candidate
+ * can have applications against multiple job openings). Interviewed comes
+ * from ApplicationStageHistory (distinct applications that ever reached an
+ * interview stage), not the current stage or interview events, so a
+ * candidate with 3 interview rounds still counts once. Both are computed
+ * with one grouped query per page load (not per row) to avoid N+1.
+ */
+async function loadJobMetrics(
+  jobIds: string[]
+): Promise<Map<string, { interviewed: number; hired: number }>> {
+  const metrics = new Map<string, { interviewed: number; hired: number }>();
+  if (jobIds.length === 0) return metrics;
+
+  const [hiredGroups, interviewRows] = await Promise.all([
+    prisma.application.groupBy({
+      by: ["jobOpeningId"],
+      where: { jobOpeningId: { in: jobIds }, status: ApplicationStatus.hired, deletedAt: null },
+      _count: { _all: true },
+    }),
+    prisma.applicationStageHistory.findMany({
+      where: {
+        toStage: { in: [...INTERVIEW_STAGES] },
+        application: { jobOpeningId: { in: jobIds }, deletedAt: null },
+      },
+      select: { applicationId: true, application: { select: { jobOpeningId: true } } },
+      distinct: ["applicationId"],
+    }),
+  ]);
+
+  for (const id of jobIds) metrics.set(id, { interviewed: 0, hired: 0 });
+  for (const row of hiredGroups) {
+    const entry = metrics.get(row.jobOpeningId);
+    if (entry) entry.hired = row._count._all;
+  }
+  for (const row of interviewRows) {
+    const entry = metrics.get(row.application.jobOpeningId);
+    if (entry) entry.interviewed += 1;
+  }
+  return metrics;
+}
 
 function decimalToString(value: Prisma.Decimal | null | undefined): string | null {
   if (value == null) return null;
@@ -137,7 +186,8 @@ function mapListItem(
     _count: { applications: number };
     isPubliclyListed: boolean;
     publicSlug: string | null;
-  }
+  },
+  metrics?: { interviewed: number; hired: number }
 ): JobOpeningListItem {
   const hm = row.hiringTeam[0];
   return {
@@ -160,6 +210,8 @@ function mapListItem(
     hiringManagerName: hm?.employee.name ?? null,
     hiringManagerEmployeeId: hm?.employeeId ?? null,
     applicationCount: row._count.applications,
+    interviewedApplicationCount: metrics?.interviewed ?? 0,
+    hiredApplicationCount: metrics?.hired ?? 0,
     isPubliclyListed: row.isPubliclyListed,
     publicSlug: row.publicSlug,
   };
@@ -183,22 +235,80 @@ function mapTeamMember(row: {
 
 function mapStage(row: {
   id: string;
+  jobOpeningId: string;
   stage: JobOpeningStageView["stage"];
+  category: JobOpeningStageView["category"];
   sortOrder: number;
   isOptional: boolean;
   isEnabled: boolean;
+  isArchived: boolean;
   label: string | null;
   slaDays: number | null;
 }): JobOpeningStageView {
   return {
     id: row.id,
+    jobOpeningId: row.jobOpeningId,
     stage: row.stage,
+    category: row.category,
     sortOrder: row.sortOrder,
     isOptional: row.isOptional,
     isEnabled: row.isEnabled,
+    isArchived: row.isArchived,
     label: row.label,
     slaDays: row.slaDays,
   };
+}
+
+const STAGE_SORT_ORDER_OFFSET = 1_000_000;
+
+async function loadActiveStageIdsInOrder(client: Client, jobOpeningId: string): Promise<string[]> {
+  const rows = await client.jobOpeningStage.findMany({
+    where: { jobOpeningId, isArchived: false },
+    orderBy: { sortOrder: "asc" },
+    select: { id: true },
+  });
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Renumbers every JobOpeningStage row for a job (active stages first, in
+ * `activeOrderedIds` order, then archived ones appended in their existing
+ * relative order) to a clean 0..n-1 sequence.
+ *
+ * `(jobOpeningId, sortOrder)` is globally unique per job — archived rows are
+ * included here (even though the board ignores their sortOrder) purely so
+ * every row in the job is renumbered together and a mid-operation collision
+ * with an untouched row's sortOrder is structurally impossible. Two-phase
+ * (push out of range, then assign final values) so no intermediate UPDATE
+ * within the transaction can collide with another row's not-yet-updated
+ * value regardless of the order Postgres processes them in.
+ */
+async function reorderAllJobStages(
+  client: Client,
+  jobOpeningId: string,
+  activeOrderedIds: string[]
+): Promise<void> {
+  const allStages = await client.jobOpeningStage.findMany({
+    where: { jobOpeningId },
+    orderBy: { sortOrder: "asc" },
+    select: { id: true },
+  });
+  const activeSet = new Set(activeOrderedIds);
+  const archivedIds = allStages.map((s) => s.id).filter((id) => !activeSet.has(id));
+  const finalOrder = [...activeOrderedIds, ...archivedIds];
+
+  for (const id of finalOrder) {
+    await client.jobOpeningStage.update({
+      where: { id },
+      data: { sortOrder: { increment: STAGE_SORT_ORDER_OFFSET } },
+    });
+  }
+  for (let i = 0; i < finalOrder.length; i++) {
+    await client.jobOpeningStage.update({
+      where: { id: finalOrder[i] },
+      data: { sortOrder: i },
+    });
+  }
 }
 
 function toCreateInput(data: JobOpeningCreateData): Prisma.JobOpeningCreateInput {
@@ -305,6 +415,7 @@ export const prismaJobRepository: JobRepository = {
         stages: {
           create: stages.map((s: JobStageInput) => ({
             stage: s.stage,
+            category: s.category ?? PIPELINE_STAGE_CATEGORY[s.stage],
             sortOrder: s.sortOrder,
             isOptional: s.isOptional ?? false,
             isEnabled: s.isEnabled ?? true,
@@ -404,11 +515,16 @@ export const prismaJobRepository: JobRepository = {
           orderBy: [{ isPinned: "desc" }, { createdAt: "desc" }],
           take: 20,
         },
-        _count: { select: { applications: true } },
+        _count: { select: { applications: { where: { deletedAt: null } } } },
       },
     });
     if (!row) return null;
 
+    // Interviewed/hired are not read by any current getJob() consumer (job
+    // detail/edit pages only display applicationCount) — default to 0 rather
+    // than spend two extra grouped queries per detail-page view. They still
+    // satisfy JobOpeningDetail's structural type (it extends the list item).
+    // Wire loadJobMetrics([row.id]) here if a consumer needs real values.
     const { requirements, skillsText } = splitRequirements(row.requirements);
     const hm = row.hiringTeam.find((m) => m.role === HiringTeamRole.hiring_manager);
 
@@ -432,6 +548,8 @@ export const prismaJobRepository: JobRepository = {
       hiringManagerName: hm?.employee.name ?? null,
       hiringManagerEmployeeId: hm?.employeeId ?? null,
       applicationCount: row._count.applications,
+      interviewedApplicationCount: 0,
+      hiredApplicationCount: 0,
       workMode: row.workMode,
       description: row.description,
       requirements,
@@ -478,7 +596,12 @@ export const prismaJobRepository: JobRepository = {
         take: pagination.pageSize,
       }),
     ]);
-    return toPageResult(rows.map(mapListItem), total, pagination);
+    const metrics = await loadJobMetrics(rows.map((r) => r.id));
+    return toPageResult(
+      rows.map((row) => mapListItem(row, metrics.get(row.id))),
+      total,
+      pagination
+    );
   },
 
   async countJobs(scope, filters) {
@@ -520,6 +643,92 @@ export const prismaJobRepository: JobRepository = {
       orderBy: { sortOrder: "asc" },
     });
     return rows.map(mapStage);
+  },
+
+  async getJobStage(stageId) {
+    const row = await prisma.jobOpeningStage.findUnique({ where: { id: stageId } });
+    return row ? mapStage(row) : null;
+  },
+
+  async insertJobStage(jobId, input: InsertJobStageInput, tx) {
+    const client: Client = tx ?? prisma;
+
+    // Temporary sortOrder, safely outside the normal 0..n range — corrected
+    // by reorderAllJobStages() below before this function returns, so it's
+    // never observable outside this operation.
+    const created = await client.jobOpeningStage.create({
+      data: {
+        jobOpeningId: jobId,
+        stage: input.stage,
+        category: input.category,
+        sortOrder: STAGE_SORT_ORDER_OFFSET + Date.now(),
+        isOptional: false,
+        isEnabled: true,
+        isArchived: false,
+        label: input.label,
+      },
+      select: { id: true },
+    });
+
+    const activeIds = await loadActiveStageIdsInOrder(client, jobId);
+    const withoutNew = activeIds.filter((id) => id !== created.id);
+
+    let insertAt = withoutNew.length;
+    if (input.afterStageId) {
+      const idx = withoutNew.indexOf(input.afterStageId);
+      if (idx !== -1) insertAt = idx + 1;
+    } else if (input.beforeStageId) {
+      const idx = withoutNew.indexOf(input.beforeStageId);
+      if (idx !== -1) insertAt = idx;
+    }
+    withoutNew.splice(insertAt, 0, created.id);
+
+    await reorderAllJobStages(client, jobId, withoutNew);
+
+    return { id: created.id };
+  },
+
+  async updateJobStage(stageId, patch: UpdateJobStagePatch, tx) {
+    const client: Client = tx ?? prisma;
+    await client.jobOpeningStage.update({
+      where: { id: stageId },
+      data: {
+        label: patch.label,
+        category: patch.category,
+      },
+    });
+  },
+
+  async moveJobStage(stageId, direction, tx) {
+    const client: Client = tx ?? prisma;
+    const stage = await client.jobOpeningStage.findUniqueOrThrow({
+      where: { id: stageId },
+      select: { jobOpeningId: true },
+    });
+
+    const activeIds = await loadActiveStageIdsInOrder(client, stage.jobOpeningId);
+    const index = activeIds.indexOf(stageId);
+    if (index === -1) return; // archived or already removed — nothing to move
+
+    const swapWith = direction === "left" ? index - 1 : index + 1;
+    if (swapWith < 0 || swapWith >= activeIds.length) return; // already at an edge
+
+    const reordered = [...activeIds];
+    [reordered[index], reordered[swapWith]] = [reordered[swapWith], reordered[index]];
+
+    await reorderAllJobStages(client, stage.jobOpeningId, reordered);
+  },
+
+  async archiveJobStage(stageId, tx) {
+    const client: Client = tx ?? prisma;
+    await client.jobOpeningStage.update({
+      where: { id: stageId },
+      data: { isArchived: true, isEnabled: false },
+    });
+    // sortOrder is left untouched — archived rows are excluded from the
+    // active board/ordering entirely (see loadActiveStageIdsInOrder), so no
+    // renumbering is needed and no ApplicationStageHistory/Application row
+    // is touched.
   },
 
   async addHiringTeamMember(jobId, employeeId, role, tx) {

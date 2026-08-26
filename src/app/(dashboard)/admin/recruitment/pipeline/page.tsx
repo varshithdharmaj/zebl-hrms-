@@ -6,10 +6,13 @@ import { buildRecruitmentBreadcrumbs } from "@/lib/recruitment/navigation/breadc
 import { ApplicationFilters } from "@/components/recruitment/applications/application-filters";
 import { ApplicationTable } from "@/components/recruitment/applications/application-table";
 import { PipelineBoard } from "@/components/recruitment/applications/pipeline-board";
+import type { PipelineDynamicColumn } from "@/components/recruitment/applications/pipeline-board";
 import { Button } from "@/components/ui/button";
 import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { getApplicationCached, listApplicationsCached } from "@/lib/recruitment/application";
+import { sanitizeApplicationsForClient } from "@/lib/recruitment/application/sanitize";
 import type { ApplicationDetail } from "@/lib/recruitment/repositories/application-repository";
+import { prismaJobRepository } from "@/lib/recruitment/repositories/prisma-job-repository";
 import type { ApplicationTableItem } from "@/components/recruitment/applications/application-table";
 import { getEmployeeOptions } from "@/lib/recruitment/candidate";
 import { listInterviewsCached } from "@/lib/recruitment/interview/queries";
@@ -18,10 +21,15 @@ import {
   getRequireDecisionForOfferCached,
 } from "@/lib/recruitment/decision/queries";
 import { prisma } from "@/lib/prisma";
+import { TagService } from "@/lib/recruitment/tags";
 import { ApplicationStatus, RecruitmentPipelineStage } from "@/generated/prisma/enums";
+import { PIPELINE_STAGE_LABELS } from "@/lib/recruitment/shared/pipeline-stage-groups";
 import {
-  MAX_PAGE_SIZE,
+  LIST_MAX_PAGE_SIZE,
+  LIST_PAGE_SIZE_OPTIONS,
+  DEFAULT_PAGE_SIZE,
   PIPELINE_BOARD_MAX_ITEMS,
+  PIPELINE_COLUMN_PAGE_SIZE,
   normalizePipelineBoardTake,
 } from "@/lib/recruitment/shared/pagination";
 import type { PipelineDrawerApplication } from "@/components/recruitment/applications/application-pipeline-drawer";
@@ -30,6 +38,13 @@ import {
   resolveRecruitmentReturnTo,
   returnToLabel,
 } from "@/lib/recruitment/navigation/return-to";
+
+function normalizeListPageSize(raw: string | string[] | undefined): number {
+  const n = Number(typeof raw === "string" ? raw : "");
+  return LIST_PAGE_SIZE_OPTIONS.includes(n as (typeof LIST_PAGE_SIZE_OPTIONS)[number])
+    ? n
+    : DEFAULT_PAGE_SIZE;
+}
 
 export default async function RecruitmentPipelinePage({
   searchParams,
@@ -42,8 +57,12 @@ export default async function RecruitmentPipelinePage({
 
   const view = raw.view === "list" ? "list" : "board";
   const applicationId = typeof raw.applicationId === "string" ? raw.applicationId : undefined;
-  const boardPage = Math.max(1, Number(typeof raw.page === "string" ? raw.page : "1") || 1);
-  const boardTake = normalizePipelineBoardTake(boardPage);
+  const mine = raw.mine === "1";
+  const needsAttention = raw.needsAttention === "1";
+
+  const requestedPage = Math.max(1, Number(typeof raw.page === "string" ? raw.page : "1") || 1);
+  const listPageSize = normalizeListPageSize(raw.pageSize);
+  const boardTake = normalizePipelineBoardTake(requestedPage);
 
   const filters = {
     q: typeof raw.q === "string" ? raw.q : undefined,
@@ -51,6 +70,9 @@ export default async function RecruitmentPipelinePage({
     currentStage: typeof raw.currentStage === "string" ? raw.currentStage : "all",
     jobOpeningId: typeof raw.jobOpeningId === "string" ? raw.jobOpeningId : "all",
     view: view as "board" | "list",
+    mine,
+    needsAttention,
+    pageSize: listPageSize,
   };
 
   const statusFilter = filters.status === "all" ? undefined : (filters.status as ApplicationStatus);
@@ -60,13 +82,31 @@ export default async function RecruitmentPipelinePage({
       : (filters.currentStage as RecruitmentPipelineStage);
   const jobFilter = filters.jobOpeningId === "all" ? undefined : filters.jobOpeningId;
 
-  const listPagination =
-    view === "board"
-      ? { page: 1, pageSize: boardTake.take }
-      : { page: 1, pageSize: MAX_PAGE_SIZE };
+  const baseFilters = {
+    q: filters.q,
+    status: statusFilter,
+    currentStage: stageFilter,
+    jobOpeningId: jobFilter,
+    assignedRecruiterUserId: mine ? session.id : undefined,
+    needsAttention: needsAttention ? true : undefined,
+  };
+
+  // A job-scoped board renders one column per JobOpeningStage instead of the
+  // fixed 5-column cross-job fallback — only possible once a single job is
+  // selected and that job actually has a configured stage list.
+  const jobDetail =
+    view === "board" && jobFilter ? await prismaJobRepository.getJob(jobFilter) : null;
+  const dynamicStages = (jobDetail?.stages ?? [])
+    .filter((s) => s.isEnabled)
+    .slice()
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+  const boardMode: "dynamic" | "static" =
+    view === "board" && jobFilter && dynamicStages.length > 0 ? "dynamic" : "static";
 
   const [
-    result,
+    listResult,
+    dynamicColumnsData,
+    staticBoardResult,
     employeeOptions,
     jobs,
     selectedDetail,
@@ -74,18 +114,45 @@ export default async function RecruitmentPipelinePage({
     selectedDecision,
     requireDecisionForOffer,
   ] = await Promise.all([
-    listApplicationsCached(
-      session,
-      {
-        q: filters.q,
-        status: statusFilter,
-        currentStage: stageFilter,
-        jobOpeningId: jobFilter,
-      },
-      listPagination,
-      { field: "createdAt", direction: "desc" },
-      view === "board" ? { maxPageSize: PIPELINE_BOARD_MAX_ITEMS } : undefined
-    ),
+    view === "list"
+      ? listApplicationsCached(
+          session,
+          baseFilters,
+          { page: requestedPage, pageSize: listPageSize },
+          { field: "createdAt", direction: "desc" },
+          { maxPageSize: LIST_MAX_PAGE_SIZE }
+        )
+      : Promise.resolve(null),
+    boardMode === "dynamic"
+      ? Promise.all(
+          dynamicStages.map(async (stage): Promise<PipelineDynamicColumn> => {
+            const res = await listApplicationsCached(
+              session,
+              { ...baseFilters, currentStage: stage.stage },
+              { page: 1, pageSize: PIPELINE_COLUMN_PAGE_SIZE },
+              { field: "createdAt", direction: "desc" }
+            );
+            return {
+              id: stage.id,
+              stage: stage.stage,
+              title: stage.label ?? PIPELINE_STAGE_LABELS[stage.stage] ?? String(stage.stage),
+              items: sanitizeApplicationsForClient(
+                res.items
+              ) as unknown as PipelineDrawerApplication[],
+              total: res.total,
+            };
+          })
+        )
+      : Promise.resolve(null),
+    boardMode === "static"
+      ? listApplicationsCached(
+          session,
+          baseFilters,
+          { page: 1, pageSize: boardTake.take },
+          { field: "createdAt", direction: "desc" },
+          { maxPageSize: PIPELINE_BOARD_MAX_ITEMS }
+        )
+      : Promise.resolve(null),
     getEmployeeOptions(),
     prisma.jobOpening.findMany({
       where: { deletedAt: null },
@@ -103,28 +170,12 @@ export default async function RecruitmentPipelinePage({
   ]);
 
   // Next.js cannot serialize Prisma Decimal objects from Server to Client Components.
-  // We sanitize the result items, particularly candidate fields like totalExperienceYears.
-  //
-  // Note: ApplicationTableItem/ApplicationDetail still declare these candidate
-  // fields as Prisma.Decimal — this sanitization intentionally converts them
-  // to plain numbers before they reach the client. That existing type/runtime
-  // mismatch predates this fix and is out of scope here (see recruitment
-  // Phase-3 build-blocker task: fix only the reported no-explicit-any error,
-  // don't refactor this page or ApplicationTable's types).
-  const safeResultItems = result.items.map((app: ApplicationDetail) => ({
-    ...app,
-    candidate: app.candidate
-      ? {
-          ...app.candidate,
-          totalExperienceYears:
-            app.candidate.totalExperienceYears !== null && app.candidate.totalExperienceYears !== undefined
-              ? Number(app.candidate.totalExperienceYears)
-              : null,
-          currentCtc: app.candidate.currentCtc !== null && app.candidate.currentCtc !== undefined ? Number(app.candidate.currentCtc) : null,
-          expectedCtc: app.candidate.expectedCtc !== null && app.candidate.expectedCtc !== undefined ? Number(app.candidate.expectedCtc) : null,
-        }
-      : null,
-  })) as unknown as ApplicationTableItem[];
+  const listItems: ApplicationDetail[] = listResult
+    ? sanitizeApplicationsForClient(listResult.items)
+    : [];
+  const staticBoardItems: ApplicationDetail[] = staticBoardResult
+    ? sanitizeApplicationsForClient(staticBoardResult.items)
+    : [];
 
   let selectedOffers: Array<{
     id: string;
@@ -146,6 +197,10 @@ export default async function RecruitmentPipelinePage({
     }));
   }
 
+  const selectedTags = selectedDetail?.candidate?.id
+    ? await TagService.listCandidateTags(String(selectedDetail.candidate.id))
+    : [];
+
   const selectedApplication: PipelineDrawerApplication | null = selectedDetail
     ? {
         id: String(selectedDetail.id),
@@ -153,11 +208,22 @@ export default async function RecruitmentPipelinePage({
         status: String(selectedDetail.status),
         priority: (selectedDetail as { priority?: string | null }).priority ?? null,
         createdAt: selectedDetail.createdAt as Date | string,
+        tags: selectedTags,
         candidate: {
           id: String(selectedDetail.candidate?.id ?? ""),
           fullName: String(selectedDetail.candidate?.fullName ?? "Unknown"),
           email: selectedDetail.candidate?.email ?? null,
           phone: selectedDetail.candidate?.phone ?? null,
+          totalExperienceYears:
+            (selectedDetail.candidate as { totalExperienceYears?: number | string | null } | null)
+              ?.totalExperienceYears ?? null,
+          currentCompany:
+            (selectedDetail.candidate as { currentCompany?: string | null } | null)?.currentCompany ??
+            null,
+          location: (selectedDetail.candidate as { location?: string | null } | null)?.location ?? null,
+          noticePeriodDays:
+            (selectedDetail.candidate as { noticePeriodDays?: number | null } | null)
+              ?.noticePeriodDays ?? null,
         },
         jobOpening: {
           id: String(selectedDetail.jobOpening?.id ?? ""),
@@ -194,8 +260,19 @@ export default async function RecruitmentPipelinePage({
 
   const filteredJob = jobFilter ? jobs.find((job) => job.id === jobFilter) : undefined;
 
+  const filterState = {
+    q: filters.q,
+    status: filters.status,
+    currentStage: filters.currentStage,
+    jobOpeningId: filters.jobOpeningId,
+    view: filters.view,
+    mine: filters.mine,
+    needsAttention: filters.needsAttention,
+    pageSize: filters.pageSize,
+  };
+
   return (
-    <div className="space-y-6 lg:space-y-8">
+    <div className="w-full min-w-0 max-w-full space-y-6 lg:space-y-8">
       <RecruitmentContextHeader
         crumbs={buildRecruitmentBreadcrumbs({
           section: "pipeline",
@@ -219,44 +296,70 @@ export default async function RecruitmentPipelinePage({
         }
       />
 
-      <ApplicationFilters filters={filters} jobs={jobs} basePath="/admin/recruitment/pipeline" />
+      <ApplicationFilters filters={filterState} jobs={jobs} basePath="/admin/recruitment/pipeline" />
 
       {view === "board" ? (
         <Suspense fallback={<div className="text-sm text-muted-foreground">Loading board…</div>}>
-          <PipelineBoard
-            applications={safeResultItems as PipelineDrawerApplication[]}
-            employeeOptions={employeeOptions}
-            selectedApplication={selectedApplication}
-          />
-          <div className="flex flex-col items-center gap-2 pt-2">
-            <p className="text-xs text-muted-foreground">
-              Showing {safeResultItems.length} of {result.total} applications
-            </p>
-            {boardTake.hasMoreCapacity && result.total > result.items.length ? (
-              <Button asChild variant="outline" size="sm" className="font-semibold text-xs">
-                <Link
-                  href={`/admin/recruitment/pipeline?${new URLSearchParams({
-                    ...(filters.q ? { q: filters.q } : {}),
-                    ...(filters.status !== "all" ? { status: filters.status } : {}),
-                    ...(filters.currentStage !== "all"
-                      ? { currentStage: filters.currentStage }
-                      : {}),
-                    ...(filters.jobOpeningId !== "all"
-                      ? { jobOpeningId: filters.jobOpeningId }
-                      : {}),
-                    view: "board",
-                    page: String(boardPage + 1),
-                    ...(applicationId ? { applicationId } : {}),
-                  }).toString()}`}
-                >
-                  Load more
-                </Link>
-              </Button>
-            ) : null}
-          </div>
+          {boardMode === "dynamic" ? (
+            <PipelineBoard
+              mode="dynamic"
+              jobOpeningId={jobFilter}
+              dynamicColumns={dynamicColumnsData ?? []}
+              employeeOptions={employeeOptions}
+              selectedApplication={selectedApplication}
+            />
+          ) : (
+            <>
+              <PipelineBoard
+                mode="static"
+                applications={staticBoardItems as unknown as PipelineDrawerApplication[]}
+                employeeOptions={employeeOptions}
+                selectedApplication={selectedApplication}
+              />
+              <div className="flex flex-col items-center gap-2 pt-2">
+                <p className="text-xs text-muted-foreground">
+                  Showing {staticBoardItems.length} of {staticBoardResult?.total ?? 0} applications
+                </p>
+                {boardTake.hasMoreCapacity &&
+                (staticBoardResult?.total ?? 0) > (staticBoardResult?.items.length ?? 0) ? (
+                  <Button asChild variant="outline" size="sm" className="font-semibold text-xs">
+                    <Link
+                      href={`/admin/recruitment/pipeline?${new URLSearchParams({
+                        ...(filters.q ? { q: filters.q } : {}),
+                        ...(filters.status !== "all" ? { status: filters.status } : {}),
+                        ...(filters.currentStage !== "all"
+                          ? { currentStage: filters.currentStage }
+                          : {}),
+                        ...(filters.jobOpeningId !== "all"
+                          ? { jobOpeningId: filters.jobOpeningId }
+                          : {}),
+                        ...(mine ? { mine: "1" } : {}),
+                        ...(needsAttention ? { needsAttention: "1" } : {}),
+                        view: "board",
+                        page: String(boardTake.page + 1),
+                        ...(applicationId ? { applicationId } : {}),
+                      }).toString()}`}
+                    >
+                      Load more
+                    </Link>
+                  </Button>
+                ) : null}
+              </div>
+            </>
+          )}
         </Suspense>
       ) : (
-        <ApplicationTable applications={safeResultItems} employeeOptions={employeeOptions} />
+        <ApplicationTable
+          applications={listItems as unknown as ApplicationTableItem[]}
+          employeeOptions={employeeOptions}
+          pagination={{
+            page: listResult?.page ?? 1,
+            pageSize: listResult?.pageSize ?? listPageSize,
+            total: listResult?.total ?? 0,
+            totalPages: listResult?.totalPages ?? 0,
+          }}
+          filters={filterState}
+        />
       )}
     </div>
   );

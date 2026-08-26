@@ -2,12 +2,13 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ApplicationStatus, RecruitmentPipelineStage } from "@/generated/prisma/enums";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { LayoutGrid, List } from "lucide-react";
+import { LayoutGrid, List, UserRound, AlertTriangle } from "lucide-react";
 
 export type ApplicationListFilterState = {
   q?: string;
@@ -18,6 +19,9 @@ export type ApplicationListFilterState = {
   sort?: string;
   direction?: string;
   page?: number;
+  pageSize?: number;
+  mine?: boolean;
+  needsAttention?: boolean;
 };
 
 export function applicationListHref(
@@ -33,6 +37,9 @@ export function applicationListHref(
   if (filters.view) params.set("view", filters.view);
   if (filters.sort) params.set("sort", filters.sort);
   if (filters.direction) params.set("direction", filters.direction);
+  if (filters.pageSize) params.set("pageSize", String(filters.pageSize));
+  if (filters.mine) params.set("mine", "1");
+  if (filters.needsAttention) params.set("needsAttention", "1");
   if (page) params.set("page", String(page));
   const qs = params.toString();
   return qs ? `${basePath}?${qs}` : basePath;
@@ -47,41 +54,77 @@ export function ApplicationFilters({
   jobs: { id: string; title: string }[];
   basePath?: string;
 }) {
+  const router = useRouter();
+  const [q, setQ] = useState(filters.q ?? "");
   const [status, setStatus] = useState(filters.status ?? "all");
   const [currentStage, setCurrentStage] = useState(filters.currentStage ?? "all");
   const [jobOpeningId, setJobOpeningId] = useState(filters.jobOpeningId ?? "all");
   const [view, setView] = useState<"board" | "list">(filters.view ?? "board");
+  const [mine, setMine] = useState(filters.mine ?? false);
+  const [needsAttention, setNeedsAttention] = useState(filters.needsAttention ?? false);
+
+  /**
+   * Every control here navigates immediately — Select/Button onChange
+   * handlers previously only updated local state + a hidden <input>, so
+   * nothing happened until a separate "Filter" submit click. Board/List,
+   * My Candidates, Needs Attention, and the Job dropdown (which gates
+   * dynamic-stage-board rendering) all need to take effect on click.
+   */
+  const navigate = (overrides: Partial<ApplicationListFilterState>) => {
+    router.push(
+      applicationListHref(
+        {
+          q,
+          status,
+          currentStage,
+          jobOpeningId,
+          view,
+          sort: filters.sort,
+          direction: filters.direction,
+          pageSize: filters.pageSize,
+          mine,
+          needsAttention,
+          ...overrides,
+        },
+        undefined,
+        basePath
+      )
+    );
+  };
 
   return (
     <form
-      action={basePath}
-      className="grid gap-4 rounded-xl border border-border bg-card p-5 shadow-subtle sm:grid-cols-2 md:grid-cols-6"
+      onSubmit={(e) => {
+        e.preventDefault();
+        navigate({});
+      }}
+      className="flex w-full min-w-0 max-w-full flex-wrap items-end gap-4 rounded-xl border border-border bg-card p-5 shadow-subtle"
     >
-      <input type="hidden" name="status" value={status} />
-      <input type="hidden" name="currentStage" value={currentStage} />
-      <input type="hidden" name="jobOpeningId" value={jobOpeningId} />
-      <input type="hidden" name="view" value={view} />
-      <input type="hidden" name="sort" value={filters.sort ?? "createdAt"} />
-      <input type="hidden" name="direction" value={filters.direction ?? "desc"} />
-
-      <div className="md:col-span-2 space-y-1.5">
+      <div className="w-full min-w-[220px] flex-[2_1_240px] space-y-1.5">
         <label htmlFor="q" className="block text-xs font-bold uppercase tracking-wider text-muted-foreground">
           Search
         </label>
         <Input
           id="q"
           name="q"
-          defaultValue={filters.q ?? ""}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
           placeholder="Candidate name, email, job title…"
           className="h-10"
         />
       </div>
 
-      <div className="space-y-1.5">
+      <div className="min-w-[160px] flex-1 space-y-1.5">
         <span className="block text-xs font-bold uppercase tracking-wider text-muted-foreground">
           Job Opening
         </span>
-        <Select value={jobOpeningId} onValueChange={setJobOpeningId}>
+        <Select
+          value={jobOpeningId}
+          onValueChange={(v) => {
+            setJobOpeningId(v);
+            navigate({ jobOpeningId: v });
+          }}
+        >
           <SelectTrigger className="h-10 bg-background" aria-label="Job filter">
             <SelectValue placeholder="All Jobs" />
           </SelectTrigger>
@@ -96,11 +139,17 @@ export function ApplicationFilters({
         </Select>
       </div>
 
-      <div className="space-y-1.5">
+      <div className="min-w-[150px] flex-1 space-y-1.5">
         <span className="block text-xs font-bold uppercase tracking-wider text-muted-foreground">
           Status
         </span>
-        <Select value={status} onValueChange={setStatus}>
+        <Select
+          value={status}
+          onValueChange={(v) => {
+            setStatus(v);
+            navigate({ status: v });
+          }}
+        >
           <SelectTrigger className="h-10 bg-background" aria-label="Status filter">
             <SelectValue placeholder="All Statuses" />
           </SelectTrigger>
@@ -115,16 +164,23 @@ export function ApplicationFilters({
         </Select>
       </div>
 
-      <div className="space-y-1.5">
+      <div className="min-w-[180px] flex-1 space-y-1.5">
         <span className="block text-xs font-bold uppercase tracking-wider text-muted-foreground">
           Pipeline Stage
         </span>
-        <Select value={currentStage} onValueChange={setCurrentStage}>
+        <Select
+          value={currentStage}
+          onValueChange={(v) => {
+            setCurrentStage(v);
+            navigate({ currentStage: v });
+          }}
+        >
           <SelectTrigger className="h-10 bg-background" aria-label="Stage filter">
             <SelectValue placeholder="All Stages" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Stages</SelectItem>
+            <SelectItem value="interviewing">INTERVIEWING (any round)</SelectItem>
             {Object.values(RecruitmentPipelineStage).map((s) => (
               <SelectItem key={s} value={s}>
                 {s.replace("_", " ").toUpperCase()}
@@ -134,17 +190,50 @@ export function ApplicationFilters({
         </Select>
       </div>
 
-      <div className="flex flex-col justify-end gap-2">
+      <div className="flex w-full flex-col justify-end gap-2 sm:w-auto">
         <span className="block text-xs font-bold uppercase tracking-wider text-muted-foreground md:hidden">
           View Mode
         </span>
-        <div className="flex gap-1.5 h-10 items-center justify-between">
+        <div className="flex h-auto min-h-10 w-full flex-wrap items-center gap-3 sm:w-auto">
+          <Button
+            type="button"
+            variant={mine ? "default" : "outline"}
+            size="sm"
+            onClick={() => {
+              const next = !mine;
+              setMine(next);
+              navigate({ mine: next });
+            }}
+            className="h-8 gap-1.5 px-3 text-xs font-semibold"
+            title="Show only applications assigned to me"
+          >
+            <UserRound className="h-3.5 w-3.5" />
+            My Candidates
+          </Button>
+          <Button
+            type="button"
+            variant={needsAttention ? "default" : "outline"}
+            size="sm"
+            onClick={() => {
+              const next = !needsAttention;
+              setNeedsAttention(next);
+              navigate({ needsAttention: next });
+            }}
+            className="h-8 gap-1.5 px-3 text-xs font-semibold"
+            title="Decision pending, interview feedback missing, or stuck in stage over a week"
+          >
+            <AlertTriangle className="h-3.5 w-3.5" />
+            Needs Attention
+          </Button>
           <div className="flex bg-muted p-1 rounded-lg border border-border/40">
             <Button
               type="button"
               variant={view === "board" ? "default" : "ghost"}
               size="icon"
-              onClick={() => setView("board")}
+              onClick={() => {
+                setView("board");
+                navigate({ view: "board" });
+              }}
               className="h-8 w-8 rounded-md"
               title="Board View"
             >
@@ -154,7 +243,10 @@ export function ApplicationFilters({
               type="button"
               variant={view === "list" ? "default" : "ghost"}
               size="icon"
-              onClick={() => setView("list")}
+              onClick={() => {
+                setView("list");
+                navigate({ view: "list" });
+              }}
               className="h-8 w-8 rounded-md"
               title="List View"
             >
