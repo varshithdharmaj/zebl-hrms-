@@ -1,0 +1,565 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+  hr_admin
+  manager
+  employee
+}
+
+enum AuthProvider {
+  local
+  microsoft
+}
+
+enum LeaveRequestStatus {
+  pending
+  approved
+  rejected
+  withdrawn
+  cancelled
+}
+
+enum LeaveWorkflowStatus {
+  submitted
+  pending_approval
+  approved
+  rejected
+  withdrawn
+  cancelled
+}
+
+enum ApprovalStepStatus {
+  pending
+  approved
+  rejected
+  skipped
+}
+
+enum ApproverRole {
+  manager
+  skip_level_manager
+  hr_admin
+}
+
+enum NotificationType {
+  leave_submitted
+  approval_required
+  leave_approved
+  leave_rejected
+  leave_withdrawn
+  leave_cancelled
+  escalation_reminder
+}
+
+enum NotificationChannel {
+  email
+  teams
+  push
+  sms
+}
+
+enum NotificationDeliveryStatus {
+  pending
+  processing
+  sent
+  failed
+  cancelled
+}
+
+enum ApprovalTokenAction {
+  approve
+  reject
+}
+
+enum ApprovalTokenStatus {
+  active
+  consumed
+  expired
+  revoked
+}
+
+enum CalendarSyncStatus {
+  pending
+  synced
+  failed
+  skipped
+  deleted
+}
+
+enum IntegrationJobStatus {
+  pending
+  processing
+  completed
+  failed
+}
+
+enum AnalyticsScope {
+  organization
+  department
+  team
+  employee
+}
+
+enum MetricPeriod {
+  daily
+  weekly
+  monthly
+}
+
+enum AnomalySeverity {
+  low
+  medium
+  high
+}
+
+model User {
+  id             String       @id @default(cuid())
+  email          String       @unique
+  password       String?
+  role           UserRole     @default(employee)
+  authProvider        AuthProvider @default(local) @map("auth_provider")
+  azureOid            String?      @unique @map("azure_oid")
+  microsoftTenantId   String?      @map("microsoft_tenant_id")
+  lastLoginAt         DateTime?    @map("last_login_at")
+  profilePhotoUrl     String?      @map("profile_photo_url")
+  authMetadata        String       @default("{}") @map("auth_metadata")
+  sessionVersion      Int          @default(1) @map("session_version")
+  employeeId          Int?         @unique
+  employee              Employee?               @relation(fields: [employeeId], references: [id])
+  notificationPreference NotificationPreference?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  @@index([role])
+  @@map("users")
+}
+
+model Employee {
+  id                Int                    @id @default(autoincrement())
+  employeeCode      String                 @unique @map("employee_code")
+  name              String
+  email             String?
+  phone             String?
+  department        String?
+  designation       String?
+  shift             String?
+  joiningDate       DateTime               @default(now()) @map("joining_date")
+  employeeStatus    String                 @default("Active") @map("employee_status")
+  isActive          Boolean                @default(true) @map("is_active")
+  managerId              Int?                   @map("manager_id")
+  manager                Employee?              @relation("EmployeeHierarchy", fields: [managerId], references: [id], onDelete: SetNull)
+  directReports          Employee[]             @relation("EmployeeHierarchy")
+  cachedPresence         String?                @map("cached_presence")
+  cachedPresenceAt       DateTime?              @map("cached_presence_at")
+  externalProfileSyncedAt DateTime?             @map("external_profile_synced_at")
+  createdAt              DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+  user              User?
+  attendanceRecords AttendanceRecord[]
+  leaveRequests     LeaveRequest[]
+  leaveBalance      EmployeeLeaveBalance?
+  leaveTransactions LeaveTransaction[]
+  approvalSteps     LeaveApprovalStep[]
+  payrollSummaries  PayrollAttendanceSummary[]
+
+  @@index([managerId])
+  @@index([employeeStatus])
+  @@map("employees")
+}
+
+model AttendanceUpload {
+  id          Int                @id @default(autoincrement())
+  fileName    String             @map("file_name")
+  uploadedBy  String?            @map("uploaded_by")
+  recordCount Int                @default(0) @map("record_count")
+  uploadedAt  DateTime           @default(now()) @map("uploaded_at")
+  records     AttendanceRecord[]
+
+  @@map("attendance_uploads")
+}
+
+model AttendanceRecord {
+  id              Int               @id @default(autoincrement())
+  employeeId      Int               @map("employee_id")
+  employee        Employee          @relation(fields: [employeeId], references: [id])
+  uploadId        Int?              @map("upload_id")
+  upload          AttendanceUpload? @relation(fields: [uploadId], references: [id])
+  attendanceDate  DateTime          @map("attendance_date")
+  shift           String?
+  checkIn         String?           @map("check_in")
+  checkOut        String?           @map("check_out")
+  workDuration    String?           @map("work_duration")
+  workedMinutes   Int               @default(0) @map("worked_minutes")
+  overtimeMinutes Int               @default(0) @map("overtime_minutes")
+  status          String
+  remarks         String?
+  createdAt       DateTime          @default(now()) @map("created_at")
+
+  @@unique([employeeId, attendanceDate])
+  @@index([attendanceDate])
+  @@map("attendance_records")
+}
+
+model LeaveRequest {
+  id              Int                 @id @default(autoincrement())
+  employeeId      Int                 @map("employee_id")
+  employee        Employee            @relation(fields: [employeeId], references: [id])
+  leaveType       String              @default("CL") @map("leave_type")
+  startDate       DateTime            @map("start_date")
+  endDate         DateTime            @map("end_date")
+  days            Float               @default(0)
+  reason          String
+  status          LeaveRequestStatus  @default(pending)
+  workflowStatus  LeaveWorkflowStatus @default(pending_approval) @map("workflow_status")
+  submittedAt     DateTime?           @map("submitted_at")
+  currentStepId   Int?                @unique @map("current_step_id")
+  currentStep     LeaveApprovalStep?  @relation("CurrentApprovalStep", fields: [currentStepId], references: [id])
+  rejectionReason String?             @map("rejection_reason")
+  cancelledAt     DateTime?           @map("cancelled_at")
+  withdrawnAt     DateTime?           @map("withdrawn_at")
+  finalApprovedAt DateTime?           @map("final_approved_at")
+  reviewedBy      String?             @map("reviewed_by")
+  reviewedAt      DateTime?           @map("reviewed_at")
+  version                    Int                 @default(0)
+  externalCalendarEventId  String?             @map("external_calendar_event_id")
+  calendarSyncStatus       CalendarSyncStatus  @default(pending) @map("calendar_sync_status")
+  calendarLastSyncedAt     DateTime?           @map("calendar_last_synced_at")
+  createdAt                DateTime            @default(now()) @map("created_at")
+  approvalSteps            LeaveApprovalStep[] @relation("LeaveApprovalSteps")
+  approvalTokens           ApprovalToken[]
+  workflowEscalations      WorkflowEscalation[]
+
+  @@index([employeeId, status])
+  @@index([employeeId, workflowStatus])
+  @@index([workflowStatus])
+  @@map("leave_requests")
+}
+
+model LeaveApprovalStep {
+  id              Int                @id @default(autoincrement())
+  leaveRequestId  Int                @map("leave_request_id")
+  leaveRequest    LeaveRequest       @relation("LeaveApprovalSteps", fields: [leaveRequestId], references: [id], onDelete: Cascade)
+  currentForLeave LeaveRequest?      @relation("CurrentApprovalStep")
+  stepOrder       Int                @map("step_order")
+  approverId      Int?               @map("approver_id")
+  approver        Employee?          @relation(fields: [approverId], references: [id], onDelete: SetNull)
+  approverRole    ApproverRole       @map("approver_role")
+  status          ApprovalStepStatus @default(pending)
+  actedAt         DateTime?          @map("acted_at")
+  actedByUserId   String?            @map("acted_by_user_id")
+  comment         String?
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  approvalTokens  ApprovalToken[]
+
+  @@unique([leaveRequestId, stepOrder])
+  @@index([approverId, status])
+  @@index([leaveRequestId])
+  @@map("leave_approval_steps")
+}
+
+model ApprovalToken {
+  id              String              @id @default(cuid())
+  leaveRequestId  Int                 @map("leave_request_id")
+  leaveRequest    LeaveRequest        @relation(fields: [leaveRequestId], references: [id], onDelete: Cascade)
+  approvalStepId  Int                 @map("approval_step_id")
+  approvalStep    LeaveApprovalStep   @relation(fields: [approvalStepId], references: [id], onDelete: Cascade)
+  approverId      Int?                @map("approver_id")
+  approverUserId  String?             @map("approver_user_id")
+  action          ApprovalTokenAction
+  tokenHash       String              @unique @map("token_hash")
+  status          ApprovalTokenStatus @default(active)
+  expiresAt       DateTime            @map("expires_at")
+  usedAt          DateTime?           @map("used_at")
+  revokedAt       DateTime?           @map("revoked_at")
+  viewedAt        DateTime?           @map("viewed_at")
+  createdBy       String?             @map("created_by")
+  metadata        String              @default("{}")
+  createdAt       DateTime            @default(now()) @map("created_at")
+
+  @@index([tokenHash])
+  @@index([expiresAt])
+  @@index([approverId])
+  @@index([approvalStepId])
+  @@index([leaveRequestId, approvalStepId])
+  @@map("approval_tokens")
+}
+
+model EmployeeLeaveBalance {
+  id         Int      @id @default(autoincrement())
+  employeeId Int      @unique @map("employee_id")
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  elBalance  Float    @default(0) @map("el_balance")
+  clBalance  Float    @default(0) @map("cl_balance")
+  slBalance  Float    @default(0) @map("sl_balance")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("employee_leave_balances")
+}
+
+model LeaveTransaction {
+  id              Int      @id @default(autoincrement())
+  employeeId      Int      @map("employee_id")
+  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType       String   @map("leave_type")
+  transactionType String   @map("transaction_type")
+  amount          Float
+  reason          String?
+  createdBy       String?  @map("created_by")
+  leaveRequestId  Int?     @map("leave_request_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([employeeId, leaveType])
+  @@map("leave_transactions")
+}
+
+model Holiday {
+  id          Int      @id @default(autoincrement())
+  name        String
+  holidayDate DateTime @unique @map("holiday_date")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("holidays")
+}
+
+model Notification {
+  id            String                     @id @default(cuid())
+  type          NotificationType
+  channel       NotificationChannel
+  recipient     String
+  subject       String
+  payload       String                     @default("{}")
+  status        NotificationDeliveryStatus @default(pending)
+  attempts      Int                        @default(0)
+  lastError     String?                    @map("last_error")
+  correlationId String?                    @map("correlation_id")
+  scheduledAt   DateTime                   @default(now()) @map("scheduled_at")
+  sentAt        DateTime?                  @map("sent_at")
+  lockedAt      DateTime?                  @map("locked_at")
+  lockedBy      String?                    @map("locked_by")
+  createdAt     DateTime                   @default(now()) @map("created_at")
+  updatedAt     DateTime                   @updatedAt @map("updated_at")
+
+  @@index([status, scheduledAt])
+  @@index([status, lockedAt])
+  @@index([recipient])
+  @@index([correlationId])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id                       String  @id @default(cuid())
+  userId                   String  @unique @map("user_id")
+  user                     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailEnabled             Boolean @default(true) @map("email_enabled")
+  teamsNotificationsEnabled Boolean @default(true) @map("teams_notifications_enabled")
+  teamsApprovalCardsEnabled Boolean @default(true) @map("teams_approval_cards_enabled")
+  calendarSyncEnabled      Boolean @default(true) @map("calendar_sync_enabled")
+  futureTeamsEnabled       Boolean @default(true) @map("future_teams_enabled")
+  futurePushEnabled        Boolean @default(true) @map("future_push_enabled")
+  leaveApprovalAlerts      Boolean @default(true) @map("leave_approval_alerts")
+  leaveStatusAlerts        Boolean @default(true) @map("leave_status_alerts")
+  escalationAlerts         Boolean @default(true) @map("escalation_alerts")
+
+  @@map("notification_preferences")
+}
+
+model IntegrationSettings {
+  id                        String    @id @default("default")
+  teamsWebhookUrl           String?   @map("teams_webhook_url")
+  teamsApprovalsEnabled     Boolean   @default(true) @map("teams_approvals_enabled")
+  calendarSyncEnabled       Boolean   @default(true) @map("calendar_sync_enabled")
+  orgSyncEnabled            Boolean   @default(false) @map("org_sync_enabled")
+  orgSyncPolicy             String    @default("{}") @map("org_sync_policy")
+  escalationHours           Int       @default(24) @map("escalation_hours")
+  graphLastHealthAt         DateTime? @map("graph_last_health_at")
+  graphLastHealthStatus     String?   @map("graph_last_health_status")
+  updatedAt                 DateTime  @updatedAt @map("updated_at")
+
+  @@map("integration_settings")
+}
+
+model IntegrationJob {
+  id            String               @id @default(cuid())
+  jobType       String               @map("job_type")
+  status        IntegrationJobStatus @default(pending)
+  payload       String               @default("{}")
+  attempts      Int                  @default(0)
+  lastError     String?              @map("last_error")
+  correlationId String?              @map("correlation_id")
+  scheduledAt   DateTime             @default(now()) @map("scheduled_at")
+  completedAt   DateTime?            @map("completed_at")
+  lockedAt      DateTime?            @map("locked_at")
+  lockedBy      String?              @map("locked_by")
+  createdAt     DateTime             @default(now()) @map("created_at")
+  updatedAt     DateTime             @default(now()) @updatedAt @map("updated_at")
+
+  @@index([status, scheduledAt])
+  @@index([status, lockedAt])
+  @@index([jobType])
+  @@map("integration_jobs")
+}
+
+model WorkflowEscalation {
+  id             String   @id @default(cuid())
+  leaveRequestId Int      @map("leave_request_id")
+  leaveRequest   LeaveRequest @relation(fields: [leaveRequestId], references: [id], onDelete: Cascade)
+  approvalStepId Int      @map("approval_step_id")
+  escalationType String   @map("escalation_type")
+  metadata       String   @default("{}")
+  sentAt         DateTime @default(now()) @map("sent_at")
+
+  @@unique([approvalStepId, escalationType])
+  @@index([leaveRequestId])
+  @@map("workflow_escalations")
+}
+
+model WorkforceMetric {
+  id          String         @id @default(cuid())
+  scope       AnalyticsScope
+  scopeKey    String         @map("scope_key")
+  metricKey   String         @map("metric_key")
+  period      MetricPeriod
+  periodStart DateTime       @map("period_start")
+  periodEnd   DateTime       @map("period_end")
+  value       Float
+  metadata    String         @default("{}")
+  computedAt  DateTime       @default(now()) @map("computed_at")
+
+  @@unique([scope, scopeKey, metricKey, period, periodStart])
+  @@index([scope, scopeKey])
+  @@index([metricKey, periodStart])
+  @@map("workforce_metrics")
+}
+
+model AnalyticsSnapshot {
+  id            String         @id @default(cuid())
+  snapshotType  String         @map("snapshot_type")
+  scope         AnalyticsScope
+  scopeKey      String         @map("scope_key")
+  payload       String         @default("{}")
+  periodStart   DateTime       @map("period_start")
+  periodEnd     DateTime       @map("period_end")
+  generatedAt   DateTime       @default(now()) @map("generated_at")
+  correlationId String?        @map("correlation_id")
+
+  @@index([snapshotType, generatedAt])
+  @@index([scope, scopeKey])
+  @@map("analytics_snapshots")
+}
+
+model AnomalyDetection {
+  id          String           @id @default(cuid())
+  anomalyType String           @map("anomaly_type")
+  severity    AnomalySeverity
+  scope       AnalyticsScope
+  scopeKey    String           @map("scope_key")
+  title       String
+  description String
+  explanation String
+  metadata    String           @default("{}")
+  detectedAt  DateTime         @default(now()) @map("detected_at")
+  resolvedAt  DateTime?        @map("resolved_at")
+  notifiedAt  DateTime?        @map("notified_at")
+
+  @@index([detectedAt])
+  @@index([scope, scopeKey])
+  @@index([anomalyType, resolvedAt])
+  @@map("anomaly_detections")
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id")
+  action      String
+  actorUserId String?  @map("actor_user_id")
+  actorEmail  String?  @map("actor_email")
+  metadata    String   @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId])
+  @@index([action])
+  @@index([actorUserId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+enum WorkerRunStatus {
+  running
+  idle
+  error
+  stopped
+}
+
+model WorkerHeartbeat {
+  workerName    String          @id @map("worker_name")
+  status        WorkerRunStatus @default(idle)
+  lastBeatAt    DateTime        @map("last_beat_at")
+  lastRunAt     DateTime?       @map("last_run_at")
+  lastDurationMs Int?           @map("last_duration_ms")
+  lastResult    String?         @map("last_result")
+  lastError     String?         @map("last_error")
+  runsTotal     Int             @default(0) @map("runs_total")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  @@index([status, lastBeatAt])
+  @@map("worker_heartbeats")
+}
+
+enum PayrollHrDecision {
+  no_action
+  apply_leave
+  salary_deduction
+  warning
+  approved_exception
+}
+
+model PayrollSettings {
+  id                      String   @id @default("default")
+  payrollStartDay         Int      @default(25) @map("payroll_start_day")
+  requiredWorkMinutes     Int      @default(480) @map("required_work_minutes")
+  breakMinutes            Int      @default(60) @map("break_minutes")
+  requiredOfficeMinutes   Int      @default(540) @map("required_office_minutes")
+  otThresholdMinutes      Int      @default(0) @map("ot_threshold_minutes")
+  halfDayThresholdMinutes Int      @default(240) @map("half_day_threshold_minutes")
+  graceMinutes            Int      @default(15) @map("grace_minutes")
+  shiftRulesJson          String   @default("{}") @map("shift_rules_json")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  @@map("payroll_settings")
+}
+
+model PayrollAttendanceSummary {
+  id                   Int               @id @default(autoincrement())
+  employeeId           Int               @map("employee_id")
+  employee             Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  payrollPeriodStart   DateTime          @map("payroll_period_start")
+  payrollPeriodEnd     DateTime          @map("payroll_period_end")
+  workingDays          Int               @default(0) @map("working_days")
+  requiredMinutes      Int               @default(0) @map("required_minutes")
+  actualMinutes        Int               @default(0) @map("actual_minutes")
+  shortfallMinutes     Int               @default(0) @map("shortfall_minutes")
+  otMinutes            Int               @default(0) @map("ot_minutes")
+  leaveDays            Float             @default(0) @map("leave_days")
+  absentDays           Int               @default(0) @map("absent_days")
+  lateCount            Int               @default(0) @map("late_count")
+  recommendedDeduction String?           @map("recommended_deduction")
+  hrDecision           PayrollHrDecision @default(no_action) @map("hr_decision")
+  remarks              String?
+  computedAt           DateTime          @default(now()) @map("computed_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+
+  @@unique([employeeId, payrollPeriodStart, payrollPeriodEnd])
+  @@index([payrollPeriodStart, payrollPeriodEnd])
+  @@index([hrDecision])
+  @@map("payroll_attendance_summaries")
+}

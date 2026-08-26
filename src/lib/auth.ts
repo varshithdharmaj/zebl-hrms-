@@ -1,0 +1,101 @@
+import { cookies, headers } from "next/headers";
+import { prisma } from "@/lib/prisma";
+import {
+  COOKIE_NAME,
+  createSessionToken,
+  verifySessionToken,
+  type SessionUser,
+} from "@/lib/session";
+import { toAppUserRole } from "@/lib/roles";
+import { getDefaultRedirectForRole } from "@/lib/routing";
+import { clearSessionCookie, setSessionCookie } from "@/lib/auth/cookies";
+import { buildSessionUser } from "@/lib/auth/session-bridge";
+import { authenticateLocalUser } from "@/lib/auth/providers/local-provider";
+import { setCachedSessionVersion } from "@/lib/session-version-cache";
+import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
+
+export type { SessionUser };
+
+export { createSessionToken, getDefaultRedirectForRole as getDefaultRedirect };
+export { setSessionCookie, clearSessionCookie };
+
+async function resolveSessionFromToken(token: string): Promise<SessionUser | null> {
+  const payload = await verifySessionToken(token);
+  if (!payload) return null;
+
+  let user;
+  try {
+    user = await prisma.user.findUnique({
+      where: { id: payload.id },
+      include: { employee: true },
+    });
+  } catch (e) {
+    console.error(
+      "[zebl] Session lookup failed — check DATABASE_URL (Neon pooled URL on Vercel).",
+      e instanceof Error ? e.message : e
+    );
+    return null;
+  }
+
+  if (!user) return null;
+  if (user.sessionVersion !== payload.sessionVersion) return null;
+
+  setCachedSessionVersion(user.id, user.sessionVersion);
+  return buildSessionUser(user);
+}
+
+export async function getSession(): Promise<SessionUser | null> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(COOKIE_NAME)?.value;
+  if (!token) return null;
+  return resolveSessionFromToken(token);
+}
+
+/** JWT-only check for Edge middleware (no DB). Pair with session-version cache. */
+export async function getSessionFromToken(token: string): Promise<SessionUser | null> {
+  return verifySessionToken(token);
+}
+
+export async function invalidateUserSessions(userId: string): Promise<void> {
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: { sessionVersion: { increment: 1 } },
+    select: { sessionVersion: true },
+  });
+  setCachedSessionVersion(userId, user.sessionVersion);
+}
+
+export async function invalidateUserSessionsWithAudit(
+  userId: string,
+  actor?: { userId: string; email: string },
+  reason?: string
+): Promise<void> {
+  await invalidateUserSessions(userId);
+  await writeAuditLog({
+    entityType: "user",
+    entityId: userId,
+    action: AUDIT_ACTIONS.AUTH_SESSION_INVALIDATED,
+    actorUserId: actor?.userId,
+    actorEmail: actor?.email,
+    metadata: { reason: reason ?? "session_invalidated" },
+  });
+}
+
+export async function authenticateUser(
+  email: string,
+  password: string
+): Promise<SessionUser | null> {
+  const result = await authenticateLocalUser({ email, password });
+  return result.ok ? result.user : null;
+}
+
+export function getClientIpFromHeaders(headerStore: Headers): string {
+  const forwarded = headerStore.get("x-forwarded-for");
+  if (forwarded) return forwarded.split(",")[0]?.trim() ?? "unknown";
+  return headerStore.get("x-real-ip") ?? "unknown";
+}
+
+export async function getRequestClientIp(): Promise<string> {
+  const headerStore = await headers();
+  return getClientIpFromHeaders(headerStore);
+}

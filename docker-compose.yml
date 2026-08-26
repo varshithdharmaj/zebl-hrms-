@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: zebl
+      POSTGRES_PASSWORD: zebl_dev_password
+      POSTGRES_DB: zebl_ams
+    volumes:
+      - zebl_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zebl -d zebl_ams"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  zebl_pg_data:

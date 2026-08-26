@@ -1,0 +1,8 @@
+﻿node_modules
+.next
+.env
+.env.local
+prisma/*.db
+prisma/*.db-journal
+vercel-env.import
+src/generated/prisma
