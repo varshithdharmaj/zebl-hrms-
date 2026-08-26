@@ -72,7 +72,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
-    "html-to-text": "^10.0.0",
+    "html-to-text": "^10.0.1",
     "jose": "^6.0.11",
     "lucide-react": "^0.511.0",
     "mammoth": "^1.12.0",
