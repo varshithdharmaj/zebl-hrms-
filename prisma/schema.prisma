@@ -1193,6 +1193,22 @@ enum RecruitmentPipelineStage {
   withdrawn
 }
 
+/// Coarse funnel/reporting bucket for a RecruitmentPipelineStage value —
+/// lets funnel counts, terminal-stage checks, etc. key off a stable category
+/// instead of the literal enum value, so a job's custom stage label/order
+/// still rolls up correctly. See PIPELINE_STAGE_CATEGORY in
+/// src/lib/recruitment/shared/pipeline-stage-groups.ts for the mapping.
+enum StageCategory {
+  APPLIED
+  SCREENING
+  ASSESSMENT
+  INTERVIEW
+  DECISION
+  OFFER
+  JOINED
+  REJECTED
+}
+
 enum InterviewStatus {
   draft
   scheduled
@@ -1414,20 +1430,32 @@ model JobOpening {
 }
 
 /// Frozen ordered stages for this job (copied from template at create).
+/// Becoming the canonical stage-identity table Application.currentStageId /
+/// ApplicationStageHistory.fromStageId/toStageId reference — `stage` (the
+/// RecruitmentPipelineStage enum) stays only as the legacy/default seed
+/// value; `category` is what business logic and reporting key off.
 model JobOpeningStage {
   id           String                   @id @default(cuid())
   jobOpeningId String                   @map("job_opening_id")
   jobOpening   JobOpening               @relation(fields: [jobOpeningId], references: [id], onDelete: Cascade)
   stage        RecruitmentPipelineStage
+  category     StageCategory            @default(SCREENING)
   sortOrder    Int                      @map("sort_order")
   isOptional   Boolean                  @default(false) @map("is_optional")
   isEnabled    Boolean                  @default(true) @map("is_enabled")
+  isArchived   Boolean                  @default(false) @map("is_archived")
   label        String?
   slaDays      Int?                     @map("sla_days")
+
+  applications      Application[]
+  historyFromStage  ApplicationStageHistory[] @relation("StageHistoryFromStage")
+  historyToStage    ApplicationStageHistory[] @relation("StageHistoryToStage")
 
   @@unique([jobOpeningId, stage])
   @@unique([jobOpeningId, sortOrder])
   @@index([jobOpeningId])
+  @@index([jobOpeningId, sortOrder])
+  @@index([jobOpeningId, isArchived])
   @@map("job_opening_stages")
 }
 
@@ -1918,6 +1946,10 @@ model Application {
   jobOpening                JobOpening               @relation(fields: [jobOpeningId], references: [id], onDelete: Restrict)
   status                    ApplicationStatus        @default(active)
   currentStage              RecruitmentPipelineStage @default(resume_received) @map("current_stage")
+  /// Nullable FK to JobOpeningStage — additive alongside `currentStage`
+  /// during the Phase 1 transition; both are written on every stage move.
+  currentStageId            String?                  @map("current_stage_id")
+  currentStageRef           JobOpeningStage?         @relation(fields: [currentStageId], references: [id], onDelete: SetNull)
   stageEnteredAt            DateTime                 @default(now()) @map("stage_entered_at")
   priority                  ApplicationPriority      @default(normal)
   assignedRecruiterUserId   String?                  @map("assigned_recruiter_user_id")
@@ -1949,6 +1981,7 @@ model Application {
   communications     RecruitmentCommunication[]
 
   @@index([jobOpeningId, currentStage, deletedAt])
+  @@index([currentStageId])
   @@index([candidateId, deletedAt])
   @@index([status, currentStage])
   @@index([assignedRecruiterUserId, status])
@@ -1962,12 +1995,21 @@ model Application {
   @@map("recruitment_applications")
 }
 
+/// IMMUTABLE ledger — existing rows' fromStage/toStage/actor/createdAt are
+/// never rewritten. fromStageId/toStageId are additive: nullable, populated
+/// going forward by the service layer and backfilled best-effort for
+/// existing rows (see prisma/scripts/backfill-dynamic-pipeline-stages.ts) —
+/// a row with no confident backfill mapping simply keeps them null.
 model ApplicationStageHistory {
   id            String                    @id @default(cuid())
   applicationId String                    @map("application_id")
   application   Application               @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   fromStage     RecruitmentPipelineStage? @map("from_stage")
   toStage       RecruitmentPipelineStage  @map("to_stage")
+  fromStageId   String?                   @map("from_stage_id")
+  fromStageRef  JobOpeningStage?          @relation("StageHistoryFromStage", fields: [fromStageId], references: [id], onDelete: SetNull)
+  toStageId     String?                   @map("to_stage_id")
+  toStageRef    JobOpeningStage?          @relation("StageHistoryToStage", fields: [toStageId], references: [id], onDelete: SetNull)
   note          String?
   isOverride    Boolean                   @default(false) @map("is_override")
   actorUserId   String?                   @map("actor_user_id")
@@ -1976,6 +2018,8 @@ model ApplicationStageHistory {
 
   @@index([applicationId, createdAt])
   @@index([toStage, createdAt])
+  @@index([fromStageId])
+  @@index([toStageId])
   @@map("application_stage_history")
 }
 

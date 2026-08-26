@@ -13,12 +13,50 @@ export type PdfTextItemLike = {
   hasEOL?: boolean;
 };
 
-/** Prefer hasEOL text unless the document is essentially one flattened blob. */
+const BARE_YEAR_LINE_RE =
+  /^(?:present|current|now|(?:19|20)\d{2})(?:\s*[-–—]\s*(?:present|current|now|(?:19|20)\d{2}))?$/i;
+
+/**
+ * Detects a "desynced date cluster": pdf.js's content-stream reading order
+ * grouped a dates column separately from the row content it belongs to (a
+ * common artifact in table-like education/experience layouts), producing a
+ * run of bare year/year-range lines with nothing else on them, disconnected
+ * from the entries they describe. hasEOL text can look well-formed (plenty
+ * of newlines) while still exhibiting this specific column-order artifact,
+ * so it needs its own signal distinct from the "almost no newlines" case.
+ *
+ * Deliberately narrow: only a run of >=2 *consecutive* lines that are each
+ * nothing but a year/year-range qualifies. Ordinary resumes essentially
+ * never produce that shape (dates normally sit inline with content), so
+ * this does not fire on legitimately-ordered single- or multi-column text.
+ */
+function hasDesyncedDateCluster(text: string): boolean {
+  const lines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  let run = 0;
+  for (const line of lines) {
+    if (BARE_YEAR_LINE_RE.test(line)) {
+      run += 1;
+      if (run >= 2) return true;
+    } else {
+      run = 0;
+    }
+  }
+  return false;
+}
+
+/**
+ * Prefer hasEOL text unless the document is essentially one flattened blob,
+ * or exhibits a desynced date cluster (see `hasDesyncedDateCluster`).
+ */
 export function shouldUsePositionalPdfReconstruction(text: string): boolean {
   const trimmed = text.trim();
   if (trimmed.length < 400) return false;
   const newlines = (trimmed.match(/\n/g) ?? []).length;
-  return newlines < 3;
+  if (newlines < 3) return true;
+  return hasDesyncedDateCluster(trimmed);
 }
 
 /**

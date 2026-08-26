@@ -60,7 +60,26 @@ export {
   rejectApplicationSchema,
   withdrawApplicationSchema,
   updateApplicationAssessmentSchema,
+  loadPipelineColumnSchema,
+  bulkMoveApplicationsStageSchema,
+  bulkAssignRecruiterSchema,
 } from "@/lib/validation/schemas/recruitment/applications";
+export {
+  addCandidateTagSchema,
+  removeCandidateTagSchema,
+  type AddCandidateTagInput,
+  type RemoveCandidateTagInput,
+} from "@/lib/validation/schemas/recruitment/tags";
+export {
+  createPipelineStageSchema,
+  updatePipelineStageSchema,
+  movePipelineStageSchema,
+  archivePipelineStageSchema,
+  type CreatePipelineStageInput,
+  type UpdatePipelineStageInput,
+  type MovePipelineStageInput,
+  type ArchivePipelineStageInput,
+} from "@/lib/validation/schemas/recruitment/pipeline-stages";
 export {
   createInterviewSchema,
   updateInterviewSchema,

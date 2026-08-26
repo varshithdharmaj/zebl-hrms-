@@ -93,6 +93,8 @@ function baseJob(overrides: Partial<JobOpeningDetail> = {}): JobOpeningDetail {
     hiringManagerName: null,
     hiringManagerEmployeeId: null,
     applicationCount: 0,
+    interviewedApplicationCount: 0,
+    hiredApplicationCount: 0,
     workMode: "remote",
     description: null,
     requirements: null,

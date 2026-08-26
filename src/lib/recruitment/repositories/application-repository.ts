@@ -19,6 +19,7 @@ export type ApplicationDetailRow = Prisma.ApplicationGetPayload<{
       include: {
         personal: true;
         documents: { where: { deletedAt: null } };
+        skills: { select: { id: true; name: true }; take: 8 };
       };
     };
     jobOpening: true;
@@ -26,6 +27,9 @@ export type ApplicationDetailRow = Prisma.ApplicationGetPayload<{
     assignedManager: { select: { id: true; name: true } };
     createdBy: { select: { id: true; email: true } };
     assessmentUpdatedBy: { select: { id: true; email: true } };
+    currentStageRef: {
+      select: { id: true; stage: true; category: true; label: true; sortOrder: true };
+    };
     stageHistory: {
       include: {
         actor: { select: { id: true; email: true } };
@@ -92,6 +96,8 @@ export type ApplicationListFilters = {
   assignedManagerEmployeeId?: number;
   priority?: ApplicationPriority;
   q?: string;
+  /** Decision-pending, feedback-missing, or stagnant-in-stage — see needsAttentionWhere(). */
+  needsAttention?: boolean;
 };
 
 export type ApplicationRepository = {
@@ -128,6 +134,26 @@ export type ApplicationRepository = {
     status?: ApplicationStatus,
     tx?: RepositoryTx
   ): Promise<void>;
+  /**
+   * Sequential single-item writes (Application row + ApplicationStageHistory
+   * row per id) inside the caller's transaction — the caller (application-
+   * service.ts) has already validated permission, target-stage eligibility,
+   * and that every application is active/on_hold before calling this.
+   * Returns per-item context so the caller can append timeline events
+   * without a second query.
+   */
+  moveApplicationsStageBulk(
+    ids: readonly string[],
+    stage: RecruitmentPipelineStage,
+    actorUserId: string | null,
+    note: string | null,
+    tx?: RepositoryTx
+  ): Promise<Array<{ id: string; candidateId: string; jobOpeningId: string; fromStage: RecruitmentPipelineStage }>>;
+  assignRecruiterBulk(
+    ids: readonly string[],
+    recruiterUserId: string | null,
+    tx?: RepositoryTx
+  ): Promise<Array<{ id: string; candidateId: string; jobOpeningId: string }>>;
   updateAssessment(
     id: string,
     data: {

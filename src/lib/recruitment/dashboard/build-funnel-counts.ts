@@ -1,4 +1,6 @@
-import { RecruitmentPipelineStage } from "@/generated/prisma/enums";
+import type { RecruitmentPipelineStage } from "@/generated/prisma/enums";
+import { StageCategory } from "@/generated/prisma/enums";
+import { PIPELINE_STAGE_CATEGORY } from "@/lib/recruitment/shared/pipeline-stage-groups";
 
 export type HiringFunnelCounts = {
   applied: number;
@@ -11,19 +13,30 @@ export type HiringFunnelCounts = {
   hired: number;
 };
 
-const SCREENING = new Set<string>([
-  RecruitmentPipelineStage.screening,
-  RecruitmentPipelineStage.assessment,
-]);
-
-const INTERVIEW = new Set<string>([
-  RecruitmentPipelineStage.hr_round,
-  RecruitmentPipelineStage.technical_round,
-  RecruitmentPipelineStage.team_lead_round,
-  RecruitmentPipelineStage.manager_round,
-  RecruitmentPipelineStage.client_round,
-  RecruitmentPipelineStage.reference_check,
-]);
+/**
+ * Buckets `stage_<RecruitmentPipelineStage>` count keys into StageCategory
+ * totals via PIPELINE_STAGE_CATEGORY — the funnel keys off category, not
+ * per-value comparisons, so a job's custom/relabeled stage still rolls up
+ * correctly as long as it carries a category.
+ */
+function categoryTotals(stageCounts: Record<string, number>): Record<StageCategory, number> {
+  const totals: Record<StageCategory, number> = {
+    [StageCategory.APPLIED]: 0,
+    [StageCategory.SCREENING]: 0,
+    [StageCategory.ASSESSMENT]: 0,
+    [StageCategory.INTERVIEW]: 0,
+    [StageCategory.DECISION]: 0,
+    [StageCategory.OFFER]: 0,
+    [StageCategory.JOINED]: 0,
+    [StageCategory.REJECTED]: 0,
+  };
+  for (const [rawKey, value] of Object.entries(stageCounts)) {
+    const key = (rawKey.startsWith("stage_") ? rawKey.slice("stage_".length) : rawKey) as RecruitmentPipelineStage;
+    const category = PIPELINE_STAGE_CATEGORY[key];
+    if (category) totals[category] += value;
+  }
+  return totals;
+}
 
 /**
  * Map application stage_* count keys (+ offer/conversion totals) into the V1 funnel.
@@ -35,27 +48,19 @@ export function buildHiringFunnelCounts(input: {
   offerAccepted?: number;
   pendingConversion?: number;
 }): HiringFunnelCounts {
-  const stage = (key: string) => input.stageCounts[`stage_${key}`] ?? input.stageCounts[key] ?? 0;
-
-  let screening = 0;
-  let interview = 0;
-  for (const [rawKey, value] of Object.entries(input.stageCounts)) {
-    const key = rawKey.startsWith("stage_") ? rawKey.slice("stage_".length) : rawKey;
-    if (SCREENING.has(key)) screening += value;
-    if (INTERVIEW.has(key)) interview += value;
-  }
+  const totals = categoryTotals(input.stageCounts);
 
   return {
-    applied: stage(RecruitmentPipelineStage.resume_received),
-    screening,
-    interview,
-    selected: stage(RecruitmentPipelineStage.decision),
-    offerSent:
-      input.offerSent ??
-      stage(RecruitmentPipelineStage.offer),
+    applied: totals[StageCategory.APPLIED],
+    // SCREENING + ASSESSMENT combined — matches the pre-category funnel's
+    // single "screening" bucket (screening + assessment stages together).
+    screening: totals[StageCategory.SCREENING] + totals[StageCategory.ASSESSMENT],
+    interview: totals[StageCategory.INTERVIEW],
+    selected: totals[StageCategory.DECISION],
+    offerSent: input.offerSent ?? totals[StageCategory.OFFER],
     offerAccepted: input.offerAccepted ?? 0,
     pendingConversion: input.pendingConversion ?? 0,
-    hired: stage(RecruitmentPipelineStage.hired),
+    hired: totals[StageCategory.JOINED],
   };
 }
 

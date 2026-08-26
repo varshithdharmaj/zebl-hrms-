@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import type { ActionState } from "@/actions/types";
+import type { ActionState, BulkActionState } from "@/actions/types";
 import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { safeParseWithSchema } from "@/lib/validation/parse";
 import {
@@ -12,10 +12,17 @@ import {
   rejectApplicationSchema,
   withdrawApplicationSchema,
   updateApplicationAssessmentSchema,
+  loadPipelineColumnSchema,
+  bulkMoveApplicationsStageSchema,
+  bulkAssignRecruiterSchema,
 } from "@/lib/validation/schemas/recruitment";
 import { createApplicationService } from "@/lib/recruitment/services/application-service";
 import { mapUnknownToActionState } from "@/lib/recruitment/shared/result";
 import { isRecruitmentModuleEnabled } from "@/lib/recruitment/config/feature-flags";
+import { listApplicationsCached } from "@/lib/recruitment/application";
+import { sanitizeApplicationsForClient } from "@/lib/recruitment/application/sanitize";
+import { PIPELINE_COLUMN_PAGE_SIZE } from "@/lib/recruitment/shared/pagination";
+import type { ApplicationDetail } from "@/lib/recruitment/repositories/application-repository";
 
 export type RecruitmentApplicationActionState = ActionState & {
   applicationId?: string;
@@ -369,6 +376,97 @@ export async function updateApplicationAssessmentAction(
           : "Assessment saved.",
       applicationId: parsed.data.applicationId,
     };
+  } catch (error) {
+    return mapUnknownToActionState(error);
+  }
+}
+
+export type LoadPipelineColumnResult = {
+  items: ApplicationDetail[];
+  total: number;
+  error?: string;
+};
+
+/**
+ * Fetches the next page of applications for a single job+stage column on the
+ * job-scoped pipeline board — the per-column "Load more" companion to the
+ * board's initial per-stage fetch in pipeline/page.tsx. Read-only: goes
+ * through the same scoped, permission-checked listApplications path as the
+ * rest of the pipeline list/board, just called directly instead of via a
+ * form-bound ActionState.
+ */
+export async function loadPipelineColumnAction(
+  input: unknown
+): Promise<LoadPipelineColumnResult> {
+  try {
+    const parsed = safeParseWithSchema(loadPipelineColumnSchema, input);
+    if (!parsed.ok) return { items: [], total: 0, error: parsed.error };
+
+    const session = await requireRecruitmentAdminSession();
+
+    if (!isRecruitmentModuleEnabled()) {
+      return { items: [], total: 0, error: "Recruitment module is disabled." };
+    }
+
+    const result = await listApplicationsCached(
+      session,
+      { jobOpeningId: parsed.data.jobOpeningId, currentStage: parsed.data.stage },
+      { page: parsed.data.page, pageSize: PIPELINE_COLUMN_PAGE_SIZE },
+      { field: "createdAt", direction: "desc" }
+    );
+
+    return { items: sanitizeApplicationsForClient(result.items), total: result.total };
+  } catch (error) {
+    const state = mapUnknownToActionState(error);
+    return { items: [], total: 0, error: state.error };
+  }
+}
+
+export async function bulkMoveApplicationsStageAction(
+  _prev: BulkActionState,
+  input: unknown
+): Promise<BulkActionState> {
+  try {
+    const parsed = safeParseWithSchema(bulkMoveApplicationsStageSchema, input);
+    if (!parsed.ok) return { error: parsed.error };
+
+    const session = await requireRecruitmentAdminSession();
+    if (!isRecruitmentModuleEnabled()) {
+      return { error: "Recruitment module is disabled." };
+    }
+
+    const service = createApplicationService();
+    const { processed } = await service.moveApplicationsStageBulk(session, parsed.data);
+
+    revalidatePath("/admin/recruitment/pipeline");
+    revalidateApplicationList();
+
+    return { success: `Moved ${processed} candidate(s).`, processed, failed: 0 };
+  } catch (error) {
+    return mapUnknownToActionState(error);
+  }
+}
+
+export async function bulkAssignRecruiterAction(
+  _prev: BulkActionState,
+  input: unknown
+): Promise<BulkActionState> {
+  try {
+    const parsed = safeParseWithSchema(bulkAssignRecruiterSchema, input);
+    if (!parsed.ok) return { error: parsed.error };
+
+    const session = await requireRecruitmentAdminSession();
+    if (!isRecruitmentModuleEnabled()) {
+      return { error: "Recruitment module is disabled." };
+    }
+
+    const service = createApplicationService();
+    const { processed } = await service.assignRecruiterBulk(session, parsed.data);
+
+    revalidatePath("/admin/recruitment/pipeline");
+    revalidateApplicationList();
+
+    return { success: `Assigned recruiter for ${processed} candidate(s).`, processed, failed: 0 };
   } catch (error) {
     return mapUnknownToActionState(error);
   }

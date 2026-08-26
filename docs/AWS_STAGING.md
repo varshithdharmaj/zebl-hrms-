@@ -79,8 +79,16 @@ docker run --rm -p 3000:3000 \
   -e RECRUITMENT_STORAGE_DRIVER=s3 \
   -e RECRUITMENT_S3_BUCKET=... \
   -e AWS_REGION=ap-southeast-1 \
+  -e TZ=Asia/Kolkata \
   zebl-ams:staging
 ```
+
+The Dockerfile already sets `TZ=Asia/Kolkata`, but ECS task definitions and
+any `docker run` invocation should set it explicitly too — attendance,
+leave, and payroll date logic assumes the process's local timezone is IST.
+Running the container in UTC shifts "today" by up to ~5.5h around IST
+midnight, so live biometric check-ins near that window can appear on the
+dashboard under the wrong day.
 
 Push to ECR and register the task definition skeleton at
 [`deploy/ecs/task-definition.staging.json`](../deploy/ecs/task-definition.staging.json)
@@ -97,6 +105,7 @@ Push to ECR and register the task definition skeleton at
 
 ```env
 NODE_ENV=production
+TZ=Asia/Kolkata
 APP_BASE_URL=https://ams-staging.example.com
 DATABASE_URL=...
 DIRECT_URL=...

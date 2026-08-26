@@ -12,6 +12,8 @@ const teamDelete = vi.fn();
 const teamCount = vi.fn();
 const teamFindMany = vi.fn();
 const noteCreate = vi.fn();
+const applicationGroupBy = vi.fn(async () => []);
+const stageHistoryFindMany = vi.fn(async () => []);
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -33,6 +35,12 @@ vi.mock("@/lib/prisma", () => ({
     },
     jobOpeningNote: {
       create: (...args: unknown[]) => noteCreate(...args),
+    },
+    application: {
+      groupBy: (...args: unknown[]) => applicationGroupBy(...args),
+    },
+    applicationStageHistory: {
+      findMany: (...args: unknown[]) => stageHistoryFindMany(...args),
     },
   },
 }));

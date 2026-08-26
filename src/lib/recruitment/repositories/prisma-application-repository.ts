@@ -2,9 +2,14 @@ import { Prisma } from "@/generated/prisma/client";
 import {
   ApplicationPriority,
   ApplicationStatus,
+  InterviewStatus,
   RecruitmentPipelineStage,
 } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
+import {
+  INTERVIEW_STAGES,
+  INTERVIEWING_STAGE_FILTER,
+} from "@/lib/recruitment/shared/pipeline-stage-groups";
 import type { RepositoryTx } from "@/lib/recruitment/repositories/types";
 import type { RecruitmentScope } from "@/lib/recruitment/types/scope";
 import {
@@ -31,6 +36,7 @@ const detailInclude = {
     include: {
       personal: true,
       documents: { where: { deletedAt: null } },
+      skills: { select: { id: true, name: true }, take: 8 },
     },
   },
   jobOpening: true,
@@ -38,6 +44,10 @@ const detailInclude = {
   assignedManager: { select: { id: true, name: true } },
   createdBy: { select: { id: true, email: true } },
   assessmentUpdatedBy: { select: { id: true, email: true } },
+  /** Phase 1 dynamic-stage FK — additive alongside the legacy `currentStage` enum. */
+  currentStageRef: {
+    select: { id: true, stage: true, category: true, label: true, sortOrder: true },
+  },
   stageHistory: {
     orderBy: { createdAt: "desc" as const },
     include: {
@@ -46,11 +56,33 @@ const detailInclude = {
   },
 } as const;
 
+/**
+ * Resolves the JobOpeningStage row (if any) matching a job + legacy enum
+ * stage value — used to keep `Application.currentStageId` /
+ * `ApplicationStageHistory.fromStageId`/`toStageId` populated alongside the
+ * enum columns on every write, without requiring every call site to know
+ * about the new FK. Returns null (not an error) when unresolved — e.g. a
+ * job whose real template doesn't include that stage value — so callers
+ * degrade to "FK left unset" rather than failing the write.
+ */
+export async function resolveJobStageId(
+  client: Client,
+  jobOpeningId: string,
+  stage: RecruitmentPipelineStage
+): Promise<string | null> {
+  const row = await client.jobOpeningStage.findUnique({
+    where: { jobOpeningId_stage: { jobOpeningId, stage } },
+    select: { id: true },
+  });
+  return row?.id ?? null;
+}
+
 /** Lean include for list/search — omits stageHistory + documents (detail-only). */
 const listInclude = {
   candidate: {
     include: {
       personal: true,
+      skills: { select: { id: true, name: true }, take: 8 },
     },
   },
   jobOpening: true,
@@ -131,6 +163,50 @@ function readNumberFilter(
   return typeof value === "number" ? value : undefined;
 }
 
+function readBooleanFilter(
+  filters: ApplicationListFilters | SearchFilters | undefined,
+  key: string
+): boolean {
+  if (!filters) return false;
+  return (filters as Record<string, unknown>)[key] === true;
+}
+
+/** Default "stagnant in current stage" threshold for the Needs Attention filter. */
+export const NEEDS_ATTENTION_STAGNANT_DAYS = 7;
+
+/**
+ * Derived, reliably-computable "needs attention" signal — three independent
+ * reasons, ORed together, only for still-active applications:
+ *  1. Reached Decision/Offer with no current HiringDecision recorded yet.
+ *  2. Has a completed interview with zero feedback rows at all (a
+ *     simplification of "the assigned panelist hasn't submitted feedback" —
+ *     checking every specific assigned panelist individually needs a
+ *     per-interview panelist/feedback diff that's disproportionate for a
+ *     quick filter chip; "nobody has submitted anything yet" already covers
+ *     the common case).
+ *  3. Sitting in its current stage longer than NEEDS_ATTENTION_STAGNANT_DAYS.
+ */
+function needsAttentionWhere(
+  stagnantDays: number = NEEDS_ATTENTION_STAGNANT_DAYS
+): Prisma.ApplicationWhereInput {
+  const stagnantBefore = new Date(Date.now() - stagnantDays * 24 * 60 * 60 * 1000);
+  return {
+    status: ApplicationStatus.active,
+    OR: [
+      {
+        currentStage: { in: [RecruitmentPipelineStage.decision, RecruitmentPipelineStage.offer] },
+        decisions: { none: { isCurrent: true } },
+      },
+      {
+        interviews: {
+          some: { status: InterviewStatus.completed, feedback: { none: {} } },
+        },
+      },
+      { stageEnteredAt: { lt: stagnantBefore } },
+    ],
+  };
+}
+
 function filtersWhere(
   filters?: ApplicationListFilters | SearchFilters
 ): Prisma.ApplicationWhereInput {
@@ -152,7 +228,14 @@ function filtersWhere(
   }
   const currentStage = readStringFilter(filters, "currentStage");
   if (currentStage && currentStage !== "all") {
-    where.currentStage = currentStage as RecruitmentPipelineStage;
+    // "interviewing" is an internal filter sentinel used by Job Opening metric
+    // deep-links to represent any configured interview stage. It is not a
+    // persisted pipeline stage — every other value here is an exact
+    // RecruitmentPipelineStage match.
+    where.currentStage =
+      currentStage === INTERVIEWING_STAGE_FILTER
+        ? { in: [...INTERVIEW_STAGES] }
+        : (currentStage as RecruitmentPipelineStage);
   }
   const assignedRecruiterUserId = readStringFilter(filters, "assignedRecruiterUserId");
   if (assignedRecruiterUserId) {
@@ -166,25 +249,38 @@ function filtersWhere(
   if (priority) {
     where.priority = priority as ApplicationPriority;
   }
+  const andConditions: Prisma.ApplicationWhereInput[] = [];
+
   const q = readStringFilter(filters, "q");
   if (q?.trim()) {
     const trimmed = q.trim();
-    where.OR = [
-      {
-        candidate: {
-          OR: [
-            { fullName: { contains: trimmed, mode: "insensitive" } },
-            { email: { contains: trimmed, mode: "insensitive" } },
-          ],
+    andConditions.push({
+      OR: [
+        {
+          candidate: {
+            OR: [
+              { fullName: { contains: trimmed, mode: "insensitive" } },
+              { email: { contains: trimmed, mode: "insensitive" } },
+            ],
+          },
         },
-      },
-      {
-        jobOpening: {
-          title: { contains: trimmed, mode: "insensitive" },
+        {
+          jobOpening: {
+            title: { contains: trimmed, mode: "insensitive" },
+          },
         },
-      },
-    ];
+      ],
+    });
   }
+
+  if (readBooleanFilter(filters, "needsAttention")) {
+    andConditions.push(needsAttentionWhere());
+  }
+
+  if (andConditions.length > 0) {
+    where.AND = andConditions;
+  }
+
   return where;
 }
 
@@ -200,12 +296,15 @@ function mergeWhere(
 export const prismaApplicationRepository: ApplicationRepository = {
   async createApplication(data, tx) {
     const client: Client = tx ?? prisma;
+    const currentStage = data.currentStage ?? RecruitmentPipelineStage.resume_received;
+    const currentStageId = await resolveJobStageId(client, data.jobOpeningId, currentStage);
     const created = await client.application.create({
       data: {
         candidateId: data.candidateId,
         jobOpeningId: data.jobOpeningId,
         status: data.status ?? ApplicationStatus.active,
-        currentStage: data.currentStage ?? RecruitmentPipelineStage.resume_received,
+        currentStage,
+        currentStageId,
         stageEnteredAt: data.stageEnteredAt ?? new Date(),
         priority: data.priority ?? ApplicationPriority.normal,
         assignedRecruiterUserId: data.assignedRecruiterUserId ?? null,
@@ -221,11 +320,22 @@ export const prismaApplicationRepository: ApplicationRepository = {
 
   async updateApplication(id, patch, tx) {
     const client: Client = tx ?? prisma;
+
+    let currentStageId: string | null | undefined;
+    if (patch.currentStage !== undefined) {
+      const app = await client.application.findUniqueOrThrow({
+        where: { id },
+        select: { jobOpeningId: true },
+      });
+      currentStageId = await resolveJobStageId(client, app.jobOpeningId, patch.currentStage);
+    }
+
     await client.application.update({
       where: { id },
       data: {
         status: patch.status,
         currentStage: patch.currentStage,
+        ...(currentStageId !== undefined ? { currentStageId } : {}),
         stageEnteredAt: patch.stageEnteredAt,
         priority: patch.priority,
         assignedRecruiterUserId: patch.assignedRecruiterUserId,
@@ -318,6 +428,7 @@ export const prismaApplicationRepository: ApplicationRepository = {
         mapApplicationRow({
           ...row,
           stageHistory: [],
+          currentStageRef: null,
           candidate: row.candidate
             ? { ...row.candidate, documents: [] }
             : row.candidate,
@@ -348,6 +459,7 @@ export const prismaApplicationRepository: ApplicationRepository = {
         mapApplicationRow({
           ...row,
           stageHistory: [],
+          currentStageRef: null,
           candidate: row.candidate
             ? { ...row.candidate, documents: [] }
             : row.candidate,
@@ -414,15 +526,87 @@ export const prismaApplicationRepository: ApplicationRepository = {
 
   async moveApplicationStage(id, stage, stageEnteredAt, status, tx) {
     const client: Client = tx ?? prisma;
+    const app = await client.application.findUniqueOrThrow({
+      where: { id },
+      select: { jobOpeningId: true },
+    });
+    const currentStageId = await resolveJobStageId(client, app.jobOpeningId, stage);
     await client.application.update({
       where: { id },
       data: {
         currentStage: stage,
+        currentStageId,
         stageEnteredAt,
         status: status ?? undefined,
       },
     });
     // Stage history is written by ApplicationService.moveToStage (with actor + note).
+  },
+
+  async moveApplicationsStageBulk(ids, stage, actorUserId, note, tx) {
+    const client: Client = tx ?? prisma;
+    const results: Array<{
+      id: string;
+      candidateId: string;
+      jobOpeningId: string;
+      fromStage: RecruitmentPipelineStage;
+    }> = [];
+
+    for (const id of ids) {
+      const app = await client.application.findUniqueOrThrow({
+        where: { id },
+        select: { jobOpeningId: true, candidateId: true, currentStage: true },
+      });
+      const [currentStageId, fromStageId] = await Promise.all([
+        resolveJobStageId(client, app.jobOpeningId, stage),
+        resolveJobStageId(client, app.jobOpeningId, app.currentStage),
+      ]);
+
+      await client.application.update({
+        where: { id },
+        data: { currentStage: stage, currentStageId, stageEnteredAt: new Date() },
+      });
+
+      await client.applicationStageHistory.create({
+        data: {
+          applicationId: id,
+          fromStage: app.currentStage,
+          toStage: stage,
+          fromStageId,
+          toStageId: currentStageId,
+          note: note ?? undefined,
+          actorUserId: actorUserId ?? undefined,
+        },
+      });
+
+      results.push({
+        id,
+        candidateId: app.candidateId,
+        jobOpeningId: app.jobOpeningId,
+        fromStage: app.currentStage,
+      });
+    }
+
+    return results;
+  },
+
+  async assignRecruiterBulk(ids, recruiterUserId, tx) {
+    const client: Client = tx ?? prisma;
+    const results: Array<{ id: string; candidateId: string; jobOpeningId: string }> = [];
+
+    for (const id of ids) {
+      const app = await client.application.findUniqueOrThrow({
+        where: { id },
+        select: { jobOpeningId: true, candidateId: true },
+      });
+      await client.application.update({
+        where: { id },
+        data: { assignedRecruiterUserId: recruiterUserId },
+      });
+      results.push({ id, candidateId: app.candidateId, jobOpeningId: app.jobOpeningId });
+    }
+
+    return results;
   },
 
   async countApplications(scope, filters) {

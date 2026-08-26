@@ -2,9 +2,16 @@ import type { PageResult, PaginationInput } from "@/lib/recruitment/types/pagina
 
 export const DEFAULT_PAGE_SIZE = 25;
 export const MAX_PAGE_SIZE = 50;
-/** Pipeline board grows by this size per "Load more". */
+/** Pipeline board grows by this size per "Load more" (cross-job fallback board only). */
 export const PIPELINE_BOARD_PAGE_SIZE = 50;
 export const PIPELINE_BOARD_MAX_ITEMS = 200;
+
+/** List view page-size choices exposed in the UI. */
+export const LIST_PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+export const LIST_MAX_PAGE_SIZE = 100;
+
+/** Job-scoped board: candidates loaded per column, both initially and per "Load more". */
+export const PIPELINE_COLUMN_PAGE_SIZE = 30;
 
 export function normalizePagination(
   input: Partial<PaginationInput>,

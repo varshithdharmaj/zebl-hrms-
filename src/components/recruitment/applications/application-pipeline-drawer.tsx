@@ -13,6 +13,7 @@ import { ApplicationAssessmentForm } from "@/components/recruitment/applications
 import { HiringDecisionForm } from "@/components/recruitment/applications/hiring-decision-form";
 import type { HiringDecisionRecord } from "@/lib/recruitment/repositories/decision-repository";
 import { canCreateOfferFromDecisionState } from "@/lib/recruitment/decision/eligibility";
+import { CandidateTagsInput, type CandidateTagView } from "@/components/recruitment/applications/candidate-tags-input";
 import { Clock, ExternalLink } from "lucide-react";
 import {
   buildRecruitmentEntityHref,
@@ -20,7 +21,8 @@ import {
   isSafeRecruitmentReturnTo,
 } from "@/lib/recruitment/navigation/return-to";
 
-const STAGE_OPTIONS: RecruitmentPipelineStage[] = [
+/** Non-terminal, non-system-owned stages — reused by the bulk "Move Stage" action too. */
+export const STAGE_OPTIONS: RecruitmentPipelineStage[] = [
   RecruitmentPipelineStage.resume_received,
   RecruitmentPipelineStage.screening,
   RecruitmentPipelineStage.assessment,
@@ -44,7 +46,12 @@ export type PipelineDrawerApplication = {
     fullName: string;
     email?: string | null;
     phone?: string | null;
+    totalExperienceYears?: number | string | null;
+    currentCompany?: string | null;
+    location?: string | null;
+    noticePeriodDays?: number | null;
   };
+  tags?: CandidateTagView[];
   jobOpening: {
     id: string;
     title: string;
@@ -169,6 +176,37 @@ export function ApplicationPipelineDrawer({
               </Link>
             </Button>
           </div>
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Snapshot</h3>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+            <div>
+              <dt className="text-muted-foreground">Experience</dt>
+              <dd className="font-semibold text-foreground">
+                {application.candidate.totalExperienceYears != null
+                  ? `${application.candidate.totalExperienceYears} years`
+                  : "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Current Company</dt>
+              <dd className="font-semibold text-foreground">{application.candidate.currentCompany || "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Notice Period</dt>
+              <dd className="font-semibold text-foreground">
+                {application.candidate.noticePeriodDays != null
+                  ? `${application.candidate.noticePeriodDays} days`
+                  : "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Location</dt>
+              <dd className="font-semibold text-foreground">{application.candidate.location || "—"}</dd>
+            </div>
+          </dl>
+          <CandidateTagsInput candidateId={application.candidate.id} tags={application.tags ?? []} />
         </section>
 
         <section className="space-y-3">

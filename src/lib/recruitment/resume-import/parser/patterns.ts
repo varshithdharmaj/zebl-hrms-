@@ -307,7 +307,7 @@ export function extractYearsOfExperience(text: string): string | null {
 
 /** Job-title lexical signal — shared by experience + headline precision gates. */
 export const JOB_TITLE_SIGNAL_RE =
-  /\b(engineer|developer|manager|analyst|consultant|architect|designer|scientist|specialist|director|intern|lead|officer|administrator|programmer|associate|firmware|sde|swe|sre|devops|dba|writer|trainer|coordinator|executive)\b/i;
+  /\b(engineer|developer|manager|analyst|consultant|architect|designer|scientist|specialist|director|intern|lead|officer|administrator|programmer|associate|firmware|sde|swe|sre|devops|dba|writer|trainer|coordinator|executive|recruiter|prof{1,2}ess?or|teacher)\b/i;
 
 export function looksLikeJobTitle(line: string): boolean {
   const value = normalizeWhitespace(line);

@@ -18,6 +18,12 @@ import {
 } from "./patterns";
 import { isRecruitmentMetadataText } from "./recruitment-metadata";
 import { detectResumeSections } from "./sections";
+import {
+  collectNarrativeEducations,
+  collectNarrativeExperiences,
+  parseNarrativeEducationLine,
+  parseNarrativeExperienceLine,
+} from "./narrative-strategies";
 import type {
   ParsedResumeCertification,
   ParsedResumeDraft,
@@ -517,8 +523,9 @@ function parseExperienceSection(lines: string[]): ParsedResumeExperience[] {
     if (descriptionLines.length) {
       current.description = descriptionLines.join(" ").trim() || null;
     }
+    // Company may legitimately be "" (narrative strategy, no employer stated) —
+    // never invented, so an empty company must not block a well-evidenced title.
     if (
-      current.company &&
       current.title &&
       current.title !== "Unknown" &&
       looksLikeJobTitle(current.title)
@@ -561,6 +568,16 @@ function parseExperienceSection(lines: string[]): ParsedResumeExperience[] {
       flush();
       discardPending();
       current = structured;
+      continue;
+    }
+
+    // Narrative sentence: "Worked as {title} at {company} {dateRange}" etc.
+    // Requires an explicit date range as evidence — see narrative-strategies.ts.
+    const narrative = parseNarrativeExperienceLine(line);
+    if (narrative) {
+      flush();
+      discardPending();
+      current = narrative;
       continue;
     }
 
@@ -802,6 +819,16 @@ function parseEducationSection(lines: string[]): ParsedResumeEducation[] {
 
   for (const line of lines) {
     const cleaned = line.replace(/^[-•*]\s*/, "");
+
+    // Narrative sentence: "{degree} from {institution} with {percentage}".
+    // Emitted directly (bypasses block buffering) — see narrative-strategies.ts.
+    const narrative = parseNarrativeEducationLine(cleaned);
+    if (narrative) {
+      flush();
+      educations.push(narrative);
+      continue;
+    }
+
     if (buffer.length > 0 && DEGREE_RE.test(cleaned)) {
       flush();
     } else if (buffer.length === 0 || /^[-•*]/.test(line)) {
@@ -1105,7 +1132,7 @@ export function parseResumeFromCleanText(text: string): {
   }
 
   const lines = splitResumeLines(text);
-  const { headerLines, sections } = detectResumeSections(lines);
+  const { headerLines, sections, hasAnySectionHeader } = detectResumeSections(lines);
   const header = parseHeaderBlock(
     headerLines.length ? headerLines : lines.slice(0, 10),
     lines,
@@ -1126,6 +1153,21 @@ export function parseResumeFromCleanText(text: string): {
     );
   }
 
+  draft.educations = parseEducationSection(sections.education);
+
+  // Headerless narrative resume (e.g. plain prose, no "EXPERIENCE"/"EDUCATION"
+  // headings at all) — every line landed in headerLines above and neither
+  // section parser above ever saw any content. Scan the full body directly
+  // for narrative sentences rather than reporting an empty resume.
+  if (!hasAnySectionHeader) {
+    if (draft.experiences.length === 0) {
+      draft.experiences = collectNarrativeExperiences(lines);
+    }
+    if (draft.educations.length === 0) {
+      draft.educations = collectNarrativeEducations(lines);
+    }
+  }
+
   const current = selectCurrentExperience(draft.experiences);
   if (current) {
     draft.professional.currentCompany = current.company;
@@ -1133,7 +1175,6 @@ export function parseResumeFromCleanText(text: string): {
       current.title === "Unknown" ? null : current.title;
   }
 
-  draft.educations = parseEducationSection(sections.education);
   draft.skills = parseSkillsSection(sections.skills);
   draft.projects = parseProjectsSection(sections.projects);
   draft.certifications = parseCertificationsSection(sections.certifications);
@@ -1141,10 +1182,10 @@ export function parseResumeFromCleanText(text: string): {
 
   if (!draft.personal.fullName) warnings.push("Could not detect full name.");
   if (!draft.personal.email) warnings.push("Could not detect email.");
-  if (sections.experience.length === 0) {
+  if (sections.experience.length === 0 && draft.experiences.length === 0) {
     warnings.push("No experience section detected.");
   }
-  if (sections.education.length === 0) {
+  if (sections.education.length === 0 && draft.educations.length === 0) {
     warnings.push("No education section detected.");
   }
   if (sections.skills.length === 0) {

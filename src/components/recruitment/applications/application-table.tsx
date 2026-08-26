@@ -2,7 +2,7 @@
 
 import React, { useState, useTransition } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { ApplicationStatus, RecruitmentPipelineStage } from "@/generated/prisma/enums";
 import { CandidateAvatar } from "../candidates/candidate-avatar";
 import { CandidateEmptyState } from "../candidates/candidate-empty-state";
@@ -24,12 +24,58 @@ import {
   RotateCcw,
   Star,
   Clock,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   buildRecruitmentEntityHref,
   currentPathWithSearch,
   isSafeRecruitmentReturnTo,
 } from "@/lib/recruitment/navigation/return-to";
+import {
+  applicationListHref,
+  type ApplicationListFilterState,
+} from "@/components/recruitment/applications/application-filters";
+import { LIST_PAGE_SIZE_OPTIONS } from "@/lib/recruitment/shared/pagination";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { BulkActionBar, type BulkActionBarEmployeeOption } from "./bulk-action-bar";
+import {
+  ColumnVisibilityMenu,
+  useVisibleListColumns,
+  OPTIONAL_LIST_COLUMNS,
+  type OptionalListColumnKey,
+} from "./column-visibility-menu";
+
+function formatOptionalColumn(key: OptionalListColumnKey, app: ApplicationTableItem): string {
+  const candidate = app.candidate as
+    | (ApplicationTableItem["candidate"] & {
+        totalExperienceYears?: number | string | null;
+        currentCompany?: string | null;
+        location?: string | null;
+        noticePeriodDays?: number | null;
+        skills?: Array<{ id: string; name: string }>;
+      })
+    | null;
+  if (!candidate) return "—";
+
+  switch (key) {
+    case "experience":
+      return candidate.totalExperienceYears != null ? `${candidate.totalExperienceYears}y` : "—";
+    case "currentCompany":
+      return candidate.currentCompany || "—";
+    case "noticePeriod":
+      return candidate.noticePeriodDays != null ? `${candidate.noticePeriodDays}d` : "—";
+    case "location":
+      return candidate.location || "—";
+    case "skills":
+      return candidate.skills && candidate.skills.length > 0
+        ? candidate.skills.map((s) => s.name).join(", ")
+        : "—";
+    default:
+      return "—";
+  }
+}
 
 function formatDate(value: Date | string | null): string {
   if (!value) return "—";
@@ -56,12 +102,25 @@ export type ApplicationTableItem = Pick<
   | "jobOpening"
 >;
 
+export type ApplicationTablePagination = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
 export function ApplicationTable({
   applications,
   employeeOptions,
+  pagination,
+  filters,
+  basePath = "/admin/recruitment/pipeline",
 }: {
   applications: readonly ApplicationTableItem[];
   employeeOptions: { id: number; name: string; user: { id: string; email: string } | null }[];
+  pagination?: ApplicationTablePagination;
+  filters?: ApplicationListFilterState;
+  basePath?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -73,6 +132,8 @@ export function ApplicationTable({
   })();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [visibleColumns, setVisibleColumns] = useVisibleListColumns();
 
   // AlertDialog configuration state
   const [alertConfig, setAlertConfig] = useState<{
@@ -143,6 +204,23 @@ export function ApplicationTable({
     });
   };
 
+  const selectableIds = applications.filter((a) => !a.deletedAt).map((a) => a.id);
+  const allSelected =
+    selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
+
+  const toggleSelectAll = () => {
+    setSelectedIds(allSelected ? new Set() : new Set(selectableIds));
+  };
+
+  const toggleSelectRow = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   return (
     <div className="space-y-4">
       {error && <ErrorAlert message={error} />}
@@ -152,9 +230,28 @@ export function ApplicationTable({
         </p>
       )}
 
+      <div className="flex justify-end">
+        <ColumnVisibilityMenu visible={visibleColumns} onChange={setVisibleColumns} />
+      </div>
+
       <div className="border border-border rounded-xl overflow-hidden shadow-subtle bg-card">
         <DataTable
-          columns={["Candidate", "Job Opening", "Stage", "Recruiter", "Status", "Applied Date", "Actions"]}
+          columns={[
+            <Checkbox
+              key="select-all"
+              checked={allSelected}
+              onCheckedChange={toggleSelectAll}
+              aria-label="Select all rows on this page"
+            />,
+            "Candidate",
+            "Job Opening",
+            "Stage",
+            "Recruiter",
+            ...OPTIONAL_LIST_COLUMNS.filter((c) => visibleColumns.includes(c.key)).map((c) => c.label),
+            "Status",
+            "Applied Date",
+            "Actions",
+          ]}
         >
           {applications.map((app) => {
             const recruiterName = app.assignedRecruiterUserId
@@ -169,6 +266,14 @@ export function ApplicationTable({
 
             return (
               <DataTableRow key={app.id} className={isDeleted ? "opacity-60 bg-muted/10" : ""}>
+                <DataTableCell>
+                  <Checkbox
+                    checked={selectedIds.has(app.id)}
+                    onCheckedChange={() => toggleSelectRow(app.id)}
+                    disabled={isDeleted}
+                    aria-label={`Select ${candidateName}`}
+                  />
+                </DataTableCell>
                 <DataTableCell>
                   <div className="flex items-center gap-3">
                     <CandidateAvatar fullName={candidateName} className="h-9 w-9" />
@@ -214,6 +319,11 @@ export function ApplicationTable({
                 <DataTableCell className="text-sm font-medium text-foreground">
                   {recruiterName}
                 </DataTableCell>
+                {OPTIONAL_LIST_COLUMNS.filter((c) => visibleColumns.includes(c.key)).map((c) => (
+                  <DataTableCell key={c.key} className="text-sm text-muted-foreground">
+                    {formatOptionalColumn(c.key, app)}
+                  </DataTableCell>
+                ))}
                 <DataTableCell>
                   <span
                     className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold border ${
@@ -298,6 +408,21 @@ export function ApplicationTable({
         </DataTable>
       </div>
 
+      {pagination ? (
+        <ApplicationTablePaginationBar
+          pagination={pagination}
+          filters={filters ?? {}}
+          basePath={basePath}
+        />
+      ) : null}
+
+      <BulkActionBar
+        selectedIds={[...selectedIds]}
+        employeeOptions={employeeOptions as BulkActionBarEmployeeOption[]}
+        onDone={() => setSelectedIds(new Set())}
+        onClearSelection={() => setSelectedIds(new Set())}
+      />
+
       {alertConfig && (
         <AlertDialog
           isOpen={alertConfig.isOpen}
@@ -313,6 +438,93 @@ export function ApplicationTable({
           }}
         />
       )}
+    </div>
+  );
+}
+
+function ApplicationTablePaginationBar({
+  pagination,
+  filters,
+  basePath,
+}: {
+  pagination: ApplicationTablePagination;
+  filters: ApplicationListFilterState;
+  basePath: string;
+}) {
+  const router = useRouter();
+  const { page, pageSize, total, totalPages } = pagination;
+  const rangeStart = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const rangeEnd = Math.min(total, page * pageSize);
+
+  const handlePageSizeChange = (value: string) => {
+    router.push(
+      applicationListHref({ ...filters, pageSize: Number(value) }, undefined, basePath)
+    );
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-between gap-3 border-t border-border/60 pt-3 sm:flex-row">
+      <p className="text-xs font-medium text-muted-foreground">
+        {total === 0
+          ? "No applications"
+          : `Showing ${rangeStart}–${rangeEnd} of ${total} applications`}
+      </p>
+
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-semibold text-muted-foreground">Per page</span>
+          <Select value={String(pageSize)} onValueChange={handlePageSizeChange}>
+            <SelectTrigger className="h-8 w-[72px] bg-background text-xs" aria-label="Rows per page">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LIST_PAGE_SIZE_OPTIONS.map((size) => (
+                <SelectItem key={size} value={String(size)}>
+                  {size}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <Button
+            asChild={page > 1}
+            variant="outline"
+            size="icon"
+            disabled={page <= 1}
+            className="h-8 w-8 rounded-lg"
+            title="Previous page"
+          >
+            {page > 1 ? (
+              <Link href={applicationListHref(filters, page - 1, basePath)}>
+                <ChevronLeft className="h-4 w-4" />
+              </Link>
+            ) : (
+              <ChevronLeft className="h-4 w-4" />
+            )}
+          </Button>
+          <span className="min-w-[64px] text-center text-xs font-semibold tabular-nums text-muted-foreground">
+            Page {totalPages === 0 ? 0 : page} of {totalPages}
+          </span>
+          <Button
+            asChild={page < totalPages}
+            variant="outline"
+            size="icon"
+            disabled={page >= totalPages}
+            className="h-8 w-8 rounded-lg"
+            title="Next page"
+          >
+            {page < totalPages ? (
+              <Link href={applicationListHref(filters, page + 1, basePath)}>
+                <ChevronRight className="h-4 w-4" />
+              </Link>
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
