@@ -7,6 +7,8 @@
 
 This document is the primary technical reference for developers, technical leads, and maintainers. It reflects the **actual implemented codebase** after P0 (hardening), P1 (operational readiness), P2 (workflow UX), and P3 (maintainability) sprints — not aspirational architecture.
 
+-
+
 ---
 
 ## Table of contents
