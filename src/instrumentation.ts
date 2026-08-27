@@ -1,5 +1,13 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    // Vercel's Node.js functions default to UTC, unlike local dev (which inherits the
+    // machine's IST timezone). All attendance/date logic in this app (startOfDay,
+    // isSameDay, toISODate, etc.) intentionally uses local-timezone Date methods, so the
+    // server's local timezone must be IST for those calculations to match local dev.
+    // `TZ` itself is a reserved env var name on Vercel's dashboard, so it's set here
+    // instead, before any Date is constructed.
+    process.env.TZ = "Asia/Kolkata";
+
     const { validateApplicationConfig } = await import("@/lib/config/validate");
     const { validateAuthEnvironment } = await import("@/lib/auth/auth-config");
     const { validateDatabaseUrl, probeDatabaseConnection } = await import(
