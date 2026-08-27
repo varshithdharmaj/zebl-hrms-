@@ -115,7 +115,11 @@ async function deleteTempResumeBestEffort(row: Pick<SubmissionRow, "id" | "resum
   }
 }
 
-async function expireSubmission(row: SubmissionRow): Promise<void> {
+/**
+ * Exported for the scheduled expiry sweep (expire-submissions-batch.ts);
+ * loadAndVerify() below is the other, lazy caller.
+ */
+export async function expireSubmission(row: SubmissionRow): Promise<void> {
   await deleteTempResumeBestEffort(row);
   await prisma.publicApplicationSubmission.updateMany({
     where: { id: row.id, status: { notIn: [...TERMINAL_STATUSES] } },

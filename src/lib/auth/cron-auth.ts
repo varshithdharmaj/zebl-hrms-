@@ -45,6 +45,7 @@ export function getCronSecrets(): {
   attendanceBridge: string | undefined;
   leaveElAccrual: string | undefined;
   leaveElExpiry: string | undefined;
+  publicApplyExpiry: string | undefined;
 } {
   const integration = getEnv("INTEGRATION_CRON_SECRET");
   return {
@@ -54,5 +55,6 @@ export function getCronSecrets(): {
     attendanceBridge: getEnv("ATTENDANCE_BRIDGE_SECRET") ?? integration,
     leaveElAccrual: getEnv("LEAVE_EL_ACCRUAL_CRON_SECRET") ?? integration,
     leaveElExpiry: getEnv("LEAVE_EL_EXPIRY_CRON_SECRET") ?? integration,
+    publicApplyExpiry: getEnv("PUBLIC_APPLY_EXPIRY_CRON_SECRET") ?? integration,
   };
 }

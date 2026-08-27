@@ -5,11 +5,41 @@ export function sanitizeStorageFileName(fileName: string): string {
   return cleaned || "file";
 }
 
+/**
+ * Generic `<prefix><uuid>-<sanitized-filename>` key builder shared by every
+ * UUID-keyed storage namespace. `prefix` must include its trailing slash,
+ * e.g. `candidates/${candidateId}/documents/`.
+ */
+export function buildStorageKey(prefix: string, fileName: string): string {
+  return `${prefix}${crypto.randomUUID()}-${sanitizeStorageFileName(fileName)}`;
+}
+
+/**
+ * Generic traversal-safe prefix check shared by every UUID-keyed storage
+ * namespace: the key must live under `prefix` and contain no `..`, `\`, or
+ * `//` beyond the prefix itself.
+ */
+export function isSafeStorageKey(prefix: string, key: string): boolean {
+  return (
+    key.startsWith(prefix) &&
+    !key.includes("..") &&
+    !key.includes("\\") &&
+    !key.includes("//", prefix.length)
+  );
+}
+
 export function buildCandidateDocumentStorageKey(
   candidateId: string,
   fileName: string
 ): string {
-  return `candidates/${candidateId}/documents/${crypto.randomUUID()}-${sanitizeStorageFileName(fileName)}`;
+  return buildStorageKey(`candidates/${candidateId}/documents/`, fileName);
+}
+
+export function isSafeCandidateDocumentKey(
+  candidateId: string,
+  key: string
+): boolean {
+  return isSafeStorageKey(`candidates/${candidateId}/documents/`, key);
 }
 
 /** Temporary resume storage before a Candidate exists (new-candidate-from-resume). */
@@ -17,17 +47,11 @@ export function buildIntakeResumeStorageKey(
   intakeId: string,
   fileName: string
 ): string {
-  return `recruitment/intake/${intakeId}/documents/${crypto.randomUUID()}-${sanitizeStorageFileName(fileName)}`;
+  return buildStorageKey(`recruitment/intake/${intakeId}/documents/`, fileName);
 }
 
 export function isSafeIntakeResumeKey(intakeId: string, key: string): boolean {
-  const prefix = `recruitment/intake/${intakeId}/documents/`;
-  return (
-    key.startsWith(prefix) &&
-    !key.includes("..") &&
-    !key.includes("\\") &&
-    !key.includes("//", prefix.length)
-  );
+  return isSafeStorageKey(`recruitment/intake/${intakeId}/documents/`, key);
 }
 
 /**
@@ -37,6 +61,11 @@ export function isSafeIntakeResumeKey(intakeId: string, key: string): boolean {
  * schema comment. Month-partitioned so an operator can archive/delete a whole
  * `public-intake/YYYY-MM/` directory once everything in it is terminal
  * (copied to a permanent CandidateDocument, or expired).
+ *
+ * Deliberately NOT built on buildStorageKey()/isSafeStorageKey(): there is no
+ * UUID (the resume/photo upload handlers overwrite-in-place by submission id,
+ * so filename-only collision is intentional, not a bug), and the safety check
+ * needs an extra `monthPartition` segment the generic 2-arg shape doesn't have.
  */
 export function monthPartitionFor(date: Date): string {
   const year = date.getUTCFullYear();
@@ -67,54 +96,29 @@ export function isSafePublicIntakeKey(
 }
 
 export function buildOfferPdfStorageKey(offerId: string, fileName: string): string {
-  return `offers/${offerId}/pdf/${crypto.randomUUID()}-${sanitizeStorageFileName(fileName)}`;
+  return buildStorageKey(`offers/${offerId}/pdf/`, fileName);
+}
+
+export function isSafeOfferPdfKey(offerId: string, key: string): boolean {
+  return isSafeStorageKey(`offers/${offerId}/pdf/`, key);
 }
 
 export function buildEmployeeDocumentStorageKey(
   employeeId: number,
   fileName: string
 ): string {
-  return `employees/${employeeId}/documents/${crypto.randomUUID()}-${sanitizeStorageFileName(fileName)}`;
-}
-
-export function isSafeOfferPdfKey(offerId: string, key: string): boolean {
-  const prefix = `offers/${offerId}/pdf/`;
-  return (
-    key.startsWith(prefix) &&
-    !key.includes("..") &&
-    !key.includes("\\") &&
-    !key.includes("//", prefix.length)
-  );
+  return buildStorageKey(`employees/${employeeId}/documents/`, fileName);
 }
 
 export function isSafeEmployeeDocumentKey(employeeId: number, key: string): boolean {
-  const prefix = `employees/${employeeId}/documents/`;
-  return (
-    key.startsWith(prefix) &&
-    !key.includes("..") &&
-    !key.includes("\\") &&
-    !key.includes("//", prefix.length)
-  );
+  return isSafeStorageKey(`employees/${employeeId}/documents/`, key);
 }
 
 export function buildCommunicationAttachmentStoragePath(
   communicationId: string,
   fileName: string
 ): string {
-  return `communications/${communicationId}/attachments/${crypto.randomUUID()}-${sanitizeStorageFileName(fileName)}`;
-}
-
-export function isSafeCandidateDocumentKey(
-  candidateId: string,
-  key: string
-): boolean {
-  const prefix = `candidates/${candidateId}/documents/`;
-  return (
-    key.startsWith(prefix) &&
-    !key.includes("..") &&
-    !key.includes("\\") &&
-    !key.includes("//", prefix.length)
-  );
+  return buildStorageKey(`communications/${communicationId}/attachments/`, fileName);
 }
 
 export function sanitizeDownloadFileName(name: string): string {

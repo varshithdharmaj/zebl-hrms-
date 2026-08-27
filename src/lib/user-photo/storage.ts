@@ -5,26 +5,23 @@ import type { StorageAdapter } from "@/lib/recruitment/storage/types";
 
 let cached: StorageAdapter | null = null;
 
-export function getRecruitmentStorageRoot(): string {
-  return (
-    getEnv("RECRUITMENT_STORAGE_ROOT") ??
-    path.join(process.cwd(), "storage", "recruitment")
-  );
+export function getUserPhotoStorageRoot(): string {
+  return getEnv("USER_PHOTO_STORAGE_ROOT") ?? path.join(process.cwd(), "storage", "user-photos");
 }
 
 /** Process-singleton storage adapter (local FS or S3). */
-export function getRecruitmentStorage(): StorageAdapter {
+export function getUserPhotoStorage(): StorageAdapter {
   if (!cached) {
     cached = createConfiguredStorage({
-      envPrefix: "RECRUITMENT",
-      localRoot: getRecruitmentStorageRoot(),
-      defaultS3Prefix: "recruitment",
+      envPrefix: "USER_PHOTO",
+      localRoot: getUserPhotoStorageRoot(),
+      defaultS3Prefix: "user-photos",
     });
   }
   return cached;
 }
 
 /** Test helper — replace singleton. */
-export function setRecruitmentStorageForTests(adapter: StorageAdapter | null): void {
+export function setUserPhotoStorageForTests(adapter: StorageAdapter | null): void {
   cached = adapter;
 }
