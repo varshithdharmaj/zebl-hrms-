@@ -17,6 +17,9 @@ export type HeroStatus = {
   subLabel: string | null;
   tone: HeroTone;
   isLiveInProgress: boolean;
+  /** Today, checked out, but short of expected hours — likely a break (e.g. lunch),
+   *  not the day's final checkout. See isPossiblyOnBreak in getHeroStatus. */
+  isPossiblyOnBreak: boolean;
   checkInTime: string | null;
   checkOutTime: string | null;
   workedLabel: string | null;
@@ -80,6 +83,16 @@ export function getHeroStatus(
   // is ever fabricated.
   const isLiveInProgress = opts.isToday && Boolean(day.checkIn) && !day.checkOut;
 
+  // Biometric punches carry no in/out flag — they're paired purely by position
+  // (punch1=in, punch2=out, punch3=in, ...). A lunch-break "out" punch is
+  // therefore indistinguishable, at derivation time, from a genuine end-of-day
+  // checkout: whichever punch lands last just becomes AttendanceRecord.checkOut.
+  // For today, if hours are still short of target, treat it as probably a break
+  // rather than asserting the day is done — avoids the false "Work completed"
+  // read a lunch-out punch would otherwise produce.
+  const isPossiblyOnBreak =
+    opts.isToday && Boolean(day.checkOut) && day.workedMinutes < opts.expectedWorkMinutes;
+
   if (isLiveInProgress) {
     const subLabel =
       day.category === "WORKED_ON_HOLIDAY"
@@ -93,6 +106,7 @@ export function getHeroStatus(
       subLabel,
       tone: "info",
       isLiveInProgress: true,
+      isPossiblyOnBreak: false,
       checkInTime: day.checkIn,
       checkOutTime: null,
       actionHint: null,
@@ -117,6 +131,7 @@ export function getHeroStatus(
         subLabel: day.holidayName,
         tone: "neutral",
         isLiveInProgress: false,
+        isPossiblyOnBreak: false,
         actionHint: null,
         badges,
         ...notWorking,
@@ -128,6 +143,7 @@ export function getHeroStatus(
         subLabel: null,
         tone: "neutral",
         isLiveInProgress: false,
+        isPossiblyOnBreak: false,
         actionHint: null,
         badges,
         ...notWorking,
@@ -139,6 +155,7 @@ export function getHeroStatus(
         subLabel: day.leaveType ? `${day.leaveType} leave` : null,
         tone: "info",
         isLiveInProgress: false,
+        isPossiblyOnBreak: false,
         actionHint: null,
         badges,
         ...notWorking,
@@ -146,10 +163,13 @@ export function getHeroStatus(
     case "WORKED_ON_HOLIDAY":
       return {
         category: day.category,
-        label: "Worked on holiday",
-        subLabel: day.holidayName,
-        tone: "success",
+        label: isPossiblyOnBreak ? "Checked out for now" : "Worked on holiday",
+        subLabel: isPossiblyOnBreak
+          ? "Hours are still short of target — this may be a break, not your final checkout."
+          : day.holidayName,
+        tone: isPossiblyOnBreak ? "info" : "success",
         isLiveInProgress: false,
+        isPossiblyOnBreak,
         checkInTime: day.checkIn,
         checkOutTime: day.checkOut,
         actionHint: null,
@@ -159,10 +179,13 @@ export function getHeroStatus(
     case "WORKED_ON_WEEKLY_OFF":
       return {
         category: day.category,
-        label: "Worked on your weekly off",
-        subLabel: null,
-        tone: "success",
+        label: isPossiblyOnBreak ? "Checked out for now" : "Worked on your weekly off",
+        subLabel: isPossiblyOnBreak
+          ? "Hours are still short of target — this may be a break, not your final checkout."
+          : null,
+        tone: isPossiblyOnBreak ? "info" : "success",
         isLiveInProgress: false,
+        isPossiblyOnBreak,
         checkInTime: day.checkIn,
         checkOutTime: day.checkOut,
         actionHint: null,
@@ -172,10 +195,13 @@ export function getHeroStatus(
     case "PRESENT":
       return {
         category: day.category,
-        label: "Work completed",
-        subLabel: null,
-        tone: "success",
+        label: isPossiblyOnBreak ? "Checked out for now" : "Work completed",
+        subLabel: isPossiblyOnBreak
+          ? "Hours are still short of target — this may be a break, not your final checkout."
+          : null,
+        tone: isPossiblyOnBreak ? "info" : "success",
         isLiveInProgress: false,
+        isPossiblyOnBreak,
         checkInTime: day.checkIn,
         checkOutTime: day.checkOut,
         actionHint: null,
@@ -191,6 +217,7 @@ export function getHeroStatus(
         subLabel: "Check-in was recorded, but check-out or worked hours are missing.",
         tone: "warning",
         isLiveInProgress: false,
+        isPossiblyOnBreak: false,
         checkInTime: day.checkIn,
         checkOutTime: day.checkOut,
         actionHint: "Contact HR if this doesn't look right.",
@@ -208,6 +235,7 @@ export function getHeroStatus(
             subLabel: null,
             tone: "warning",
             isLiveInProgress: false,
+            isPossiblyOnBreak: false,
             actionHint: "Your attendance will update once it's recorded.",
             badges,
             ...notWorking,
@@ -218,6 +246,7 @@ export function getHeroStatus(
             subLabel: null,
             tone: "danger",
             isLiveInProgress: false,
+            isPossiblyOnBreak: false,
             actionHint: null,
             badges,
             ...notWorking,

@@ -130,7 +130,7 @@ describe("getHeroStatus — required states", () => {
         workedMinutes: 240,
         ratio: 50,
       }),
-      { isToday: true, expectedWorkMinutes: 480 }
+      { isToday: false, expectedWorkMinutes: 480 }
     );
     expect(status.label).toBe("Worked on holiday");
     expect(status.subLabel).toBe("Festival");
@@ -147,7 +147,7 @@ describe("getHeroStatus — required states", () => {
         workedMinutes: 180,
         ratio: 38,
       }),
-      { isToday: true, expectedWorkMinutes: 480 }
+      { isToday: false, expectedWorkMinutes: 480 }
     );
     expect(status.label).toBe("Worked on your weekly off");
     expect(status.tone).toBe("success");
@@ -266,6 +266,56 @@ describe("getHeroStatus — required states", () => {
     );
     expect(status.label).toBe("Work completed");
     expect(status.badges.leaveConflict).toBe(true);
+  });
+
+  it("today, checked out, but short of target hours -> possibly on break, not Work completed", () => {
+    // Biometric punches carry no in/out flag: a lunch-break "out" punch and a genuine
+    // end-of-day checkout are indistinguishable at derivation time. If hours are still
+    // short of target on today's record, the hero must not assert the day is done.
+    const status = getHeroStatus(
+      baseDay({
+        category: "PRESENT",
+        checkIn: "09:25",
+        checkOut: "12:46",
+        workedMinutes: 201,
+        ratio: 42,
+      }),
+      { isToday: true, expectedWorkMinutes: 480 }
+    );
+    expect(status.label).toBe("Checked out for now");
+    expect(status.tone).toBe("info");
+    expect(status.isPossiblyOnBreak).toBe(true);
+    expect(status.checkOutTime).toBe("12:46");
+  });
+
+  it("today, checked out, and target already met -> Work completed, not possibly on break", () => {
+    const status = getHeroStatus(
+      baseDay({
+        category: "PRESENT",
+        checkIn: "09:00",
+        checkOut: "18:00",
+        workedMinutes: 480,
+        ratio: 100,
+      }),
+      { isToday: true, expectedWorkMinutes: 480 }
+    );
+    expect(status.label).toBe("Work completed");
+    expect(status.isPossiblyOnBreak).toBe(false);
+  });
+
+  it("past day, checked out, short of target -> still Work completed (day is over, no ambiguity)", () => {
+    const status = getHeroStatus(
+      baseDay({
+        category: "PRESENT",
+        checkIn: "09:00",
+        checkOut: "12:30",
+        workedMinutes: 210,
+        ratio: 44,
+      }),
+      { isToday: false, expectedWorkMinutes: 480 }
+    );
+    expect(status.label).toBe("Work completed");
+    expect(status.isPossiblyOnBreak).toBe(false);
   });
 
   it("never fabricates worked/remaining values for non-working categories", () => {
