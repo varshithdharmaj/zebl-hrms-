@@ -634,15 +634,38 @@ model LeavePolicySettings {
   id                  Int      @id @default(1)
   cycleStartDay       Int      @default(26) @map("cycle_start_day")
   elAccrualAmount     Float    @default(0.5) @map("el_accrual_amount")
-  elEligibilityMonths Int      @default(14) @map("el_eligibility_months")
+  elEligibilityMonths Int      @default(12) @map("el_eligibility_months")
   elExpiryMonths      Int      @default(36) @map("el_expiry_months")
+  elEncashmentCapDays Float    @default(30) @map("el_encashment_cap_days")
   slAnnualEntitlement Int      @default(6) @map("sl_annual_entitlement")
   slCarryForward      Boolean  @default(false) @map("sl_carry_forward")
   slExpiryMonths      Int?     @map("sl_expiry_months")
+  clAnnualEntitlement Int      @default(12) @map("cl_annual_entitlement")
+  monthlyLeaveLimit   Float    @default(2) @map("monthly_leave_limit")
+  maxConsecutiveDays  Int      @default(3) @map("max_consecutive_days")
+  advanceNoticeDays   Int      @default(7) @map("advance_notice_days")
   updatedAt           DateTime @updatedAt @map("updated_at")
   updatedBy           String?  @map("updated_by")
 
   @@map("leave_policy_settings")
+}
+
+/// Human-readable leave policy content, versioned and never deleted — kept
+/// deliberately separate from LeavePolicySettings (the machine-readable
+/// values leave business logic actually enforces). Business logic must never
+/// parse `content` to compute anything; it exists only for employees/HR to
+/// read the policy in-app instead of a separate PDF.
+model LeavePolicyDocument {
+  id            Int       @id @default(autoincrement())
+  version       String
+  effectiveFrom DateTime  @map("effective_from")
+  effectiveTo   DateTime? @map("effective_to")
+  isActive      Boolean   @default(true) @map("is_active")
+  content       String
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([isActive])
+  @@map("leave_policy_documents")
 }
 
 /// One row per Earned Leave accrual event ("lot"), enabling FIFO consumption

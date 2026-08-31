@@ -13,6 +13,8 @@ import {
   toWorkflowActor,
   WorkflowError,
 } from "@/lib/workflow/leave-workflow";
+import { getLeavePolicySettings } from "@/lib/leave/leave-policy";
+import { validateLeaveRequestPolicy } from "@/lib/leave/policy-checks";
 
 export type ActionState = {
   error?: string;
@@ -50,12 +52,26 @@ export async function applyLeaveAction(
   const days = countLeaveDays(startDate, endDate);
 
   try {
+    const policy = await getLeavePolicySettings();
+
+    const policyCheck = await validateLeaveRequestPolicy({
+      employeeId,
+      leaveType,
+      startDate,
+      endDate,
+      days,
+      policy,
+    });
+    if (!policyCheck.ok) return { error: policyCheck.error };
+
     await processPendingLeaveAccruals(employeeId);
-    const balances = await getLeaveBalanceSummaries(employeeId);
+    const balances = await getLeaveBalanceSummaries(employeeId, { processAccruals: true });
     const typeBalance = balances.find((b) => b.leaveType === leaveType);
 
     if (leaveType === "EL" && !typeBalance?.eligible) {
-      return { error: "You are not yet eligible for Earned Leave (requires 1 year of service)." };
+      return {
+        error: `You are not yet eligible for Earned Leave (eligible after ${policy.elEligibilityMonths} months of service).`,
+      };
     }
 
     if ((typeBalance?.remaining ?? 0) < days) {

@@ -28,6 +28,7 @@ import {
   FileCheck,
   UserCheck,
   UserRound,
+  BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logoutAction } from "@/actions/auth";
@@ -91,6 +92,7 @@ function groupedNavForRole(
             { href: "/admin/attendance", label: "Attendance", icon: ClipboardList },
             { href: "/admin/payroll-attendance", label: "Payroll Attendance", icon: Banknote },
             { href: "/admin/leaves", label: "Leaves", icon: CalendarDays },
+            { href: "/admin/leave-policy", label: "Leave Policy", icon: BookOpen },
             { href: "/admin/calendar", label: "Calendar", icon: CalendarDays },
             { href: "/admin/tickets", label: "Helpdesk", icon: Headset },
             { href: "/admin/upload", label: "Upload Data", icon: Upload },

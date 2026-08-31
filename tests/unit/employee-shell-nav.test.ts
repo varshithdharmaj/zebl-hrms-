@@ -12,6 +12,7 @@ describe("buildEmployeeShellNav", () => {
       { href: "/employee/profile", label: "Profile" },
       { href: "/employee/attendance", label: "History" },
       { href: "/employee/leaves", label: "Leaves" },
+      { href: "/employee/leaves/policy", label: "Leave Policy" },
       { href: "/employee/tickets", label: "My Tickets" },
       { href: "/employee/settings", label: "Settings" },
     ]);

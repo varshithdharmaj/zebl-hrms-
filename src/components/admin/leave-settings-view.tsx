@@ -112,6 +112,40 @@ export function LeaveSettingsView({
               used first when an employee applies for leave, so it naturally expires before newer EL.
             </p>
           </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="elEncashmentCapDays">Encashment cap at relieving (days)</Label>
+            <Input
+              id="elEncashmentCapDays"
+              name="elEncashmentCapDays"
+              type="number"
+              step={0.5}
+              min={0}
+              defaultValue={settings.elEncashmentCapDays}
+              disabled={!canEdit || pending}
+            />
+            <p className="text-xs text-muted-foreground">
+              Maximum unused EL that can be paid out when an employee leaves. Policy value only —
+              this app does not yet run the actual relieving/payroll encashment calculation.
+            </p>
+          </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Casual Leave (CL)"
+        description="Annual Casual Leave entitlement. CL never expires and is not affected by these Sick Leave rules."
+      >
+        <div className="max-w-xs space-y-1">
+          <Label htmlFor="clAnnualEntitlement">Annual entitlement (days)</Label>
+          <Input
+            id="clAnnualEntitlement"
+            name="clAnnualEntitlement"
+            type="number"
+            min={0}
+            defaultValue={settings.clAnnualEntitlement}
+            disabled={!canEdit || pending}
+          />
         </div>
       </SectionCard>
 
@@ -167,6 +201,61 @@ export function LeaveSettingsView({
               <p className="text-xs text-muted-foreground">Leave blank for no expiry.</p>
             </div>
           )}
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Monthly limit & Loss of Pay"
+        description="Once an employee's paid leave for the cycle month exceeds this limit, the extra days are Loss of Pay (LOP) — a payroll consequence, never a stored leave balance."
+      >
+        <div className="max-w-xs space-y-1">
+          <Label htmlFor="monthlyLeaveLimit">Maximum paid leave days per month</Label>
+          <Input
+            id="monthlyLeaveLimit"
+            name="monthlyLeaveLimit"
+            type="number"
+            step={0.5}
+            min={0}
+            defaultValue={settings.monthlyLeaveLimit}
+            disabled={!canEdit || pending}
+          />
+          <p className="text-xs text-muted-foreground">
+            Counted within the leave cycle above (26th–25th). Requests that would exceed this are
+            rejected with an explanation rather than silently marked as LOP.
+          </p>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Consecutive leave & advance notice"
+        description="Limits applied when an employee submits a leave request."
+      >
+        <div className="grid gap-5 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label htmlFor="maxConsecutiveDays">Maximum consecutive days</Label>
+            <Input
+              id="maxConsecutiveDays"
+              name="maxConsecutiveDays"
+              type="number"
+              min={1}
+              defaultValue={settings.maxConsecutiveDays}
+              disabled={!canEdit || pending}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="advanceNoticeDays">Advance notice required (days)</Label>
+            <Input
+              id="advanceNoticeDays"
+              name="advanceNoticeDays"
+              type="number"
+              min={0}
+              defaultValue={settings.advanceNoticeDays}
+              disabled={!canEdit || pending}
+            />
+            <p className="text-xs text-muted-foreground">
+              Applies to planned EL/CL. Sick Leave is exempt (it&apos;s inherently unplanned).
+            </p>
+          </div>
         </div>
       </SectionCard>
 

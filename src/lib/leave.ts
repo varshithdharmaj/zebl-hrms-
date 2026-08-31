@@ -2,8 +2,6 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isUniqueConstraintError } from "@/lib/db/prisma-errors";
 import {
-  DEFAULT_CL_ANNUAL,
-  DEFAULT_SL_ANNUAL,
   type LeaveType,
   LEAVE_TYPES,
   leaveTypeToBalanceField,
@@ -12,7 +10,7 @@ import {
 import { startOfDay } from "@/lib/utils";
 import { LeaveRequestStatus } from "@/generated/prisma/enums";
 import { getElEligibilityDate } from "@/lib/leave/el-dates";
-import { getLeavePolicySettings } from "@/lib/leave/leave-policy";
+import { getLeavePolicySettings, type LeavePolicy } from "@/lib/leave/leave-policy";
 import { getOrCreateLeaveBalanceRow } from "@/lib/leave/balance-row";
 import { runElAccrualForEmployee } from "@/lib/leave/el-accrual-engine";
 
@@ -87,7 +85,11 @@ async function applyBalanceDeltaAtomic(
     return;
   }
 
-  // manual_adjustment: signed delta (may go negative — existing business rule)
+  // manual_adjustment / expiry: signed delta (may go negative — e.g. the SL
+  // year-end lapse passes a negative amount here to zero out unused SL).
+  // Unlike "deduction" this is not conditionally guarded against a
+  // concurrent balance change — acceptable because expiry/manual_adjustment
+  // fire far less often and are not expected to race with themselves.
   await tx.employeeLeaveBalance.update({
     where: { employeeId },
     data: { [field]: { increment: amount } },
@@ -138,7 +140,11 @@ export async function recordLeaveTransactionInTx(
           : `Leave request #${leaveRequestId} already has a ${transactionType} ledger entry.`
       );
     }
-    if (isUniqueConstraintError(error) && transactionType === "accrual" && reason) {
+    if (
+      isUniqueConstraintError(error) &&
+      (transactionType === "accrual" || transactionType === "expiry") &&
+      reason
+    ) {
       throw new Error(`Accrual already posted: ${reason}`);
     }
     throw error;
@@ -160,23 +166,25 @@ export async function recordLeaveTransaction(params: {
 }
 
 /**
- * Candidate CL/SL yearly accrual reason strings for the given calendar year.
- * EL is no longer part of this flat-accrual path — EL accrual is lot-based
- * (see el-accrual-engine.ts) with its own 26th/14-month/36-month rules.
+ * Candidate CL/SL yearly accrual reason strings for the given calendar year,
+ * using the configured (not hardcoded) annual entitlements.
+ * EL is not part of this flat-accrual path — EL accrual is lot-based
+ * (see el-accrual-engine.ts) with its own 26th/12-month/36-month rules.
  */
 export function buildPendingAccrualReasons(
+  policy: Pick<LeavePolicy, "clAnnualEntitlement" | "slAnnualEntitlement">,
   year: number = getCalendarYear()
 ): { reason: string; leaveType: LeaveType; amount: number }[] {
   return [
     {
       reason: `CL yearly allocation ${year}`,
       leaveType: "CL",
-      amount: DEFAULT_CL_ANNUAL,
+      amount: policy.clAnnualEntitlement,
     },
     {
       reason: `SL yearly allocation ${year}`,
       leaveType: "SL",
-      amount: DEFAULT_SL_ANNUAL,
+      amount: policy.slAnnualEntitlement,
     },
   ];
 }
@@ -191,6 +199,12 @@ export function buildPendingAccrualReasons(
  *
  * When `tx` is provided, accruals run inside that transaction (no nested $transaction).
  * Concurrent inserts of the same reason are rejected by the system-accrual unique index.
+ *
+ * SL year-end lapse (policy.slCarryForward === false): before granting the
+ * current year's SL for the first time, any still-unused SL balance is
+ * forfeited via an "expiry" ledger entry (idempotency-guarded by the same
+ * unique index as accruals — see migration 20260825090000). CL is untouched
+ * — it has no lapse rule and keeps accumulating, unchanged from before.
  */
 export async function processPendingLeaveAccruals(
   employeeId: number,
@@ -202,17 +216,20 @@ export async function processPendingLeaveAccruals(
 
   const joiningDate = employee.joiningDate;
   const isActive = employee.isActive;
-  const pending = buildPendingAccrualReasons();
+  const policy = await getLeavePolicySettings();
+  const year = getCalendarYear();
+  const pending = buildPendingAccrualReasons(policy, year);
   const candidateReasons = pending.map((p) => p.reason);
+  const slLapseReason = `SL yearly lapse ${year - 1}`;
 
   const run = async (inner: TxClient) => {
     // Balance ensure + existence check are independent — one round-trip instead of N.
-    const [, existing] = await Promise.all([
+    const [balance, existing] = await Promise.all([
       getOrCreateLeaveBalanceRow(employeeId, inner),
       inner.leaveTransaction.findMany({
         where: {
           employeeId,
-          reason: { in: candidateReasons },
+          reason: { in: [...candidateReasons, slLapseReason] },
         },
         select: { reason: true },
       }),
@@ -221,6 +238,33 @@ export async function processPendingLeaveAccruals(
     const existingSet = new Set(
       existing.map((row) => row.reason).filter((r): r is string => Boolean(r))
     );
+
+    const slReason = `SL yearly allocation ${year}`;
+    const slNotYetGranted = !existingSet.has(slReason);
+    if (
+      !policy.slCarryForward &&
+      slNotYetGranted &&
+      !existingSet.has(slLapseReason) &&
+      balance.slBalance > 0
+    ) {
+      try {
+        await recordLeaveTransactionInTx(inner, {
+          employeeId,
+          leaveType: "SL",
+          transactionType: "expiry",
+          amount: -balance.slBalance,
+          reason: slLapseReason,
+          createdBy: "system",
+        });
+        existingSet.add(slLapseReason);
+      } catch (error) {
+        if (error instanceof Error && error.message.startsWith("Accrual already posted:")) {
+          existingSet.add(slLapseReason);
+        } else {
+          throw error;
+        }
+      }
+    }
 
     for (const item of pending) {
       if (existingSet.has(item.reason)) continue;

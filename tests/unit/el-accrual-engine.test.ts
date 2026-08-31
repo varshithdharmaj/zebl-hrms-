@@ -1,10 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+// Confirmed policy (VEB HR Policy Manual v1.0): EL eligibility is 12 months
+// (completion of one year) from DOJ.
 const { DEFAULT_POLICY } = vi.hoisted(() => ({
   DEFAULT_POLICY: {
     cycleStartDay: 26,
     elAccrualAmount: 0.5,
-    elEligibilityMonths: 14,
+    elEligibilityMonths: 12,
     elExpiryMonths: 36,
     slAnnualEntitlement: 6,
     slCarryForward: false,
@@ -55,7 +57,7 @@ describe("runElAccrualForEmployee", () => {
     const result = await runElAccrualForEmployee(
       { id: 1, joiningDate: new Date(2020, 0, 1), isActive: false },
       DEFAULT_POLICY,
-      new Date(2027, 2, 26)
+      new Date(2027, 0, 26)
     );
     expect(result.lotsCreated).toEqual([]);
     expect(prisma.elAccrualLot.findMany).not.toHaveBeenCalled();
@@ -65,7 +67,7 @@ describe("runElAccrualForEmployee", () => {
     const result = await runElAccrualForEmployee(
       { id: 1, joiningDate: new Date(2026, 0, 10), isActive: true },
       DEFAULT_POLICY,
-      new Date(2027, 1, 1) // before 26-Mar-2027 first accrual
+      new Date(2026, 11, 1) // before 26-Jan-2027 first accrual
     );
     expect(result.lotsCreated).toEqual([]);
   });
@@ -84,17 +86,17 @@ describe("runElAccrualForEmployee", () => {
     const result = await runElAccrualForEmployee(
       { id: 1, joiningDate: new Date(2026, 0, 10), isActive: true },
       DEFAULT_POLICY,
-      new Date(2027, 2, 26)
+      new Date(2027, 0, 26)
     );
 
-    expect(result.lotsCreated).toEqual(["2027-03"]);
+    expect(result.lotsCreated).toEqual(["2027-01"]);
     expect(prisma.elAccrualLot.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         employeeId: 1,
-        cycleKey: "2027-03",
+        cycleKey: "2027-01",
         amount: 0.5,
         remaining: 0.5,
-        expiryDate: new Date(2030, 2, 26),
+        expiryDate: new Date(2030, 0, 26),
       }),
     });
     expect(prisma.employeeLeaveBalance.update).toHaveBeenCalledWith({
@@ -104,12 +106,12 @@ describe("runElAccrualForEmployee", () => {
   });
 
   it("skips a cycle that already has a lot (idempotency)", async () => {
-    vi.mocked(prisma.elAccrualLot.findMany).mockResolvedValue([{ cycleKey: "2027-03" }] as never);
+    vi.mocked(prisma.elAccrualLot.findMany).mockResolvedValue([{ cycleKey: "2027-01" }] as never);
 
     const result = await runElAccrualForEmployee(
       { id: 1, joiningDate: new Date(2026, 0, 10), isActive: true },
       DEFAULT_POLICY,
-      new Date(2027, 2, 26)
+      new Date(2027, 0, 26)
     );
 
     expect(result.lotsCreated).toEqual([]);
@@ -131,18 +133,18 @@ describe("runElAccrualForEmployee", () => {
     const first = await runElAccrualForEmployee(
       { id: 1, joiningDate: new Date(2026, 0, 10), isActive: true },
       DEFAULT_POLICY,
-      new Date(2027, 2, 26)
+      new Date(2027, 0, 26)
     );
-    expect(first.lotsCreated).toEqual(["2027-03"]);
+    expect(first.lotsCreated).toEqual(["2027-01"]);
 
     // Second run: the lot now exists.
     vi.mocked(prisma.elAccrualLot.findMany).mockResolvedValueOnce([
-      { cycleKey: "2027-03" },
+      { cycleKey: "2027-01" },
     ] as never);
     const second = await runElAccrualForEmployee(
       { id: 1, joiningDate: new Date(2026, 0, 10), isActive: true },
       DEFAULT_POLICY,
-      new Date(2027, 2, 26)
+      new Date(2027, 0, 26)
     );
     expect(second.lotsCreated).toEqual([]);
     expect(prisma.elAccrualLot.create).toHaveBeenCalledTimes(1);

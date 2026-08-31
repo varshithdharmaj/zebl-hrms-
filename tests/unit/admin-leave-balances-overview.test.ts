@@ -13,7 +13,7 @@ vi.mock("@/lib/prisma", () => ({
       findMany: vi.fn(),
     },
     leavePolicySettings: {
-      upsert: vi.fn(),
+      findUnique: vi.fn(),
     },
     employee: {
       findUnique: vi.fn(),
@@ -23,15 +23,21 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+// Confirmed policy (VEB HR Policy Manual v1.0): EL eligibility = 12 months.
 const DEFAULT_POLICY_ROW = {
   id: 1,
   cycleStartDay: 26,
   elAccrualAmount: 0.5,
-  elEligibilityMonths: 14,
+  elEligibilityMonths: 12,
   elExpiryMonths: 36,
+  elEncashmentCapDays: 30,
   slAnnualEntitlement: 6,
   slCarryForward: false,
   slExpiryMonths: null,
+  clAnnualEntitlement: 12,
+  monthlyLeaveLimit: 2,
+  maxConsecutiveDays: 3,
+  advanceNoticeDays: 7,
   updatedAt: new Date(),
   updatedBy: null,
 };
@@ -121,7 +127,7 @@ describe("buildLeaveBalanceSummariesFromParts", () => {
 describe("getLeaveBalanceSummariesForEmployees", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(prisma.leavePolicySettings.upsert).mockResolvedValue(DEFAULT_POLICY_ROW as never);
+    vi.mocked(prisma.leavePolicySettings.findUnique).mockResolvedValue(DEFAULT_POLICY_ROW as never);
   });
 
   it("returns empty map for empty employee set without querying", async () => {
@@ -216,7 +222,7 @@ describe("getLeaveBalanceSummariesForEmployees", () => {
 describe("getAdminLeaveBalancesOverview", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(prisma.leavePolicySettings.upsert).mockResolvedValue(DEFAULT_POLICY_ROW as never);
+    vi.mocked(prisma.leavePolicySettings.findUnique).mockResolvedValue(DEFAULT_POLICY_ROW as never);
   });
 
   it("returns [] when unauthorized", async () => {

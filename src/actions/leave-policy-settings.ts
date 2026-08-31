@@ -34,9 +34,14 @@ export async function updateLeavePolicySettingsAction(
     elAccrualAmount: formData.get("elAccrualAmount"),
     elEligibilityMonths: formData.get("elEligibilityMonths"),
     elExpiryMonths: formData.get("elExpiryMonths"),
+    elEncashmentCapDays: formData.get("elEncashmentCapDays"),
     slAnnualEntitlement: formData.get("slAnnualEntitlement"),
     slCarryForward: formData.get("slCarryForward"),
     slExpiryMonths: formData.get("slExpiryMonths") || undefined,
+    clAnnualEntitlement: formData.get("clAnnualEntitlement"),
+    monthlyLeaveLimit: formData.get("monthlyLeaveLimit"),
+    maxConsecutiveDays: formData.get("maxConsecutiveDays"),
+    advanceNoticeDays: formData.get("advanceNoticeDays"),
   });
   if (!validated.ok) return { error: validated.error };
 

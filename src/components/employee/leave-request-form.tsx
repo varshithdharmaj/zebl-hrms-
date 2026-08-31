@@ -10,15 +10,24 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SectionCard } from "@/components/ui/section-card";
 import { ErrorAlert } from "@/components/ui/error-alert";
 import { LEAVE_TYPES, LEAVE_TYPE_LABELS } from "@/lib/leave-types";
+import type { LeavePolicy } from "@/lib/leave/leave-policy";
 
 const initialState: ActionState = {};
 
-export function LeaveRequestForm() {
+export function LeaveRequestForm({ policy }: { policy: LeavePolicy }) {
   const [state, formAction, pending] = useActionState(applyLeaveAction, initialState);
   const [leaveType, setLeaveType] = useState("CL");
 
+  const eligibilityText =
+    policy.elEligibilityMonths % 12 === 0
+      ? `${policy.elEligibilityMonths / 12} year${policy.elEligibilityMonths === 12 ? "" : "s"}`
+      : `${policy.elEligibilityMonths} months`;
+
   return (
-    <SectionCard title="Apply for leave" description="EL accrues after 1 year · CL/SL: 12 days per year">
+    <SectionCard
+      title="Apply for leave"
+      description={`EL accrues 0.5/month after ${eligibilityText} of service · CL: ${policy.clAnnualEntitlement} days/year · SL: ${policy.slAnnualEntitlement} days/year · max ${policy.maxConsecutiveDays} consecutive days`}
+    >
       <form action={formAction} className="max-w-lg space-y-4">
         <input type="hidden" name="leaveType" value={leaveType} />
         {state.error && <ErrorAlert message={state.error} />}

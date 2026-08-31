@@ -13,6 +13,10 @@ vi.mock("@/lib/prisma", () => ({
       findMany: vi.fn(),
       create: vi.fn(),
     },
+    leavePolicySettings: {
+      findUnique: vi.fn(),
+      create: vi.fn(),
+    },
     $transaction: vi.fn(),
   },
 }));
@@ -57,6 +61,23 @@ function makeTx(): Tx {
 describe("leave approval ledger concurrency primitives", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.leavePolicySettings.findUnique).mockResolvedValue({
+      id: 1,
+      cycleStartDay: 26,
+      elAccrualAmount: 0.5,
+      elEligibilityMonths: 12,
+      elExpiryMonths: 36,
+      elEncashmentCapDays: 30,
+      slAnnualEntitlement: 6,
+      slCarryForward: false,
+      slExpiryMonths: null,
+      clAnnualEntitlement: 12,
+      monthlyLeaveLimit: 2,
+      maxConsecutiveDays: 3,
+      advanceNoticeDays: 7,
+      updatedAt: new Date(),
+      updatedBy: null,
+    } as never);
   });
 
   it("Case 1 — normal deduction uses conditional decrement then creates ledger row", async () => {

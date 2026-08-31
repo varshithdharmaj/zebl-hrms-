@@ -1,21 +1,55 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { buildPendingAccrualReasons, getCalendarYear } from "@/lib/leave";
-import { DEFAULT_CL_ANNUAL, DEFAULT_SL_ANNUAL } from "@/lib/leave-types";
+
+const CL_ENTITLEMENT = 12;
+const SL_ENTITLEMENT = 6;
+
+const POLICY_ROW = {
+  id: 1,
+  cycleStartDay: 26,
+  elAccrualAmount: 0.5,
+  elEligibilityMonths: 12,
+  elExpiryMonths: 36,
+  elEncashmentCapDays: 30,
+  slAnnualEntitlement: SL_ENTITLEMENT,
+  slCarryForward: false,
+  slExpiryMonths: null,
+  clAnnualEntitlement: CL_ENTITLEMENT,
+  monthlyLeaveLimit: 2,
+  maxConsecutiveDays: 3,
+  advanceNoticeDays: 7,
+  updatedAt: new Date(),
+  updatedBy: null,
+};
 
 describe("buildPendingAccrualReasons", () => {
-  it("includes only CL and SL yearly reasons for the given year (EL is lot-based, handled separately)", () => {
-    const pending = buildPendingAccrualReasons(2026);
+  it("includes only CL and SL yearly reasons for the given year, using configured entitlements (EL is lot-based, handled separately)", () => {
+    const pending = buildPendingAccrualReasons(
+      { clAnnualEntitlement: CL_ENTITLEMENT, slAnnualEntitlement: SL_ENTITLEMENT },
+      2026
+    );
     expect(pending).toEqual([
-      { reason: "CL yearly allocation 2026", leaveType: "CL", amount: DEFAULT_CL_ANNUAL },
-      { reason: "SL yearly allocation 2026", leaveType: "SL", amount: DEFAULT_SL_ANNUAL },
+      { reason: "CL yearly allocation 2026", leaveType: "CL", amount: CL_ENTITLEMENT },
+      { reason: "SL yearly allocation 2026", leaveType: "SL", amount: SL_ENTITLEMENT },
     ]);
   });
 
   it("defaults to the current calendar year", () => {
-    const pending = buildPendingAccrualReasons();
+    const pending = buildPendingAccrualReasons({
+      clAnnualEntitlement: CL_ENTITLEMENT,
+      slAnnualEntitlement: SL_ENTITLEMENT,
+    });
     const year = getCalendarYear();
     expect(pending[0]?.reason).toBe(`CL yearly allocation ${year}`);
     expect(pending[1]?.reason).toBe(`SL yearly allocation ${year}`);
+  });
+
+  it("reflects a different configured SL entitlement (e.g. HR changes it to 10)", () => {
+    const pending = buildPendingAccrualReasons(
+      { clAnnualEntitlement: CL_ENTITLEMENT, slAnnualEntitlement: 10 },
+      2026
+    );
+    expect(pending.find((p) => p.leaveType === "SL")?.amount).toBe(10);
   });
 });
 
@@ -33,7 +67,8 @@ vi.mock("@/lib/prisma", () => ({
       groupBy: vi.fn(),
     },
     leavePolicySettings: {
-      upsert: vi.fn(),
+      findUnique: vi.fn(),
+      create: vi.fn(),
     },
     $transaction: vi.fn(),
   },
@@ -48,6 +83,8 @@ describe("processPendingLeaveAccruals query depth", () => {
     vi.mocked(prisma.$transaction).mockReset();
     vi.mocked(prisma.leaveTransaction.findMany).mockReset();
     vi.mocked(prisma.employeeLeaveBalance.findUnique).mockReset();
+    vi.mocked(prisma.leavePolicySettings.findUnique).mockReset();
+    vi.mocked(prisma.leavePolicySettings.findUnique).mockResolvedValue(POLICY_ROW as never);
   });
 
   it("batches accrual existence into one findMany and parallels it with balance ensure", async () => {
@@ -156,6 +193,8 @@ describe("getLeaveBalanceSummaries with processAccruals", () => {
     vi.mocked(prisma.leaveTransaction.groupBy).mockReset();
     vi.mocked(prisma.leaveTransaction.findMany).mockReset();
     vi.mocked(prisma.employeeLeaveBalance.findUnique).mockReset();
+    vi.mocked(prisma.leavePolicySettings.findUnique).mockReset();
+    vi.mocked(prisma.leavePolicySettings.findUnique).mockResolvedValue(POLICY_ROW as never);
   });
 
   it("does not re-fetch employee after accruals (reuses joiningDate)", async () => {
@@ -200,18 +239,6 @@ describe("getLeaveBalanceSummaries with processAccruals", () => {
     } as never);
     vi.mocked(prisma.leaveTransaction.groupBy).mockResolvedValue([] as never);
     vi.mocked(prisma.leaveTransaction.findMany).mockResolvedValue([] as never);
-    vi.mocked(prisma.leavePolicySettings.upsert).mockResolvedValue({
-      id: 1,
-      cycleStartDay: 26,
-      elAccrualAmount: 0.5,
-      elEligibilityMonths: 14,
-      elExpiryMonths: 36,
-      slAnnualEntitlement: 6,
-      slCarryForward: false,
-      slExpiryMonths: null,
-      updatedAt: new Date(),
-      updatedBy: null,
-    } as never);
 
     const summaries = await getLeaveBalanceSummaries(5, { processAccruals: true });
 

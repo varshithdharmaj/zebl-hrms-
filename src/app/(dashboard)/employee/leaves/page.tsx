@@ -7,15 +7,17 @@ import { SectionCard } from "@/components/ui/section-card";
 import { getSession } from "@/lib/auth";
 import { getEmployeeLeavePageData } from "@/lib/data";
 import { getUpcomingHolidays } from "@/lib/leave/leave-calendar";
+import { getLeavePolicySettings } from "@/lib/leave/leave-policy";
 import { formatDate } from "@/lib/utils";
 
 export default async function EmployeeLeavesPage() {
   const session = await getSession();
   if (!session?.employeeId) redirect("/login");
 
-  const [{ balances, leaves }, holidays] = await Promise.all([
+  const [{ balances, leaves }, holidays, policy] = await Promise.all([
     getEmployeeLeavePageData(session.employeeId),
     getUpcomingHolidays(6),
+    getLeavePolicySettings(),
   ]);
 
   return (
@@ -49,7 +51,7 @@ export default async function EmployeeLeavesPage() {
         </section>
       )}
 
-      <LeaveRequestForm />
+      <LeaveRequestForm policy={policy} />
 
       <SectionCard title="Your requests" description={`${leaves.length} submitted`} noPadding>
         <EmployeeLeaveTable leaves={leaves} />
