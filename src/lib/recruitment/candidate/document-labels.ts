@@ -7,5 +7,6 @@ export const DOCUMENT_TYPE_LABELS: Record<RecruitmentDocumentType, string> = {
   assessment: "Assessment",
   offer_letter: "Offer Letter",
   identity: "Identity Document",
+  photo: "Passport Photo",
   other: "Other Document",
 };

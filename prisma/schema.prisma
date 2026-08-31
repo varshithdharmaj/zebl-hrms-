@@ -260,6 +260,7 @@ model User {
   microsoftTenantId             String?                       @map("microsoft_tenant_id")
   lastLoginAt                   DateTime?                     @map("last_login_at")
   profilePhotoUrl               String?                       @map("profile_photo_url")
+  profilePhotoStorageKey        String?                       @map("profile_photo_storage_key")
   authMetadata                  String                        @default("{}") @map("auth_metadata")
   sessionVersion                Int                           @default(1) @map("session_version")
   isActive                      Boolean                       @default(true) @map("is_active")
@@ -1141,6 +1142,7 @@ enum RecruitmentDocumentType {
   assessment
   offer_letter
   identity
+  photo
   other
 }
 
@@ -1901,6 +1903,13 @@ model PublicApplicationSubmission {
   resumeSizeBytes  Int?    @map("resume_size_bytes")
   resumeStorageKey String? @map("resume_storage_key")
   resumeChecksum   String? @map("resume_checksum")
+
+  // --- Passport photo file (same temp storage/lifecycle as resume above) ---
+  photoFileName   String? @map("photo_file_name")
+  photoMimeType   String? @map("photo_mime_type")
+  photoSizeBytes  Int?    @map("photo_size_bytes")
+  photoStorageKey String? @map("photo_storage_key")
+  photoChecksum   String? @map("photo_checksum")
 
   // --- Parsing / review chain (§9 trust boundary — audit snapshots only) ---
   parserVersion         String? @map("parser_version")

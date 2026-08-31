@@ -381,7 +381,10 @@ export function CandidateUploadDialog({
                 <input
                   id="file-upload"
                   type="file"
-                  multiple={docType !== RecruitmentDocumentType.resume}
+                  accept={docType === RecruitmentDocumentType.photo ? "image/jpeg,image/png,image/webp" : undefined}
+                  multiple={
+                    docType !== RecruitmentDocumentType.resume && docType !== RecruitmentDocumentType.photo
+                  }
                   className="hidden"
                   onChange={handleFileChange}
                   disabled={isPending}
@@ -393,7 +396,7 @@ export function CandidateUploadDialog({
                   Drag & drop files here, or click to browse
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Supported formats: PDF, DOC, DOCX, JPG, PNG, TXT (Max 15MB)
+                  Supported formats: PDF, DOC, DOCX, JPG, PNG, WEBP, TXT (Max 15MB)
                 </p>
               </div>
 

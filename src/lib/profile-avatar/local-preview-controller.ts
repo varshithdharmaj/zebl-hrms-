@@ -23,6 +23,7 @@ export function createLocalImagePreviewController(options?: {
   getState: () => LocalImagePreviewSnapshot;
   select: (file: File | null | undefined) => LocalImagePreviewSnapshot;
   clear: () => LocalImagePreviewSnapshot;
+  revertToPersisted: () => LocalImagePreviewSnapshot;
   dispose: () => void;
 } {
   const objectUrlApi = options?.objectUrlApi ?? {
@@ -75,6 +76,24 @@ export function createLocalImagePreviewController(options?: {
     return state;
   }
 
+  /**
+   * Discards the optimistic local preview WITHOUT marking the photo as
+   * cleared — used when a server upload/remove failed, so the caller's
+   * `imageUrl` (the still-valid, previously-persisted photo) is trusted
+   * again instead of falling back to the default avatar. Distinct from
+   * `clear()`, which is for an actual user-initiated Remove.
+   */
+  function revertToPersisted(): LocalImagePreviewSnapshot {
+    revokeCurrent();
+    state = {
+      file: null,
+      previewUrl: null,
+      cleared: false,
+      error: null,
+    };
+    return state;
+  }
+
   function dispose(): void {
     revokeCurrent();
     state = {
@@ -89,6 +108,7 @@ export function createLocalImagePreviewController(options?: {
     getState: () => state,
     select,
     clear,
+    revertToPersisted,
     dispose,
   };
 }

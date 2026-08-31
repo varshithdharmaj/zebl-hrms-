@@ -41,7 +41,7 @@ import {
   resolveRecruitmentReturnTo,
   returnToLabel,
 } from "@/lib/recruitment/navigation/return-to";
-import { ProfileAvatar } from "@/components/shared/profile-avatar";
+import { CandidatePhotoAvatar } from "@/components/recruitment/candidates/candidate-photo-avatar";
 import { Button } from "@/components/ui/button";
 import { createCandidateAiEnrichmentService, isEnrichmentFresh } from "@/lib/recruitment/services/candidate-ai-enrichment-service";
 import {
@@ -282,6 +282,13 @@ export default async function CandidateDetailPage({
     ? applications.find((app) => app.id === nav.applicationId)
     : undefined;
 
+  // React.cache dedupes this against the tab === "documents" / resume-lookup
+  // calls above within the same request — cheap even when already fetched.
+  const allDocuments =
+    tab === "documents" ? documents : await listCandidateDocumentsCached(session, candidateId);
+  const photoDocumentId =
+    allDocuments.find((d) => d.documentType === "photo" && !d.deletedAt)?.id ?? null;
+
   return (
     <div className="space-y-6 lg:space-y-8">
       <RecruitmentContextHeader
@@ -302,10 +309,11 @@ export default async function CandidateDetailPage({
       />
       <WorkspacePageHeader
         leading={
-          <ProfileAvatar
-            alt={`${candidate.fullName} profile photo`}
+          <CandidatePhotoAvatar
+            candidateId={candidate.id}
+            fullName={candidate.fullName}
+            photoDocumentId={photoDocumentId}
             editable={canManageCandidate}
-            size="lg"
           />
         }
         title={candidate.fullName}

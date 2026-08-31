@@ -23,6 +23,7 @@ export function useLocalImagePreview(options?: {
   state: LocalImagePreviewState;
   selectFile: (file: File | null | undefined) => void;
   clear: () => void;
+  revert: () => void;
 } {
   const onImageSelectedRef = useRef(options?.onImageSelected);
   const onImageRemovedRef = useRef(options?.onImageRemoved);
@@ -64,9 +65,21 @@ export function useLocalImagePreview(options?: {
     onImageRemovedRef.current?.();
   }, []);
 
+  /**
+   * Discards the optimistic preview after a failed server upload/remove.
+   * Unlike `clear()`, this never calls `onImageRemoved` — reverting from a
+   * failure is not a user-initiated remove and must not trigger another
+   * server-side removal.
+   */
+  const revert = useCallback(() => {
+    const nextState = controllerRef.current.revertToPersisted();
+    setSnapshot(nextState);
+  }, []);
+
   return {
     state: { ...snapshot, isProcessing },
     selectFile,
     clear,
+    revert,
   };
 }

@@ -25,14 +25,21 @@ import {
 
 const MAX_FILE_SIZE = 15 * 1024 * 1024;
 
-const ALLOWED_EXTENSIONS = [".pdf", ".doc", ".docx", ".jpg", ".jpeg", ".png", ".txt"];
+const ALLOWED_EXTENSIONS = [".pdf", ".doc", ".docx", ".jpg", ".jpeg", ".png", ".webp", ".txt"];
 const ALLOWED_MIMES = [
   "application/pdf",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "image/jpeg",
   "image/png",
+  "image/webp",
   "text/plain",
+];
+
+/** Document types that get an auto-assigned single "primary" slot on first upload. */
+const AUTO_PRIMARY_TYPES: RecruitmentDocumentType[] = [
+  RecruitmentDocumentType.resume,
+  RecruitmentDocumentType.photo,
 ];
 
 export type DocumentUploadInput = {
@@ -71,7 +78,7 @@ function assertValidUploadFile(fileName: string, mimeType: string, sizeBytes: nu
   if (!hasAllowedExt || !mimeOk) {
     throw new RecruitmentDomainError(
       "REC_VALIDATION",
-      "File type is not allowed. Supported formats: PDF, DOC, DOCX, JPG, PNG, TXT."
+      "File type is not allowed. Supported formats: PDF, DOC, DOCX, JPG, PNG, WEBP, TXT."
     );
   }
 }
@@ -140,11 +147,11 @@ export function createCandidateDocumentService(
       }
 
       const existingDocs = await repository.listCandidateDocuments(parsed.candidateId);
-      const activeResumes = existingDocs.filter(
-        (d) => d.documentType === RecruitmentDocumentType.resume && d.deletedAt === null
+      const activeSameType = existingDocs.filter(
+        (d) => d.documentType === parsed.documentType && d.deletedAt === null
       );
       const isPrimary =
-        parsed.documentType === RecruitmentDocumentType.resume && activeResumes.length === 0;
+        AUTO_PRIMARY_TYPES.includes(parsed.documentType) && activeSameType.length === 0;
 
       const storageKey = buildCandidateDocumentStorageKey(parsed.candidateId, parsed.fileName);
 

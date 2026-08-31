@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { WorkspacePageHeader } from "@/components/layout/workspace-page-header";
-import { ProfileAvatar } from "@/components/shared/profile-avatar";
+import { EmployeePhotoAvatar } from "@/components/shared/employee-photo-avatar";
 import { SectionCard } from "@/components/ui/section-card";
 import { getSession } from "@/lib/auth";
 import { canEditEmployeeProfilePhoto } from "@/lib/permissions";
@@ -20,7 +20,8 @@ export default async function EmployeeSelfProfilePage() {
     <div className="space-y-8">
       <WorkspacePageHeader
         leading={
-          <ProfileAvatar
+          <EmployeePhotoAvatar
+            userId={session.id}
             imageUrl={session.profilePhotoUrl ?? null}
             alt={`${displayName} profile photo`}
             editable={canEditPhoto}
@@ -28,7 +29,7 @@ export default async function EmployeeSelfProfilePage() {
           />
         }
         title="My Profile"
-        description="Upload, change, or remove your profile photo. Preview stays on this device until cloud upload is enabled."
+        description="Update the profile photo other people see across the app."
       />
 
       <SectionCard title="Identity" description="Details from your signed-in account">

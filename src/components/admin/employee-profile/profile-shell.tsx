@@ -16,6 +16,7 @@ import type { AppUserRole } from "@/lib/roles";
 import type { AccountStatus, AuthProvider } from "@/generated/prisma/enums";
 import { AccountManagementTab } from "@/components/admin/employee-profile/account-management-tab";
 import { ProfileAvatar } from "@/components/shared/profile-avatar";
+import { EmployeePhotoAvatar } from "@/components/shared/employee-photo-avatar";
 import { canEditEmployeeProfilePhoto } from "@/lib/permissions";
 
 export type ProfileEmployee = {
@@ -126,22 +127,35 @@ export function EmployeeProfileShell({
   currentUserEmployeeId?: number | null;
 }) {
   const [activeTab, setActiveTab] = useState("overview");
-  const canEditPhoto = canEditEmployeeProfilePhoto({
-    actorRole: currentUserRole,
-    actorEmployeeId: currentUserEmployeeId,
-    targetEmployeeId: employee.id,
-  });
+  const targetUserId = employee.user?.id ?? null;
+  const canEditPhoto =
+    targetUserId !== null &&
+    canEditEmployeeProfilePhoto({
+      actorRole: currentUserRole,
+      actorEmployeeId: currentUserEmployeeId,
+      targetEmployeeId: employee.id,
+    });
 
   return (
     <div className="space-y-6 lg:space-y-8">
       <WorkspacePageHeader
         leading={
-          <ProfileAvatar
-            imageUrl={employee.user?.profilePhotoUrl}
-            alt={`${employee.name} profile photo`}
-            editable={canEditPhoto}
-            size="lg"
-          />
+          targetUserId ? (
+            <EmployeePhotoAvatar
+              userId={targetUserId}
+              imageUrl={employee.user?.profilePhotoUrl ?? null}
+              alt={`${employee.name} profile photo`}
+              editable={canEditPhoto}
+              size="lg"
+            />
+          ) : (
+            <ProfileAvatar
+              imageUrl={employee.user?.profilePhotoUrl}
+              alt={`${employee.name} profile photo`}
+              editable={false}
+              size="lg"
+            />
+          )
         }
         title={employee.name}
         description={[employee.employeeCode, employee.designation, employee.department]

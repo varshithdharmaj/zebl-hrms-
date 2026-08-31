@@ -17,8 +17,16 @@ const SIZE_CLASS = {
   lg: "h-28 w-28",
 } as const;
 
+/**
+ * Declarative status the caller reports for its in-flight server upload/remove
+ * action. `ProfileAvatar` reacts to `"error"` by discarding its optimistic
+ * local preview and falling back to the still-valid `imageUrl` — the caller
+ * doesn't need an imperative ref to trigger this.
+ */
+export type ProfileAvatarUploadStatus = "idle" | "uploading" | "saved" | "error";
+
 export type ProfileAvatarProps = {
-  /** Persisted image URL from a future backend (optional in this UI-only phase). */
+  /** Persisted, server-served image URL (e.g. /api/profile-photo/:userId). */
   imageUrl?: string | null;
   alt: string;
   /** When true, shows Upload / Change / Remove controls. */
@@ -27,13 +35,22 @@ export type ProfileAvatarProps = {
   disabled?: boolean;
   className?: string;
   /**
-   * Invoked after a valid local file is selected.
-   * Future phase: hand this File to an upload service (Supabase Storage / S3), then persist the returned path.
-   * This component never uploads on its own.
+   * Invoked after a valid local file is selected, showing an optimistic local
+   * preview immediately. The caller is responsible for uploading the file and
+   * persisting it — this component never uploads on its own.
    */
   onImageSelected?: (file: File) => void;
   /** Invoked when the user clears the local (or future persisted) photo. */
   onImageRemoved?: () => void;
+  /**
+   * Status of the caller's in-flight upload/remove server action. Defaults to
+   * `"idle"`. Set to `"uploading"` while the action is pending (shows the
+   * busy/spinner state), and to `"error"` when it fails — which reverts the
+   * optimistic preview back to the persisted `imageUrl` without treating the
+   * failure as a remove. `"saved"` is accepted for the caller's own transient
+   * confirmation UI; this component doesn't need to react to it.
+   */
+  uploadStatus?: ProfileAvatarUploadStatus;
 };
 
 export function ProfileAvatar({
@@ -45,6 +62,7 @@ export function ProfileAvatar({
   className,
   onImageSelected,
   onImageRemoved,
+  uploadStatus = "idle",
 }: ProfileAvatarProps) {
   const inputId = useId();
   const describedById = useId();
@@ -52,7 +70,7 @@ export function ProfileAvatar({
   const inputRef = useRef<HTMLInputElement>(null);
   const [remoteLoadFailed, setRemoteLoadFailed] = useState(false);
 
-  const { state, selectFile, clear } = useLocalImagePreview({
+  const { state, selectFile, clear, revert } = useLocalImagePreview({
     onImageSelected,
     onImageRemoved,
   });
@@ -60,6 +78,12 @@ export function ProfileAvatar({
   useEffect(() => {
     setRemoteLoadFailed(false);
   }, [imageUrl]);
+
+  useEffect(() => {
+    if (uploadStatus === "error") {
+      revert();
+    }
+  }, [uploadStatus, revert]);
 
   const displaySrc = resolveProfileAvatarSrc({
     previewUrl: state.previewUrl,
@@ -74,7 +98,7 @@ export function ProfileAvatar({
     remoteLoadFailed,
   });
   const actionLabel = hasCustomImage ? "Change photo" : "Upload photo";
-  const isBusy = state.isProcessing;
+  const isBusy = state.isProcessing || uploadStatus === "uploading";
   const controlsDisabled = disabled || isBusy;
 
   function openPicker() {
@@ -164,7 +188,7 @@ export function ProfileAvatar({
             )}
           </div>
           <p id={describedById} className="max-w-[14rem] text-center text-[11px] text-muted-foreground">
-            JPEG, PNG, or WebP · max 500 KB. Changes stay on this device until upload is enabled.
+            JPEG, PNG, or WebP · max 500 KB.
           </p>
           <input
             ref={inputRef}
