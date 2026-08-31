@@ -33,10 +33,10 @@ export function aggregateAttendanceForRange(
 
   const presentDays = records.filter((r) => isPresentDay(r.category, r.ratioTier)).length;
   const excellentDays = records.filter((r) =>
-    isExcellentPresentDay(r.category, r.ratioTier)
+    isExcellentPresentDay(r.category, r.ratioTier, r.checkOut)
   ).length;
   const shortHoursCount = records.filter((r) =>
-    isBelowTargetPresentDay(r.category, r.ratioTier)
+    isBelowTargetPresentDay(r.category, r.ratioTier, r.checkOut)
   ).length;
   const insufficientDataCount = records.filter((r) => r.category === "INSUFFICIENT_DATA").length;
   const overtimeMinutes = records.reduce((sum, r) => sum + r.overtimeMinutes, 0);
@@ -53,7 +53,9 @@ export function aggregateAttendanceForRange(
   };
 }
 
-/** Invariant helper for tests: Present partitions into Excellent + Short hours. */
+/** Invariant helper for tests: Present partitions into Excellent + Short hours —
+ *  holds for fully checked-out days; a still-open (in-progress) present day is
+ *  intentionally excluded from both buckets, so it won't hold if one is present. */
 export function assertPresentPartition(aggregate: AttendanceRangeAggregate): boolean {
   return aggregate.presentDays === aggregate.excellentDays + aggregate.shortHoursCount;
 }

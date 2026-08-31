@@ -235,7 +235,7 @@ function LegendSwatch({
 
 function HeatmapLegend() {
   return (
-    <div className="mt-6 grid gap-6 border-t border-border pt-4 sm:grid-cols-3">
+    <div className="mt-2 grid gap-6 border-t border-border pt-2 sm:grid-cols-3">
       <div>
         <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Attendance
@@ -333,47 +333,99 @@ function HeatmapLegend() {
   );
 }
 
-function MonthSummaryBar({ stats }: { stats: HeatmapMonthStats }) {
-  const avg =
-    stats.averageWorkedMinutes != null ? minutesToHours(stats.averageWorkedMinutes) : "—";
-  const pct = stats.attendancePercent != null ? `${stats.attendancePercent}%` : "—";
+const SUMMARY_TILE_STYLE: Record<string, string> = {
+  emerald: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400",
+  emeraldStrong: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300",
+  rose: "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400",
+  amber: "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400",
+  slate: "bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-300",
+};
+
+function SummaryStatTile({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: keyof typeof SUMMARY_TILE_STYLE;
+}) {
+  return (
+    <div className={cn("rounded-lg px-3 py-2", SUMMARY_TILE_STYLE[tone])}>
+      <p className="text-[0.65rem] font-medium uppercase tracking-wide opacity-80">{label}</p>
+      <p className="mt-0.5 text-sm font-semibold tabular-nums">{value}</p>
+    </div>
+  );
+}
+
+/** Semi-circle radial gauge: a 180° arc traced by stroke-dasharray, filled proportionally to `percent`. */
+function RadialAttendanceGauge({ percent }: { percent: number | null }) {
+  const radius = 70;
+  const circumference = Math.PI * radius;
+  const clamped = percent == null ? 0 : Math.min(100, Math.max(0, percent));
+  const filled = (clamped / 100) * circumference;
 
   return (
-    <div
-      className="mb-4 rounded-lg border border-border bg-muted/40 px-3 py-2.5"
-      aria-live="polite"
-    >
-      <p className="text-xs font-semibold text-foreground">{stats.label} summary</p>
-      <dl className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <div className="flex gap-1">
-          <dt>Attendance</dt>
-          <dd className="font-medium text-foreground">{pct}</dd>
-        </div>
-        <div className="flex gap-1">
-          <dt>Present</dt>
-          <dd className="font-medium text-foreground">{stats.presentDays}</dd>
-        </div>
-        <div className="flex gap-1">
-          <dt>Excellent</dt>
-          <dd className="font-medium text-foreground">{stats.excellentDays}</dd>
-        </div>
-        <div className="flex gap-1">
-          <dt>Below target</dt>
-          <dd className="font-medium text-foreground">{stats.belowTargetDays}</dd>
-        </div>
-        <div className="flex gap-1">
-          <dt>Absent</dt>
-          <dd className="font-medium text-foreground">{stats.absentDays}</dd>
-        </div>
-        <div className="flex gap-1">
-          <dt>Leave</dt>
-          <dd className="font-medium text-foreground">{stats.leaveDays}</dd>
-        </div>
-        <div className="flex gap-1">
-          <dt>Avg hours</dt>
-          <dd className="font-medium text-foreground">{avg}</dd>
-        </div>
-      </dl>
+    <div className="relative mx-auto flex w-full max-w-[200px] flex-col items-center">
+      <svg viewBox="0 0 160 90" className="w-full overflow-visible">
+        <path
+          d="M10 85 A70 70 0 0 1 150 85"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={12}
+          strokeLinecap="round"
+          className="text-muted/40"
+        />
+        <path
+          d="M10 85 A70 70 0 0 1 150 85"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={12}
+          strokeLinecap="round"
+          strokeDasharray={`${filled} ${circumference}`}
+          className="text-primary transition-[stroke-dasharray] duration-500"
+        />
+      </svg>
+      <div className="-mt-8 text-center">
+        <p className="text-2xl font-bold tabular-nums text-foreground">
+          {percent != null ? `${percent}%` : "—"}
+        </p>
+        <p className="text-[0.65rem] text-muted-foreground">Total attendance</p>
+      </div>
+    </div>
+  );
+}
+
+function AttendanceSummaryPanel({ stats }: { stats: HeatmapMonthStats | null }) {
+  const avg =
+    stats?.averageWorkedMinutes != null ? minutesToHours(stats.averageWorkedMinutes) : "—";
+
+  return (
+    <div className="w-full shrink-0 rounded-xl border border-border/60 bg-slate-50/60 p-4 shadow-sm dark:bg-slate-900/40 lg:w-80">
+      <p className="text-sm font-semibold text-foreground">
+        {stats ? `${stats.label} summary` : "Summary"}
+      </p>
+
+      <div className="mt-2">
+        <RadialAttendanceGauge percent={stats?.attendancePercent ?? null} />
+      </div>
+
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <SummaryStatTile label="Present" value={String(stats?.presentDays ?? 0)} tone="emerald" />
+        <SummaryStatTile
+          label="Excellent"
+          value={String(stats?.excellentDays ?? 0)}
+          tone="emeraldStrong"
+        />
+        <SummaryStatTile label="Absent" value={String(stats?.absentDays ?? 0)} tone="rose" />
+        <SummaryStatTile label="Leave" value={String(stats?.leaveDays ?? 0)} tone="amber" />
+        <SummaryStatTile label="Avg hours" value={avg} tone="slate" />
+        <SummaryStatTile
+          label="Below target"
+          value={String(stats?.belowTargetDays ?? 0)}
+          tone="slate"
+        />
+      </div>
     </div>
   );
 }
@@ -529,6 +581,12 @@ export function AttendanceHeatmap({ month }: { month: AttendanceHeatmapMonth | n
   const { streaks, weeks, monthLabels, monthStats, todayMidnight } = derived;
   const { currentStreak, bestStreak, targetDaysCount } = streaks;
   const activeStats = activeMonthKey ? monthStats.get(activeMonthKey) ?? null : null;
+  const currentMonthKey = monthKeyFromDate(today);
+  const latestMonthLabel = monthLabels[monthLabels.length - 1] ?? null;
+  const summaryStats =
+    activeStats ??
+    monthStats.get(currentMonthKey) ??
+    (latestMonthLabel ? monthStats.get(latestMonthLabel.monthKey) ?? null : null);
   const cycleLabel = formatAttendanceCycleLabel({
     startDate: month.cycleStartDate,
     endDate: month.cycleEndDate,
@@ -546,119 +604,123 @@ export function AttendanceHeatmap({ month }: { month: AttendanceHeatmapMonth | n
         </div>
       }
     >
-      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-        <span className="font-medium text-foreground">{targetDaysCount} excellent days</span>
-        <span aria-hidden>·</span>
-        <span>{currentStreak}-day streak</span>
-        <span aria-hidden>·</span>
-        <span>Best {bestStreak} days</span>
-      </div>
-
-      <div
-        onMouseLeave={() => setHoveredMonthKey(null)}
-        onBlur={(event) => {
-          if (shouldClearHoverOnFocusOut(event.currentTarget, event.relatedTarget)) {
-            setHoveredMonthKey(null);
-          }
-        }}
-      >
-        {activeStats && <MonthSummaryBar stats={activeStats} />}
-
-        <div ref={scrollContainerRef} className="overflow-x-auto pb-2">
-          <div className="relative inline-flex flex-col gap-[3px]">
-          <div className="relative z-[1] flex items-center gap-[3px] pl-9" style={{ minHeight: MONTH_LABEL_ROW }}>
-            {weeks.map((_, weekIndex) => {
-              const label = monthLabels.find((m) => m.weekIndex === weekIndex);
-              return (
-                <div
-                  key={weekIndex}
-                  className="w-[26px] text-left"
-                  // Unlabeled weeks own no month — hovering them shouldn't leave
-                  // hoveredMonthKey stuck on whatever was last actively hovered.
-                  onMouseEnter={label ? undefined : () => setHoveredMonthKey(null)}
-                >
-                  {label && (
-                    <button
-                      type="button"
-                      className={cn(
-                        "whitespace-nowrap text-[0.625rem] font-medium text-muted-foreground transition-colors",
-                        "hover:text-foreground focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        activeMonthKey === label.monthKey && "text-foreground"
-                      )}
-                      onMouseEnter={() => setHoveredMonthKey(label.monthKey)}
-                      onFocus={() => setHoveredMonthKey(label.monthKey)}
-                      onClick={() =>
-                        setPinnedMonthKey((prev) => nextPinnedMonthKey(prev, label.monthKey))
-                      }
-                      aria-pressed={pinnedMonthKey === label.monthKey}
-                      aria-label={`${label.label} summary`}
-                    >
-                      {label.label}
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+      <div className="flex flex-col items-start gap-6 lg:flex-row">
+        <div className="w-full flex-1 space-y-4">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">{targetDaysCount} excellent days</span>
+            <span aria-hidden>·</span>
+            <span>{currentStreak}-day streak</span>
+            <span aria-hidden>·</span>
+            <span>Best {bestStreak} days</span>
           </div>
 
-          {[0, 1, 2, 3, 4, 5, 6].map((dayIndex) => (
-            <div key={dayIndex} className="relative z-[1] flex items-center gap-[3px]">
-              <div className="w-8 pr-1 text-right">
-                <span className="text-[0.625rem] font-medium text-muted-foreground">
-                  {WEEKDAY_LABELS[dayIndex]}
-                </span>
-              </div>
-
-              {weeks.map((week, weekIndex) => {
-                const day = week[dayIndex];
-                if (!day) {
-                  // No day at this grid position (range boundary) — owns no month,
-                  // so hovering it must not leave a stale month summary showing.
+          <div
+            onMouseLeave={() => setHoveredMonthKey(null)}
+            onBlur={(event) => {
+              if (shouldClearHoverOnFocusOut(event.currentTarget, event.relatedTarget)) {
+                setHoveredMonthKey(null);
+              }
+            }}
+          >
+            <div ref={scrollContainerRef} className="overflow-x-auto pb-2">
+              <div className="relative inline-flex flex-col gap-[3px]">
+              <div className="relative z-[1] flex items-center gap-[3px] pl-9" style={{ minHeight: MONTH_LABEL_ROW }}>
+                {weeks.map((_, weekIndex) => {
+                  const label = monthLabels.find((m) => m.weekIndex === weekIndex);
                   return (
                     <div
                       key={weekIndex}
-                      className="h-[26px] w-[26px]"
-                      onMouseEnter={() => setHoveredMonthKey(null)}
-                    />
+                      className="w-[26px] text-left"
+                      // Unlabeled weeks own no month — hovering them shouldn't leave
+                      // hoveredMonthKey stuck on whatever was last actively hovered.
+                      onMouseEnter={label ? undefined : () => setHoveredMonthKey(null)}
+                    >
+                      {label && (
+                        <button
+                          type="button"
+                          className={cn(
+                            "whitespace-nowrap text-[0.625rem] font-medium text-muted-foreground transition-colors",
+                            "hover:text-foreground focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            activeMonthKey === label.monthKey && "text-foreground"
+                          )}
+                          onMouseEnter={() => setHoveredMonthKey(label.monthKey)}
+                          onFocus={() => setHoveredMonthKey(label.monthKey)}
+                          onClick={() =>
+                            setPinnedMonthKey((prev) => nextPinnedMonthKey(prev, label.monthKey))
+                          }
+                          aria-pressed={pinnedMonthKey === label.monthKey}
+                          aria-label={`${label.label} summary`}
+                        >
+                          {label.label}
+                        </button>
+                      )}
+                    </div>
                   );
-                }
+                })}
+              </div>
 
-                const dayStr = toISODate(day.date);
-                const isSelected = selectedDate === dayStr;
-                const isToday =
-                  day.date.getDate() === today.getDate() &&
-                  day.date.getMonth() === today.getMonth() &&
-                  day.date.getFullYear() === today.getFullYear();
-                const isFuture = day.date > todayMidnight;
-                const dimmed = Boolean(
-                  activeMonthKey && monthKeyFromDate(day.date) !== activeMonthKey
-                );
+              {[0, 1, 2, 3, 4, 5, 6].map((dayIndex) => (
+                <div key={dayIndex} className="relative z-[1] flex items-center gap-[3px]">
+                  <div className="w-8 pr-1 text-right">
+                    <span className="text-[0.625rem] font-medium text-muted-foreground">
+                      {WEEKDAY_LABELS[dayIndex]}
+                    </span>
+                  </div>
 
-                return (
-                  <ContributionCell
-                    key={`${weekIndex}-${dayIndex}`}
-                    day={day}
-                    expectedWorkMinutes={month.expectedWorkMinutes}
-                    isSelected={isSelected}
-                    isToday={isToday}
-                    isFuture={isFuture}
-                    dimmed={dimmed}
-                    href={cellHref(day)}
-                    onMonthIntent={setHoveredMonthKey}
-                  />
-                );
-              })}
+                  {weeks.map((week, weekIndex) => {
+                    const day = week[dayIndex];
+                    if (!day) {
+                      // No day at this grid position (range boundary) — owns no month,
+                      // so hovering it must not leave a stale month summary showing.
+                      return (
+                        <div
+                          key={weekIndex}
+                          className="h-[26px] w-[26px]"
+                          onMouseEnter={() => setHoveredMonthKey(null)}
+                        />
+                      );
+                    }
+
+                    const dayStr = toISODate(day.date);
+                    const isSelected = selectedDate === dayStr;
+                    const isToday =
+                      day.date.getDate() === today.getDate() &&
+                      day.date.getMonth() === today.getMonth() &&
+                      day.date.getFullYear() === today.getFullYear();
+                    const isFuture = day.date > todayMidnight;
+                    const dimmed = Boolean(
+                      activeMonthKey && monthKeyFromDate(day.date) !== activeMonthKey
+                    );
+
+                    return (
+                      <ContributionCell
+                        key={`${weekIndex}-${dayIndex}`}
+                        day={day}
+                        expectedWorkMinutes={month.expectedWorkMinutes}
+                        isSelected={isSelected}
+                        isToday={isToday}
+                        isFuture={isFuture}
+                        dimmed={dimmed}
+                        href={cellHref(day)}
+                        onMonthIntent={setHoveredMonthKey}
+                      />
+                    );
+                  })}
+                </div>
+              ))}
+              </div>
             </div>
-          ))}
           </div>
+
+          {month.days.length === 0 && (
+            <p className="text-center text-xs text-muted-foreground">No days to show for this period.</p>
+          )}
+
+          <HeatmapLegend />
         </div>
+
+        <AttendanceSummaryPanel stats={summaryStats} />
       </div>
-
-      {month.days.length === 0 && (
-        <p className="mt-4 text-center text-xs text-muted-foreground">No days to show for this period.</p>
-      )}
-
-      <HeatmapLegend />
     </SectionCard>
   );
 }

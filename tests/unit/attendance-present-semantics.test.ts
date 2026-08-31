@@ -51,8 +51,8 @@ describe("P0-1 canonical Present / Excellent / below-target tiers", () => {
     expect(day.category).toBe("PRESENT");
     expect(day.ratioTier).toBe("near_target"); // 420/480 = 87.5% → near_target
     expect(isPresentDay(day.category, day.ratioTier)).toBe(true);
-    expect(isBelowTargetPresentDay(day.category, day.ratioTier)).toBe(true);
-    expect(isExcellentPresentDay(day.category, day.ratioTier)).toBe(false);
+    expect(isBelowTargetPresentDay(day.category, day.ratioTier, day.checkOut)).toBe(true);
+    expect(isExcellentPresentDay(day.category, day.ratioTier, day.checkOut)).toBe(false);
   });
 
   it("Test 2 — exactly target (8h / 8h) is Present + Excellent", () => {
@@ -62,8 +62,8 @@ describe("P0-1 canonical Present / Excellent / below-target tiers", () => {
     expect(day.category).toBe("PRESENT");
     expect(day.ratioTier).toBe("target");
     expect(isPresentDay(day.category, day.ratioTier)).toBe(true);
-    expect(isExcellentPresentDay(day.category, day.ratioTier)).toBe(true);
-    expect(isBelowTargetPresentDay(day.category, day.ratioTier)).toBe(false);
+    expect(isExcellentPresentDay(day.category, day.ratioTier, day.checkOut)).toBe(true);
+    expect(isBelowTargetPresentDay(day.category, day.ratioTier, day.checkOut)).toBe(false);
   });
 
   it("Test 3 — above target (10h / 8h) is Present + Excellent (overtime tier)", () => {
@@ -80,7 +80,7 @@ describe("P0-1 canonical Present / Excellent / below-target tiers", () => {
     );
     expect(day.category).toBe("PRESENT");
     expect(day.ratioTier).toBe("overtime"); // 600/480 = 125%
-    expect(isExcellentPresentDay(day.category, day.ratioTier)).toBe(true);
+    expect(isExcellentPresentDay(day.category, day.ratioTier, day.checkOut)).toBe(true);
   });
 
   it("Test 4 — absent is not Present", () => {

@@ -124,6 +124,26 @@ describe("aggregateAttendanceForRange — Short Hours / Excellent partition", ()
   });
 });
 
+describe("aggregateAttendanceForRange — still-open (in-progress) present day", () => {
+  it("does not count a checked-in-but-not-checked-out day as Short Hours, even with a low ratio", () => {
+    const openDay = rec("PRESENT", "very_low");
+    openDay.checkOut = null;
+    const result = aggregateAttendanceForRange([openDay]);
+    expect(result.presentDays).toBe(1);
+    expect(result.shortHoursCount).toBe(0);
+    expect(result.excellentDays).toBe(0);
+  });
+
+  it("does not count a checked-in-but-not-checked-out day as Excellent either", () => {
+    const openDay = rec("PRESENT", "overtime");
+    openDay.checkOut = null;
+    const result = aggregateAttendanceForRange([openDay]);
+    expect(result.presentDays).toBe(1);
+    expect(result.excellentDays).toBe(0);
+    expect(result.shortHoursCount).toBe(0);
+  });
+});
+
 describe("aggregateAttendanceForRange — Insufficient Data", () => {
   it("counts INSUFFICIENT_DATA separately from present and short hours", () => {
     const result = aggregateAttendanceForRange([

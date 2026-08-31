@@ -74,8 +74,18 @@ export async function classifyAttendanceRecords(
       expectedWorkMinutes: settings.expectedWorkMinutes,
     });
 
+    // Imports/regularisation may set an explicit overtimeMinutes; biometric-derived and
+    // live check-in records never do (see attendance-sessions.ts / biometric-attendance-
+    // derivation.ts, which both persist 0). Fall back to worked-minus-expected so the
+    // profile/history OT column reflects real hours instead of always reading 0.
+    const overtimeMinutes =
+      record.overtimeMinutes > 0
+        ? record.overtimeMinutes
+        : Math.max(0, record.workedMinutes - settings.expectedWorkMinutes);
+
     return {
       ...record,
+      overtimeMinutes,
       category: day.category,
       ratioTier: day.ratioTier,
       expectedWorkMinutes: settings.expectedWorkMinutes,

@@ -24,8 +24,11 @@ function day(
     overtimeMinutes: 0,
     ratio: ratioTier ? 100 : null,
     ratioTier,
-    checkIn: null,
-    checkOut: null,
+    // These fixtures represent finished historical days, not an open live session —
+    // isBelowTargetPresentDay/isExcellentPresentDay require a checkout to count a day
+    // as short/excellent, so a worked day here must carry one to be classified at all.
+    checkIn: ratioTier ? "09:00" : null,
+    checkOut: ratioTier ? "18:00" : null,
     remark: null,
     holidayName: null,
     leaveType: null,

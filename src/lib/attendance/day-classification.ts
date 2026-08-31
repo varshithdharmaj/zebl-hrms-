@@ -54,20 +54,28 @@ export function isTargetOrBetterTier(ratioTier: AttendanceRatioTier | null): boo
   return ratioTier === "target" || ratioTier === "overtime";
 }
 
-/** Worked day below expected hours (heatmap soft-green band / Short hours KPI). */
+/**
+ * Worked day below expected hours (heatmap soft-green band / Short hours KPI).
+ * Requires the day to be checked out — a still-open session's ratio is provisional
+ * (it will keep climbing until check-out), so it must never be judged "short" while
+ * still in progress. Mirrors the rule hero-status.ts already applies to its own badge.
+ */
 export function isBelowTargetPresentDay(
   category: AttendanceDayCategory,
-  ratioTier: AttendanceRatioTier | null
+  ratioTier: AttendanceRatioTier | null,
+  checkOut: string | null
 ): boolean {
-  return isWorkedDayCategory(category) && isShortHoursTier(ratioTier);
+  return isWorkedDayCategory(category) && Boolean(checkOut) && isShortHoursTier(ratioTier);
 }
 
-/** Worked day at/above expected hours (heatmap Excellent / target-met KPI). */
+/** Worked day at/above expected hours (heatmap Excellent / target-met KPI). Same
+ *  checked-out requirement as isBelowTargetPresentDay, for the same reason. */
 export function isExcellentPresentDay(
   category: AttendanceDayCategory,
-  ratioTier: AttendanceRatioTier | null
+  ratioTier: AttendanceRatioTier | null,
+  checkOut: string | null
 ): boolean {
-  return isWorkedDayCategory(category) && isTargetOrBetterTier(ratioTier);
+  return isWorkedDayCategory(category) && Boolean(checkOut) && isTargetOrBetterTier(ratioTier);
 }
 
 export type AttendanceDayInput = {

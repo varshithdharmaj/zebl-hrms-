@@ -83,8 +83,8 @@ export function buildHeatmapMonthStats(days: AttendanceDayResult[]): Map<string,
 
     if (isPresentDay(day.category, day.ratioTier)) {
       stats.presentDays += 1;
-      if (isExcellentPresentDay(day.category, day.ratioTier)) stats.excellentDays += 1;
-      else if (isBelowTargetPresentDay(day.category, day.ratioTier)) stats.belowTargetDays += 1;
+      if (isExcellentPresentDay(day.category, day.ratioTier, day.checkOut)) stats.excellentDays += 1;
+      else if (isBelowTargetPresentDay(day.category, day.ratioTier, day.checkOut)) stats.belowTargetDays += 1;
       stats.workedMinutesSum += day.workedMinutes;
       stats.workedDaysCount += 1;
     } else if (day.category === "ABSENT") {
