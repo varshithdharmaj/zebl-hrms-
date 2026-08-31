@@ -1041,12 +1041,16 @@ export const prismaCandidateRepository: CandidateRepository = {
     const client: Client = tx ?? prisma;
     const doc = await client.candidateDocument.findUnique({
       where: { id: documentId },
-      select: { candidateId: true },
+      select: { candidateId: true, documentType: true },
     });
     if (!doc) return;
 
+    // Scoped by documentType so setting a primary photo doesn't demote the
+    // candidate's primary resume (and vice versa) — each document type has
+    // its own "primary" slot (see candidate_documents_one_primary_* partial
+    // unique indexes).
     await client.candidateDocument.updateMany({
-      where: { candidateId: doc.candidateId, isPrimary: true },
+      where: { candidateId: doc.candidateId, documentType: doc.documentType, isPrimary: true },
       data: { isPrimary: false },
     });
 
