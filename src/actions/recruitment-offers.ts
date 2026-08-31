@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import type { ActionState } from "@/actions/types";
-import { requireRecruitmentAdminSession, getSessionOrThrow } from "@/lib/auth-guards";
+import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { safeParseWithSchema } from "@/lib/validation/parse";
 import {
   createOfferSchema,
@@ -14,6 +14,7 @@ import {
   withdrawOfferSchema,
   createOfferRevisionSchema,
   attachOfferPdfSchema,
+  generateOfferLetterSchema,
 } from "@/lib/validation/schemas/recruitment";
 import { createOfferService } from "@/lib/recruitment/services/offer-service";
 import { mapUnknownToActionState } from "@/lib/recruitment/shared/result";
@@ -23,19 +24,14 @@ export type RecruitmentOfferActionState = ActionState & {
   offerId?: string;
 };
 
-function revalidateOfferList() {
+function revalidateOfferPaths(id?: string, applicationId?: string) {
   revalidatePath("/admin/recruitment/offers");
-}
-
-function revalidateOfferDetail(id: string) {
-  revalidatePath(`/admin/recruitment/offers/${id}`);
-}
-
-function revalidateApplicationDetail(applicationId: string) {
-  revalidatePath(`/admin/recruitment/applications/${applicationId}`);
-}
-
-function revalidateRecruitmentDashboard() {
+  if (id) {
+    revalidatePath(`/admin/recruitment/offers/${id}`);
+  }
+  if (applicationId) {
+    revalidatePath(`/admin/recruitment/applications/${applicationId}`);
+  }
   revalidatePath("/admin/recruitment");
 }
 
@@ -48,7 +44,6 @@ export async function createOfferAction(
     if (!parsed.ok) return { error: parsed.error };
 
     const session = await requireRecruitmentAdminSession();
-
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
     }
@@ -56,10 +51,7 @@ export async function createOfferAction(
     const service = createOfferService();
     const { id } = await service.createOffer(session, parsed.data);
 
-    revalidateOfferList();
-    revalidateOfferDetail(id);
-    revalidateApplicationDetail(parsed.data.applicationId);
-    revalidateRecruitmentDashboard();
+    revalidateOfferPaths(id, parsed.data.applicationId);
 
     return { success: "Offer draft created successfully.", offerId: id };
   } catch (error) {
@@ -67,7 +59,7 @@ export async function createOfferAction(
   }
 }
 
-export async function updateOfferAction(
+export async function updateOfferDraftAction(
   _prev: RecruitmentOfferActionState,
   input: unknown
 ): Promise<RecruitmentOfferActionState> {
@@ -76,7 +68,6 @@ export async function updateOfferAction(
     if (!parsed.ok) return { error: parsed.error };
 
     const session = await requireRecruitmentAdminSession();
-
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
     }
@@ -84,15 +75,15 @@ export async function updateOfferAction(
     const service = createOfferService();
     await service.updateDraft(session, parsed.data);
 
-    revalidateOfferList();
-    revalidateOfferDetail(parsed.data.id);
-    revalidateRecruitmentDashboard();
+    revalidateOfferPaths(parsed.data.id);
 
     return { success: "Offer draft updated successfully.", offerId: parsed.data.id };
   } catch (error) {
     return mapUnknownToActionState(error);
   }
 }
+
+export const updateOfferAction = updateOfferDraftAction;
 
 export async function sendOfferAction(
   _prev: RecruitmentOfferActionState,
@@ -103,7 +94,6 @@ export async function sendOfferAction(
     if (!parsed.ok) return { error: parsed.error };
 
     const session = await requireRecruitmentAdminSession();
-
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
     }
@@ -111,9 +101,7 @@ export async function sendOfferAction(
     const service = createOfferService();
     await service.sendOffer(session, parsed.data);
 
-    revalidateOfferList();
-    revalidateOfferDetail(parsed.data.id);
-    revalidateRecruitmentDashboard();
+    revalidateOfferPaths(parsed.data.id);
 
     return { success: "Offer sent successfully.", offerId: parsed.data.id };
   } catch (error) {
@@ -130,7 +118,6 @@ export async function acceptOfferAction(
     if (!parsed.ok) return { error: parsed.error };
 
     const session = await requireRecruitmentAdminSession();
-
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
     }
@@ -138,11 +125,9 @@ export async function acceptOfferAction(
     const service = createOfferService();
     await service.acceptOffer(session, parsed.data);
 
-    revalidateOfferList();
-    revalidateOfferDetail(parsed.data.id);
-    revalidateRecruitmentDashboard();
+    revalidateOfferPaths(parsed.data.id);
 
-    return { success: "Offer accepted successfully.", offerId: parsed.data.id };
+    return { success: "Offer accepted and employee record created.", offerId: parsed.data.id };
   } catch (error) {
     return mapUnknownToActionState(error);
   }
@@ -157,7 +142,6 @@ export async function declineOfferAction(
     if (!parsed.ok) return { error: parsed.error };
 
     const session = await requireRecruitmentAdminSession();
-
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
     }
@@ -165,11 +149,9 @@ export async function declineOfferAction(
     const service = createOfferService();
     await service.declineOffer(session, parsed.data);
 
-    revalidateOfferList();
-    revalidateOfferDetail(parsed.data.id);
-    revalidateRecruitmentDashboard();
+    revalidateOfferPaths(parsed.data.id);
 
-    return { success: "Offer declined successfully.", offerId: parsed.data.id };
+    return { success: "Offer marked as declined.", offerId: parsed.data.id };
   } catch (error) {
     return mapUnknownToActionState(error);
   }
@@ -184,7 +166,6 @@ export async function withdrawOfferAction(
     if (!parsed.ok) return { error: parsed.error };
 
     const session = await requireRecruitmentAdminSession();
-
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
     }
@@ -192,11 +173,33 @@ export async function withdrawOfferAction(
     const service = createOfferService();
     await service.withdrawOffer(session, parsed.data);
 
-    revalidateOfferList();
-    revalidateOfferDetail(parsed.data.id);
-    revalidateRecruitmentDashboard();
+    revalidateOfferPaths(parsed.data.id);
 
     return { success: "Offer withdrawn successfully.", offerId: parsed.data.id };
+  } catch (error) {
+    return mapUnknownToActionState(error);
+  }
+}
+
+export async function generateOfferLetterAction(
+  _prev: RecruitmentOfferActionState,
+  input: unknown
+): Promise<RecruitmentOfferActionState> {
+  try {
+    const parsed = safeParseWithSchema(generateOfferLetterSchema, input);
+    if (!parsed.ok) return { error: parsed.error };
+
+    const session = await requireRecruitmentAdminSession();
+    if (!isRecruitmentModuleEnabled()) {
+      return { error: "Recruitment module is disabled." };
+    }
+
+    const service = createOfferService();
+    await service.generateOfferLetter(session, parsed.data);
+
+    revalidateOfferPaths(parsed.data.id);
+
+    return { success: "Offer letter generated successfully.", offerId: parsed.data.id };
   } catch (error) {
     return mapUnknownToActionState(error);
   }
@@ -211,7 +214,6 @@ export async function expireOfferAction(
     if (!parsed.ok) return { error: parsed.error };
 
     const session = await requireRecruitmentAdminSession();
-
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
     }
@@ -219,11 +221,9 @@ export async function expireOfferAction(
     const service = createOfferService();
     await service.expireOffer(session, parsed.data.id);
 
-    revalidateOfferList();
-    revalidateOfferDetail(parsed.data.id);
-    revalidateRecruitmentDashboard();
+    revalidateOfferPaths(parsed.data.id);
 
-    return { success: "Offer expired successfully.", offerId: parsed.data.id };
+    return { success: "Offer marked as expired.", offerId: parsed.data.id };
   } catch (error) {
     return mapUnknownToActionState(error);
   }
@@ -238,7 +238,6 @@ export async function duplicateOfferAction(
     if (!parsed.ok) return { error: parsed.error };
 
     const session = await requireRecruitmentAdminSession();
-
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
     }
@@ -246,9 +245,7 @@ export async function duplicateOfferAction(
     const service = createOfferService();
     const { id } = await service.duplicateOffer(session, parsed.data.id);
 
-    revalidateOfferList();
-    revalidateOfferDetail(id);
-    revalidateRecruitmentDashboard();
+    revalidateOfferPaths(id);
 
     return { success: "Offer duplicated successfully.", offerId: id };
   } catch (error) {
@@ -265,7 +262,6 @@ export async function createOfferRevisionAction(
     if (!parsed.ok) return { error: parsed.error };
 
     const session = await requireRecruitmentAdminSession();
-
     if (!isRecruitmentModuleEnabled()) {
       return { error: "Recruitment module is disabled." };
     }
@@ -273,9 +269,7 @@ export async function createOfferRevisionAction(
     const service = createOfferService();
     await service.createRevision(session, parsed.data);
 
-    revalidateOfferList();
-    revalidateOfferDetail(parsed.data.id);
-    revalidateRecruitmentDashboard();
+    revalidateOfferPaths(parsed.data.id);
 
     return { success: "Offer revision created successfully.", offerId: parsed.data.id };
   } catch (error) {
@@ -315,9 +309,7 @@ export async function attachOfferPdfAction(
       content: buffer,
     });
 
-    revalidateOfferList();
-    revalidateOfferDetail(id);
-    revalidateRecruitmentDashboard();
+    revalidateOfferPaths(id);
 
     return { success: "Offer PDF attached successfully.", offerId: id };
   } catch (error) {

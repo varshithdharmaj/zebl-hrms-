@@ -24,11 +24,12 @@ export async function GET(request: Request) {
     const downloadName = sanitizeDownloadFileName(
       searchParams.get("name") || fileName || "offer.pdf"
     );
+    const disposition = searchParams.get("inline") === "1" ? "inline" : "attachment";
 
     return new NextResponse(new Uint8Array(content), {
       headers: {
         "Content-Type": mimeType,
-        "Content-Disposition": `attachment; filename="${encodeURIComponent(downloadName)}"`,
+        "Content-Disposition": `${disposition}; filename="${encodeURIComponent(downloadName)}"`,
         "Cache-Control": "private, no-store",
       },
     });

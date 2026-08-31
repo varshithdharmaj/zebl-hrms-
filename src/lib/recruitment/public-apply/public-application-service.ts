@@ -84,6 +84,7 @@ const RATE_LIMITS: Record<string, { max: number; windowMs: number }> = {
   start: { max: 10, windowMs: 15 * 60 * 1000 },
   "basic-info": { max: 30, windowMs: 60 * 60 * 1000 },
   resume: { max: 10, windowMs: 60 * 60 * 1000 },
+  photo: { max: 10, windowMs: 60 * 60 * 1000 },
   parse: { max: 10, windowMs: 60 * 60 * 1000 },
   review: { max: 30, windowMs: 60 * 60 * 1000 },
   submit: { max: 5, windowMs: 60 * 60 * 1000 },
@@ -115,15 +116,34 @@ async function deleteTempResumeBestEffort(row: Pick<SubmissionRow, "id" | "resum
   }
 }
 
+/** Best-effort temp-file delete — never blocks the caller. */
+async function deleteTempPhotoBestEffort(row: Pick<SubmissionRow, "id" | "photoStorageKey">) {
+  if (!row.photoStorageKey) return;
+  try {
+    await getRecruitmentStorage().delete(row.photoStorageKey);
+  } catch (err) {
+    logger.warn("recruitment.public_apply.temp_photo_delete_failed", {
+      entityType: "public_application_submission",
+      entityId: row.id,
+      reason: failureReason(err),
+    });
+  }
+}
+
 /**
- * Exported for the scheduled expiry sweep (expire-submissions-batch.ts);
- * loadAndVerify() below is the other, lazy caller.
+ * Expires one submission: best-effort delete of its temp resume/photo blobs,
+ * then an idempotent status flip (the `notIn: TERMINAL_STATUSES` guard means
+ * re-running this against an already-expired or now-terminal row is a no-op).
+ * Called both lazily (loadAndVerify, on the next access to a stale row) and
+ * by the scheduled sweep (expire-submissions-batch.ts) for rows nobody ever
+ * revisits.
  */
 export async function expireSubmission(row: SubmissionRow): Promise<void> {
   await deleteTempResumeBestEffort(row);
+  await deleteTempPhotoBestEffort(row);
   await prisma.publicApplicationSubmission.updateMany({
     where: { id: row.id, status: { notIn: [...TERMINAL_STATUSES] } },
-    data: { status: PublicSubmissionStatus.expired, resumeStorageKey: null },
+    data: { status: PublicSubmissionStatus.expired, resumeStorageKey: null, photoStorageKey: null },
   });
 }
 
@@ -342,6 +362,88 @@ export async function uploadResume(
   });
 }
 
+// --- C2. Photo upload (passport-size photo, parallel to resume) -------------
+
+export const PHOTO_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
+
+const JPEG_SIGNATURE = Buffer.from([0xff, 0xd8, 0xff]);
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const WEBP_RIFF_SIGNATURE = Buffer.from("RIFF", "ascii");
+const WEBP_FORMAT_SIGNATURE = Buffer.from("WEBP", "ascii");
+
+/** Extension + MIME + magic-byte sniffing — never trust client-declared MIME alone. */
+function assertPhotoFile(fileName: string, mimeType: string, content: Buffer): void {
+  const ext = extensionOf(fileName);
+  if (ext !== "jpg" && ext !== "jpeg" && ext !== "png" && ext !== "webp") {
+    throw new PublicApplyError("RESUME_INVALID", "Please upload a JPEG, PNG, or WebP photo.");
+  }
+  if (content.byteLength <= 0) {
+    throw new PublicApplyError("RESUME_INVALID", "The selected photo is empty.");
+  }
+  if (content.byteLength > PHOTO_UPLOAD_MAX_BYTES) {
+    throw new PublicApplyError("RESUME_TOO_LARGE", "Photo is too large. Maximum size is 5 MB.");
+  }
+  const head = content.subarray(0, 12);
+  const looksJpeg = (ext === "jpg" || ext === "jpeg") && head.subarray(0, 3).equals(JPEG_SIGNATURE);
+  const looksPng = ext === "png" && head.subarray(0, 8).equals(PNG_SIGNATURE);
+  const looksWebp =
+    ext === "webp" &&
+    head.subarray(0, 4).equals(WEBP_RIFF_SIGNATURE) &&
+    head.subarray(8, 12).equals(WEBP_FORMAT_SIGNATURE);
+  if (!looksJpeg && !looksPng && !looksWebp) {
+    throw new PublicApplyError("RESUME_INVALID", "This file doesn't look like a valid photo.");
+  }
+  void mimeType; // MIME header is informational only — extension + magic bytes decide.
+}
+
+export async function uploadPhoto(
+  token: string,
+  input: { fileName: string; mimeType: string; content: Buffer }
+): Promise<void> {
+  const submission = await loadAndVerify(token);
+  const uploadableFrom: PublicSubmissionStatus[] = [
+    PublicSubmissionStatus.basic_info_complete,
+    PublicSubmissionStatus.resume_uploaded,
+    PublicSubmissionStatus.parse_failed,
+    PublicSubmissionStatus.upload_failed,
+  ];
+  if (!uploadableFrom.includes(submission.status)) {
+    throw new PublicApplyError("VALIDATION_FAILED", "Please complete your basic information first.");
+  }
+
+  assertPhotoFile(input.fileName, input.mimeType, input.content);
+
+  await deleteTempPhotoBestEffort(submission);
+
+  const monthPartition = monthPartitionFor(new Date());
+  // "photo-" prefix keeps the filename distinct from the resume file saved
+  // in the same public-intake/{month}/{submissionId}/ folder.
+  const key = buildPublicIntakeStorageKey(submission.id, `photo-${input.fileName}`, monthPartition);
+
+  try {
+    await getRecruitmentStorage().save(key, input.content, { contentType: input.mimeType });
+  } catch (err) {
+    logger.warn("recruitment.public_apply.photo_upload_failed", {
+      entityType: "public_application_submission",
+      entityId: submission.id,
+      reason: failureReason(err),
+    });
+    throw new PublicApplyError("TEMPORARY_FAILURE", "Could not store your photo. Please try again.", 500);
+  }
+
+  const checksum = createHash("sha256").update(input.content).digest("hex");
+  await prisma.publicApplicationSubmission.update({
+    where: { id: submission.id },
+    data: {
+      photoFileName: input.fileName,
+      photoMimeType: input.mimeType,
+      photoSizeBytes: input.content.byteLength,
+      photoStorageKey: key,
+      photoChecksum: checksum,
+    },
+  });
+}
+
 // --- D. Parse resume (§4D) ---------------------------------------------------
 
 export type ParseOutcome =
@@ -434,6 +536,7 @@ const EMPTY_REVIEW_PAYLOAD: PublicReviewPayload = {
   skills: [],
   projects: [],
   certifications: [],
+  compensation: { currentCtc: null, noticePeriodDays: null },
 };
 
 export async function getReview(
@@ -449,14 +552,31 @@ export async function getReview(
     throw new PublicApplyError("VALIDATION_FAILED", "Nothing to review yet.");
   }
 
-  const review = (submission.candidateEditedJson as unknown as PublicReviewPayload | null) ?? {
-    ...EMPTY_REVIEW_PAYLOAD,
+  // `stored` may be:
+  //  - null (no review saved yet)
+  //  - written by the resume parser (draftContent.mapped, typed as
+  //    ResumeImportMappedDraft) — never includes `compensation`, which is
+  //    candidate-entered only
+  //  - from an older submission saved before a field was added to the schema
+  // Deep-merge onto the empty-payload shape section by section so a missing
+  // top-level key (personal, professional, compensation, any array) can
+  // never surface as `undefined` to the client, regardless of cause.
+  const stored = submission.candidateEditedJson as unknown as Partial<PublicReviewPayload> | null;
+  const review: PublicReviewPayload = {
     personal: {
       ...EMPTY_REVIEW_PAYLOAD.personal,
       fullName: submission.fullName ?? "",
       email: submission.email,
       phone: submission.phone,
+      ...stored?.personal,
     },
+    professional: { ...EMPTY_REVIEW_PAYLOAD.professional, ...stored?.professional },
+    compensation: { ...EMPTY_REVIEW_PAYLOAD.compensation, ...stored?.compensation },
+    experiences: stored?.experiences ?? EMPTY_REVIEW_PAYLOAD.experiences,
+    educations: stored?.educations ?? EMPTY_REVIEW_PAYLOAD.educations,
+    skills: stored?.skills ?? EMPTY_REVIEW_PAYLOAD.skills,
+    projects: stored?.projects ?? EMPTY_REVIEW_PAYLOAD.projects,
+    certifications: stored?.certifications ?? EMPTY_REVIEW_PAYLOAD.certifications,
   };
 
   return { status: submission.status, review, canContinueManually: true };
@@ -531,6 +651,8 @@ function mapCandidateCreateData(
     totalExperienceYears: review.professional.totalExperienceYears ?? null,
     preferredWorkMode: review.professional.preferredWorkMode ?? null,
     willingToRelocate: review.professional.willingToRelocate ?? null,
+    currentCtc: review.compensation.currentCtc ?? null,
+    noticePeriodDays: review.compensation.noticePeriodDays ?? null,
     source,
     status: CandidateStatus.active,
     createdByUserId: null,
@@ -591,6 +713,9 @@ export async function submitPublicApplication(token: string): Promise<SubmitResu
   ];
   if (!submittableFrom.includes(submission.status)) {
     throw new PublicApplyError("VALIDATION_FAILED", "Please review your information before submitting.");
+  }
+  if (!submission.photoStorageKey) {
+    throw new PublicApplyError("VALIDATION_FAILED", "Please upload a passport-size photo before submitting.");
   }
 
   const rawReview = submission.candidateEditedJson as unknown;
@@ -750,6 +875,19 @@ export async function submitPublicApplication(token: string): Promise<SubmitResu
     });
   }
 
+  // --- Best-effort photo attach (after commit) — same two-phase pattern. ---
+  if (submission.photoStorageKey && submission.photoFileName) {
+    await attachPhotoBestEffort({
+      submissionId: submission.id,
+      candidateId: outcome.candidateId,
+      photoStorageKey: submission.photoStorageKey,
+      photoFileName: submission.photoFileName,
+      photoMimeType: submission.photoMimeType,
+      photoSizeBytes: submission.photoSizeBytes,
+      photoChecksum: submission.photoChecksum,
+    });
+  }
+
   // --- P1 notifications (after commit, non-blocking) — see Phase-3
   // hardening §3/§4: queued via the existing notification queue, never
   // awaited in a way that could roll back or fail the submission itself
@@ -884,6 +1022,87 @@ async function attachResumeBestEffort(input: {
     await getRecruitmentStorage().delete(input.resumeStorageKey);
   } catch (err) {
     logger.warn("recruitment.public_apply.resume_attach_failed", {
+      entityType: "candidate",
+      entityId: input.candidateId,
+      submissionId: input.submissionId,
+      reason: failureReason(err),
+    });
+  }
+}
+
+async function attachPhotoBestEffort(input: {
+  submissionId: string;
+  candidateId: string;
+  photoStorageKey: string;
+  photoFileName: string;
+  photoMimeType: string | null;
+  photoSizeBytes: number | null;
+  photoChecksum: string | null;
+}): Promise<void> {
+  const storage = getRecruitmentStorage();
+  const monthPartition = monthPartitionFor(new Date());
+  if (!isSafePublicIntakeKey(input.submissionId, monthPartition, input.photoStorageKey)) {
+    if (!input.photoStorageKey.startsWith(`public-intake/`)) {
+      logger.warn("recruitment.public_apply.photo_attach_skipped_unsafe_key", {
+        entityType: "candidate",
+        entityId: input.candidateId,
+        submissionId: input.submissionId,
+      });
+      return;
+    }
+  }
+
+  try {
+    const exists = await storage.exists(input.photoStorageKey);
+    if (!exists) {
+      logger.warn("recruitment.public_apply.photo_attach_missing_file", {
+        entityType: "candidate",
+        entityId: input.candidateId,
+        submissionId: input.submissionId,
+      });
+      return;
+    }
+
+    const fileBytes = await storage.read(input.photoStorageKey);
+    const docKey = buildCandidateDocumentStorageKey(input.candidateId, input.photoFileName);
+    await storage.save(docKey, fileBytes, { contentType: input.photoMimeType ?? undefined });
+
+    await withRecruitmentTransaction(async (tx) => {
+      // Reused (email-matched) candidates can already have a primary photo
+      // from an earlier application — the DB enforces at most one non-deleted
+      // primary photo per candidate (candidate_documents_one_primary_photo).
+      const existingPrimaryPhoto = await tx.candidateDocument.findFirst({
+        where: {
+          candidateId: input.candidateId,
+          documentType: RecruitmentDocumentType.photo,
+          isPrimary: true,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+
+      await prismaCandidateRepository.addDocument(
+        input.candidateId,
+        {
+          documentType: RecruitmentDocumentType.photo,
+          fileName: input.photoFileName,
+          mimeType: input.photoMimeType,
+          sizeBytes: input.photoSizeBytes,
+          storageKey: docKey,
+          storagePath: docKey,
+          checksum: input.photoChecksum,
+          version: 1,
+          isPrimary: !existingPrimaryPhoto,
+          uploadedByUserId: null,
+          size: input.photoSizeBytes,
+        },
+        tx
+      );
+    });
+
+    await getRecruitmentStorage().delete(input.photoStorageKey);
+  } catch (err) {
+    logger.warn("recruitment.public_apply.photo_attach_failed", {
       entityType: "candidate",
       entityId: input.candidateId,
       submissionId: input.submissionId,

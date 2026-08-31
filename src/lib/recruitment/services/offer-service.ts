@@ -1,5 +1,5 @@
 import { Prisma } from "@/generated/prisma/client";
-import { OfferStatus } from "@/generated/prisma/enums";
+import { OfferStatus, CandidateStatus } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import type { SessionUser } from "@/lib/session";
 import {
@@ -32,6 +32,7 @@ import {
   withdrawOfferSchema,
   createOfferRevisionSchema,
   attachOfferPdfSchema,
+  generateOfferLetterSchema,
 } from "@/lib/validation/schemas/recruitment/offers";
 import {
   buildOfferPdfStorageKey,
@@ -41,16 +42,51 @@ import {
   getRecruitmentStorage,
   type StorageAdapter,
 } from "@/lib/recruitment/storage";
+import { AUDIT_ACTIONS, writeAuditLog } from "@/lib/audit";
+import { buildOfferLetterTemplateData } from "@/lib/recruitment/pdf/offer-letter-data";
+import { renderOfferLetterPdf } from "@/lib/recruitment/pdf/render-offer-letter-pdf";
+import { buildOfferLetterFileName } from "@/lib/recruitment/pdf/filename";
+import {
+  sendOfferLetterEmail,
+  type SendOfferLetterEmailInput,
+  type SendOfferLetterEmailResult,
+} from "@/lib/recruitment/email/send-offer-letter-email";
+import { prismaCommunicationRepository } from "@/lib/recruitment/repositories/prisma-communication-repository";
+import {
+  RecruitmentCommunicationStatus,
+  RecruitmentCommunicationType,
+} from "@/generated/prisma/enums";
 
-function generateOfferNumber(): string {
+type SendOfferLetterEmailFn = (
+  input: SendOfferLetterEmailInput
+) => Promise<SendOfferLetterEmailResult>;
+
+async function fetchNextOfferNumber(): Promise<string> {
   const year = new Date().getFullYear();
+  try {
+    const result = await prisma.$queryRaw<{ nextval: bigint | number }[]>`SELECT nextval('offer_number_seq')`;
+    const nextVal = result[0]?.nextval;
+    if (nextVal != null) {
+      return `OFFER-${year}-${String(nextVal).padStart(4, "0")}`;
+    }
+  } catch (_err) {
+    // Fallback if sequence is not present
+  }
   const rand = Math.floor(1000 + Math.random() * 9000);
   return `OFFER-${year}-${rand}`;
 }
 
+function calculateCtc(baseSalary: number, variablePay?: number | null, bonus?: number | null): number {
+  const base = Number.isFinite(baseSalary) ? baseSalary : 0;
+  const variable = variablePay != null && Number.isFinite(variablePay) ? variablePay : 0;
+  const b = bonus != null && Number.isFinite(bonus) ? bonus : 0;
+  return base + variable + b;
+}
+
 export function createOfferService(
   repository: OfferRepository = prismaOfferRepository,
-  storage: StorageAdapter = getRecruitmentStorage()
+  storage: StorageAdapter = getRecruitmentStorage(),
+  sendEmail: SendOfferLetterEmailFn = sendOfferLetterEmail
 ) {
   return {
     async createOffer(
@@ -102,7 +138,9 @@ export function createOfferService(
         );
       }
 
-      const offerNumber = generateOfferNumber();
+      // Server-side CTC calculation
+      const ctc = calculateCtc(parsed.baseSalary, parsed.variablePay, parsed.bonus);
+      const offerNumber = parsed.offerNumber || (await fetchNextOfferNumber());
 
       const events = createAfterCommitBuffer();
       const offerId = await withRecruitmentTransaction(async (tx) => {
@@ -111,6 +149,7 @@ export function createOfferService(
             ...parsed,
             hiringDecisionId,
             offerNumber,
+            ctc,
             status: OfferStatus.draft,
             createdByUserId: session.id,
           },
@@ -126,9 +165,9 @@ export function createOfferService(
             candidateId: app.candidateId,
             jobOpeningId: app.jobOpeningId,
             eventType: "offer_created",
-            summary: `Created offer draft: ${offerNumber} with CTC ${parsed.ctc} ${parsed.currency}`,
+            summary: `Created offer draft: ${offerNumber} with CTC ${ctc} ${parsed.currency}`,
             actorUserId: session.id,
-            metadata: { offerId: id, offerNumber, ctc: parsed.ctc },
+            metadata: { offerId: id, offerNumber, ctc },
           },
           tx
         );
@@ -169,8 +208,21 @@ export function createOfferService(
         );
       }
 
+      // Re-calculate CTC server-side
+      const baseSalary = parsed.baseSalary ?? offer.baseSalary;
+      const variablePay = parsed.variablePay !== undefined ? parsed.variablePay : offer.variablePay;
+      const bonus = parsed.bonus !== undefined ? parsed.bonus : offer.bonus;
+      const computedCtc = calculateCtc(baseSalary, variablePay, bonus);
+
       await withRecruitmentTransaction(async (tx) => {
-        await repository.updateOffer(parsed.id, parsed, tx);
+        await repository.updateOffer(
+          parsed.id,
+          {
+            ...parsed,
+            ctc: computedCtc,
+          },
+          tx
+        );
 
         // Timeline Event
         await RecruitmentTimelineService.append(
@@ -212,11 +264,53 @@ export function createOfferService(
         );
       }
 
-      const expiresDate = parsed.expiresAt ? new Date(parsed.expiresAt) : null;
+      if (!offer.offerPdfKey) {
+        throw new RecruitmentDomainError(
+          "REC_VALIDATION",
+          "Generate the offer letter before sending it to the candidate."
+        );
+      }
 
+      const recipientEmail = offer.application.candidate.email;
+      if (!recipientEmail) {
+        throw new RecruitmentDomainError(
+          "REC_VALIDATION",
+          "The candidate does not have an email address on file."
+        );
+      }
+
+      const candidateName = offer.application.candidate.fullName;
+      const designation = offer.application.jobOpening.title ?? "the role";
+      const pdfContent = Buffer.from(await storage.read(offer.offerPdfKey));
+      const fileName = offer.offerPdfKey.split("/").pop() || buildOfferLetterFileName(candidateName);
+
+      // Send email synchronously before updating status
+      const emailResult = await sendEmail({
+        recipientEmail,
+        candidateName,
+        designation,
+        fileName,
+        pdfContent,
+      });
+
+      if (!emailResult.success) {
+        await writeAuditLog({
+          entityType: "offer",
+          entityId: parsed.id,
+          action: AUDIT_ACTIONS.RECRUITMENT_OFFER_LETTER_SEND_FAILED,
+          metadata: { recipientEmail, error: emailResult.error },
+        });
+        throw new RecruitmentDomainError(
+          "REC_INTERNAL",
+          `Failed to email the offer letter: ${emailResult.error}`
+        );
+      }
+
+      const expiresDate = parsed.expiresAt ? new Date(parsed.expiresAt) : null;
       const events = createAfterCommitBuffer();
+
       await withRecruitmentTransaction(async (tx) => {
-        await repository.sendOffer(parsed.id, expiresDate, tx);
+        await repository.sendOffer(parsed.id, expiresDate, session.id, tx);
 
         // Timeline Event
         await RecruitmentTimelineService.append(
@@ -226,10 +320,10 @@ export function createOfferService(
             applicationId: offer.applicationId,
             candidateId: offer.application.candidateId,
             jobOpeningId: offer.application.jobOpeningId,
-            eventType: "offer_released", // Reusing existing timeline event type
-            summary: `Sent offer: ${offer.offerNumber}`,
+            eventType: "offer_released",
+            summary: `Sent offer letter to ${recipientEmail}: ${offer.offerNumber}`,
             actorUserId: session.id,
-            metadata: { offerId: parsed.id, expiresAt: parsed.expiresAt },
+            metadata: { offerId: parsed.id, expiresAt: parsed.expiresAt, recipientEmail },
           },
           tx
         );
@@ -244,118 +338,39 @@ export function createOfferService(
       });
 
       await events.flush();
-    },
 
-    async withdrawOffer(
-      session: SessionUser,
-      input: { id: string; reason?: string | null }
-    ): Promise<void> {
-      RecruitmentPermissionService.requireModuleEnabled();
-      
-      // Only HR and Super Admin may withdraw offers
-      const isHrOrAdmin = ["hr", "super_admin"].includes(session.role);
-      if (!isHrOrAdmin) {
-        throw new RecruitmentDomainError(
-          "REC_UNAUTHORIZED",
-          "Only HR and Super Admins are authorized to withdraw offers."
-        );
-      }
-
-      const parsed = withdrawOfferSchema.parse(input);
-
-      const offer = await repository.getOffer(parsed.id);
-      if (!offer) {
-        throw new RecruitmentDomainError("REC_NOT_FOUND", "Offer not found.");
-      }
-
-      if (offer.status !== OfferStatus.released) {
-        throw new RecruitmentDomainError(
-          "REC_VALIDATION",
-          "Only sent/released offers can be withdrawn."
-        );
-      }
-
-      const actor = toRecruitmentActor(session);
-      const events = createAfterCommitBuffer();
-      await withRecruitmentTransaction(async (tx) => {
-        await repository.withdrawOffer(parsed.id, parsed.reason ?? null, tx);
-
-        // Timeline Event
-        await RecruitmentTimelineService.append(
-          {
-            entityType: "application",
-            entityId: offer.applicationId,
-            applicationId: offer.applicationId,
-            candidateId: offer.application.candidateId,
-            jobOpeningId: offer.application.jobOpeningId,
-            eventType: "offer_withdrawn",
-            summary: `Withdrawn offer: ${offer.offerNumber}. Reason: ${parsed.reason ?? "None"}`,
-            actorUserId: session.id,
-            metadata: { offerId: parsed.id, reason: parsed.reason },
-          },
-          tx
-        );
-
-        // Publish event
-        events.enqueue(
-          RecruitmentEventFactory.offerWithdrawn(actor, {
-            offerId: parsed.id,
-            applicationId: offer.applicationId,
-            reason: parsed.reason ?? null,
-          })
-        );
+      await writeAuditLog({
+        entityType: "offer",
+        entityId: parsed.id,
+        action: AUDIT_ACTIONS.RECRUITMENT_OFFER_SENT,
+        metadata: { recipientEmail, providerMessageId: emailResult.providerMessageId },
       });
 
-      await events.flush();
-    },
-
-    async expireOffer(session: SessionUser, id: string): Promise<void> {
-      RecruitmentPermissionService.requireModuleEnabled();
-      await RecruitmentPermissionService.assertCanManageCandidates(session);
-
-      const offer = await repository.getOffer(id);
-      if (!offer) {
-        throw new RecruitmentDomainError("REC_NOT_FOUND", "Offer not found.");
+      try {
+        const { id: communicationId } = await prismaCommunicationRepository.createCommunication({
+          type: RecruitmentCommunicationType.offer_letter,
+          status: RecruitmentCommunicationStatus.sent,
+          subject: `Offer Letter — ${designation} at ZEBL India Private Limited`,
+          candidateId: offer.application.candidateId,
+          applicationId: offer.applicationId,
+          jobOpeningId: offer.application.jobOpeningId,
+          offerId: parsed.id,
+          senderUserId: session.id,
+          recipientEmail,
+          scheduledFor: null,
+        });
+        await prismaCommunicationRepository.updateCommunication(communicationId, {
+          sentAt: new Date(),
+        });
+        await prismaCommunicationRepository.addAttachment(communicationId, {
+          fileName,
+          fileType: "application/pdf",
+          fileSize: pdfContent.byteLength,
+          storagePath: offer.offerPdfKey,
+        });
+      } catch (error) {
+        console.error("[offer-service] Failed to record offer letter communication:", error);
       }
-
-      if (offer.status !== OfferStatus.released) {
-        throw new RecruitmentDomainError(
-          "REC_VALIDATION",
-          "Only sent/released offers can expire."
-        );
-      }
-
-      const actor = toRecruitmentActor(session);
-      const events = createAfterCommitBuffer();
-      await withRecruitmentTransaction(async (tx) => {
-        await repository.expireOffer(id, tx);
-
-        // Timeline Event
-        await RecruitmentTimelineService.append(
-          {
-            entityType: "application",
-            entityId: offer.applicationId,
-            applicationId: offer.applicationId,
-            candidateId: offer.application.candidateId,
-            jobOpeningId: offer.application.jobOpeningId,
-            eventType: "offer_expired",
-            summary: `Offer expired: ${offer.offerNumber}`,
-            actorUserId: session.id,
-            metadata: { offerId: id },
-          },
-          tx
-        );
-
-        // Publish event
-        events.enqueue(
-          RecruitmentEventFactory.offerExpired(actor, {
-            offerId: id,
-            applicationId: offer.applicationId,
-          })
-        );
-      });
-
-      await events.flush();
     },
 
     async acceptOffer(
@@ -375,16 +390,50 @@ export function createOfferService(
       if (offer.status !== OfferStatus.released) {
         throw new RecruitmentDomainError(
           "REC_VALIDATION",
-          "Only sent/released offers can be accepted."
+          "Only released offers can be accepted."
         );
       }
 
       const acceptedDate = parsed.acceptedAt ? new Date(parsed.acceptedAt) : new Date();
-
       const actor = toRecruitmentActor(session);
       const events = createAfterCommitBuffer();
+
       await withRecruitmentTransaction(async (tx) => {
+        // 1. Update offer status to accepted
         await repository.acceptOffer(parsed.id, acceptedDate, tx);
+
+        // 2. Automatically create Employee record in the same Prisma transaction
+        const candidate = offer.application.candidate;
+        const fullName = candidate.fullName || "New Employee";
+        const nameParts = fullName.trim().split(/\s+/);
+        const firstName = candidate.firstName || nameParts[0] || "";
+        const lastName = candidate.lastName || nameParts.slice(1).join(" ") || "";
+        const empCode = `EMP-${Math.floor(1000 + Math.random() * 9000)}`;
+
+        await tx.employee.create({
+          data: {
+            employeeCode: empCode,
+            name: fullName,
+            firstName,
+            lastName,
+            email: candidate.email ?? null,
+            phone: candidate.phone ?? null,
+            department: offer.department ?? null,
+            designation: offer.employmentType ?? offer.application.jobOpening.title ?? null,
+            employmentType: offer.employmentType ?? null,
+            workLocation: offer.location ?? null,
+            joiningDate: offer.joiningDate ?? acceptedDate,
+            managerId: offer.reportingManagerId ?? null,
+            employeeStatus: "Active",
+            isActive: true,
+          },
+        });
+
+        // 3. Update candidate status to hired
+        await tx.candidate.update({
+          where: { id: candidate.id },
+          data: { status: CandidateStatus.hired },
+        });
 
         // Timeline Event
         await RecruitmentTimelineService.append(
@@ -395,9 +444,9 @@ export function createOfferService(
             candidateId: offer.application.candidateId,
             jobOpeningId: offer.application.jobOpeningId,
             eventType: "offer_accepted",
-            summary: `Offer accepted: ${offer.offerNumber}`,
+            summary: `Offer accepted: ${offer.offerNumber}. Employee record created (${empCode}).`,
             actorUserId: session.id,
-            metadata: { offerId: parsed.id, acceptedAt: parsed.acceptedAt },
+            metadata: { offerId: parsed.id, acceptedAt: parsed.acceptedAt, employeeCode: empCode },
           },
           tx
         );
@@ -431,14 +480,14 @@ export function createOfferService(
       if (offer.status !== OfferStatus.released) {
         throw new RecruitmentDomainError(
           "REC_VALIDATION",
-          "Only sent/released offers can be declined."
+          "Only released offers can be declined."
         );
       }
 
       const declinedDate = parsed.declinedAt ? new Date(parsed.declinedAt) : new Date();
-
       const actor = toRecruitmentActor(session);
       const events = createAfterCommitBuffer();
+
       await withRecruitmentTransaction(async (tx) => {
         await repository.declineOffer(parsed.id, declinedDate, parsed.reason ?? null, tx);
 
@@ -461,6 +510,115 @@ export function createOfferService(
         // Publish event
         events.enqueue(
           RecruitmentEventFactory.offerDeclined(actor, {
+            offerId: parsed.id,
+            applicationId: offer.applicationId,
+            reason: parsed.reason ?? null,
+          })
+        );
+      });
+
+      await events.flush();
+    },
+
+    async expireOffer(session: SessionUser, id: string): Promise<void> {
+      RecruitmentPermissionService.requireModuleEnabled();
+      await RecruitmentPermissionService.assertCanManageCandidates(session);
+
+      const offer = await repository.getOffer(id);
+      if (!offer) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Offer not found.");
+      }
+
+      if (offer.status !== OfferStatus.released) {
+        throw new RecruitmentDomainError(
+          "REC_VALIDATION",
+          "Only released offers can expire."
+        );
+      }
+
+      const actor = toRecruitmentActor(session);
+      const events = createAfterCommitBuffer();
+      await withRecruitmentTransaction(async (tx) => {
+        await repository.expireOffer(id, tx);
+
+        await RecruitmentTimelineService.append(
+          {
+            entityType: "application",
+            entityId: offer.applicationId,
+            applicationId: offer.applicationId,
+            candidateId: offer.application.candidateId,
+            jobOpeningId: offer.application.jobOpeningId,
+            eventType: "offer_expired",
+            summary: `Offer expired: ${offer.offerNumber}`,
+            actorUserId: session.id,
+            metadata: { offerId: id },
+          },
+          tx
+        );
+
+        events.enqueue(
+          RecruitmentEventFactory.offerExpired(actor, {
+            offerId: id,
+            applicationId: offer.applicationId,
+          })
+        );
+      });
+
+      await events.flush();
+    },
+
+    async withdrawOffer(
+      session: SessionUser,
+      input: { id: string; reason?: string | null }
+    ): Promise<void> {
+      RecruitmentPermissionService.requireModuleEnabled();
+
+      const isHrOrAdmin = ["hr", "super_admin"].includes(session.role);
+      if (!isHrOrAdmin) {
+        throw new RecruitmentDomainError(
+          "REC_UNAUTHORIZED",
+          "Only HR and Super Admins are authorized to withdraw offers."
+        );
+      }
+
+      const parsed = withdrawOfferSchema.parse(input);
+
+      const offer = await repository.getOffer(parsed.id);
+      if (!offer) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Offer not found.");
+      }
+
+      if (offer.status !== OfferStatus.released) {
+        throw new RecruitmentDomainError(
+          "REC_VALIDATION",
+          "Only released offers can be withdrawn."
+        );
+      }
+
+      const actor = toRecruitmentActor(session);
+      const events = createAfterCommitBuffer();
+      await withRecruitmentTransaction(async (tx) => {
+        await repository.withdrawOffer(parsed.id, parsed.reason ?? null, tx);
+
+        // Timeline Event
+        await RecruitmentTimelineService.append(
+          {
+            entityType: "application",
+            entityId: offer.applicationId,
+            applicationId: offer.applicationId,
+            candidateId: offer.application.candidateId,
+            jobOpeningId: offer.application.jobOpeningId,
+            eventType: "offer_withdrawn",
+            summary: `Withdrawn offer: ${offer.offerNumber}. Reason: ${parsed.reason ?? "None"}`,
+            actorUserId: session.id,
+            metadata: { offerId: parsed.id, reason: parsed.reason },
+          },
+          tx
+        );
+
+        // Publish event
+        events.enqueue(
+          RecruitmentEventFactory.offerWithdrawn(actor, {
             offerId: parsed.id,
             applicationId: offer.applicationId,
             reason: parsed.reason ?? null,
@@ -505,7 +663,15 @@ export function createOfferService(
       });
 
       await withRecruitmentTransaction(async (tx) => {
-        await repository.updateOffer(parsed.id, { offerPdfKey: storageKey }, tx);
+        await repository.updateOffer(
+          parsed.id,
+          {
+            offerPdfKey: storageKey,
+            letterGeneratedAt: null,
+            letterGeneratedByUserId: null,
+          },
+          tx
+        );
 
         await RecruitmentTimelineService.append(
           {
@@ -526,6 +692,92 @@ export function createOfferService(
       return { offerPdfKey: storageKey };
     },
 
+    async generateOfferLetter(
+      session: SessionUser,
+      input: { id: string }
+    ): Promise<{ offerPdfKey: string; fileName: string }> {
+      RecruitmentPermissionService.requireOffersEnabled();
+      await RecruitmentPermissionService.assertCanManageCandidates(session);
+
+      const parsed = generateOfferLetterSchema.parse(input);
+
+      const offer = await repository.getOffer(parsed.id);
+      if (!offer) {
+        throw new RecruitmentDomainError("REC_NOT_FOUND", "Offer not found.");
+      }
+
+      if (
+        offer.status === OfferStatus.accepted ||
+        offer.status === OfferStatus.declined ||
+        offer.status === OfferStatus.withdrawn
+      ) {
+        throw new RecruitmentDomainError(
+          "REC_VALIDATION",
+          "The offer letter cannot be regenerated once the offer has been accepted, declined, or withdrawn."
+        );
+      }
+
+      const candidateName = offer.application.candidate.fullName;
+      const designation = offer.application.jobOpening.title ?? null;
+
+      const templateData = buildOfferLetterTemplateData({
+        offer: {
+          id: offer.id,
+          offerNumber: offer.offerNumber,
+          department: offer.department,
+          location: offer.location,
+          ctc: offer.ctc,
+          joiningDate: offer.joiningDate,
+          probationDays: offer.probationDays,
+          noticeBuyout: offer.noticeBuyout,
+          salaryBreakdownJson: offer.salaryBreakdownJson,
+        },
+        designation,
+        candidateName,
+      });
+
+      const pdfContent = await renderOfferLetterPdf(templateData);
+      const fileName = buildOfferLetterFileName(candidateName);
+      const storageKey = buildOfferPdfStorageKey(offer.id, fileName);
+      await storage.save(storageKey, pdfContent, { contentType: "application/pdf" });
+
+      await withRecruitmentTransaction(async (tx) => {
+        await repository.updateOffer(
+          offer.id,
+          {
+            offerPdfKey: storageKey,
+            letterGeneratedAt: new Date(),
+            letterGeneratedByUserId: session.id,
+          },
+          tx
+        );
+
+        await RecruitmentTimelineService.append(
+          {
+            entityType: "application",
+            entityId: offer.applicationId,
+            applicationId: offer.applicationId,
+            candidateId: offer.application.candidateId,
+            jobOpeningId: offer.application.jobOpeningId,
+            eventType: "offer_updated",
+            summary: `Generated offer letter PDF: ${fileName}`,
+            actorUserId: session.id,
+            metadata: { offerId: offer.id, offerPdfKey: storageKey },
+          },
+          tx
+        );
+      });
+
+      await writeAuditLog({
+        entityType: "offer",
+        entityId: offer.id,
+        action: AUDIT_ACTIONS.RECRUITMENT_OFFER_LETTER_GENERATED,
+        metadata: { offerPdfKey: storageKey, fileName },
+      });
+
+      return { offerPdfKey: storageKey, fileName };
+    },
+
     async getOfferPdfContent(
       session: SessionUser,
       offerId: string
@@ -539,9 +791,6 @@ export function createOfferService(
       }
       if (!offer.offerPdfKey) {
         throw new RecruitmentDomainError("REC_NOT_FOUND", "No offer PDF attached.");
-      }
-      if (!isSafeOfferPdfKey(offerId, offer.offerPdfKey) && !offer.offerPdfKey.startsWith("offers/")) {
-        // Allow legacy keys that were set as free-text paths before upload flow.
       }
 
       const content = await storage.read(offer.offerPdfKey);
@@ -574,11 +823,10 @@ export function createOfferService(
       if (offer.status === OfferStatus.accepted) {
         throw new RecruitmentDomainError(
           "REC_VALIDATION",
-          "Accepted offers cannot be revised. Convert the candidate or withdraw first."
+          "Accepted offers cannot be revised."
         );
       }
 
-      // Create snapshot of current offer fields
       const snapshot = {
         currency: offer.currency,
         baseSalary: offer.baseSalary.toString(),
@@ -605,7 +853,6 @@ export function createOfferService(
       const actor = toRecruitmentActor(session);
       const events = createAfterCommitBuffer();
       await withRecruitmentTransaction(async (tx) => {
-        // Save revision snapshot
         const { id: revisionId } = await repository.createRevision(
           parsed.id,
           snapshot as unknown as Prisma.InputJsonValue,
@@ -614,21 +861,21 @@ export function createOfferService(
           tx
         );
 
-        // Apply patch and reset status to draft for renegotiation/approval
         await repository.updateOffer(
           parsed.id,
           {
             ...parsed.patch,
             status: OfferStatus.draft,
+            offerPdfKey: null,
+            letterGeneratedAt: null,
+            letterGeneratedByUserId: null,
           },
           tx
         );
 
-        // Find latest version to publish
         const latestRev = await repository.latestRevision(parsed.id);
         const version = latestRev?.version ?? 1;
 
-        // Timeline Event
         await RecruitmentTimelineService.append(
           {
             entityType: "application",
@@ -644,7 +891,6 @@ export function createOfferService(
           tx
         );
 
-        // Publish event
         events.enqueue(
           RecruitmentEventFactory.offerRevisionCreated(actor, {
             offerId: parsed.id,
@@ -666,7 +912,6 @@ export function createOfferService(
         throw new RecruitmentDomainError("REC_NOT_FOUND", "Offer not found.");
       }
 
-      // Rule: Only ONE active offer allowed per application.
       const hasActive = await repository.existsActiveOffer(offer.applicationId);
       if (hasActive) {
         throw new RecruitmentDomainError(
@@ -675,8 +920,7 @@ export function createOfferService(
         );
       }
 
-      const offerNumber = generateOfferNumber();
-
+      const offerNumber = await fetchNextOfferNumber();
       const actor = toRecruitmentActor(session);
       const events = createAfterCommitBuffer();
       const newOfferId = await withRecruitmentTransaction(async (tx) => {
@@ -707,14 +951,13 @@ export function createOfferService(
             stock: offer.stock,
             probationDays: offer.probationDays,
             noticeBuyout: offer.noticeBuyout,
-            offerPdfKey: offer.offerPdfKey,
+            offerPdfKey: null,
             offerNotes: `Duplicated from ${offer.offerNumber}`,
             createdByUserId: session.id,
           },
           tx
         );
 
-        // Timeline Event
         await RecruitmentTimelineService.append(
           {
             entityType: "application",
@@ -730,7 +973,6 @@ export function createOfferService(
           tx
         );
 
-        // Publish event
         events.enqueue(
           RecruitmentEventFactory.offerCreated(actor, {
             offerId: createdId,
@@ -779,41 +1021,14 @@ export function createOfferService(
           ? {}
           : { applicationId: { in: [...scope.applicationIds] } };
 
-      const [total, draft, sent, accepted, declined, withdrawn, expiredReleased, expiredNoted] =
-        await Promise.all([
-          prisma.offer.count({ where: scopeWhere }),
-          prisma.offer.count({ where: { status: OfferStatus.draft, ...scopeWhere } }),
-          prisma.offer.count({
-            where: {
-              status: OfferStatus.released,
-              OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
-              ...scopeWhere,
-            },
-          }),
-          prisma.offer.count({ where: { status: OfferStatus.accepted, ...scopeWhere } }),
-          prisma.offer.count({
-            where: {
-              status: OfferStatus.declined,
-              NOT: { offerNotes: { contains: "Offer Expired" } },
-              ...scopeWhere,
-            },
-          }),
-          prisma.offer.count({ where: { status: OfferStatus.withdrawn, ...scopeWhere } }),
-          prisma.offer.count({
-            where: {
-              status: OfferStatus.released,
-              expiresAt: { lt: new Date() },
-              ...scopeWhere,
-            },
-          }),
-          prisma.offer.count({
-            where: {
-              status: OfferStatus.declined,
-              offerNotes: { contains: "Offer Expired" },
-              ...scopeWhere,
-            },
-          }),
-        ]);
+      const [total, draft, released, accepted, declined, withdrawn] = await Promise.all([
+        prisma.offer.count({ where: scopeWhere }),
+        prisma.offer.count({ where: { status: OfferStatus.draft, ...scopeWhere } }),
+        prisma.offer.count({ where: { status: OfferStatus.released, ...scopeWhere } }),
+        prisma.offer.count({ where: { status: OfferStatus.accepted, ...scopeWhere } }),
+        prisma.offer.count({ where: { status: OfferStatus.declined, ...scopeWhere } }),
+        prisma.offer.count({ where: { status: OfferStatus.withdrawn, ...scopeWhere } }),
+      ]);
 
       const totalClosed = accepted + declined + withdrawn;
       const acceptanceRate =
@@ -822,11 +1037,10 @@ export function createOfferService(
       return {
         total,
         draft,
-        sent,
+        released,
         accepted,
         declined,
         withdrawn,
-        expired: expiredReleased + expiredNoted,
         acceptanceRate,
       };
     },

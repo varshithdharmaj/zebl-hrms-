@@ -97,6 +97,7 @@ export {
   createOfferRevisionSchema,
   attachOfferPdfSchema,
   expireOfferSchema,
+  generateOfferLetterSchema,
 } from "@/lib/validation/schemas/recruitment/offers";
 export { offerListFiltersSchema } from "@/lib/validation/schemas/recruitment/offer-list";
 export {

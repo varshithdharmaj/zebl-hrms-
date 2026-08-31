@@ -120,6 +120,8 @@ export const AUDIT_ACTIONS = {
   RECRUITMENT_OFFER_RELEASED: "recruitment.offer.released",
   RECRUITMENT_OFFER_CREATED: "recruitment.offer.created",
   RECRUITMENT_OFFER_SENT: "recruitment.offer.sent",
+  RECRUITMENT_OFFER_LETTER_GENERATED: "recruitment.offer.letter_generated",
+  RECRUITMENT_OFFER_LETTER_SEND_FAILED: "recruitment.offer.letter_send_failed",
   RECRUITMENT_OFFER_ACCEPTED: "recruitment.offer.accepted",
   RECRUITMENT_OFFER_DECLINED: "recruitment.offer.declined",
   RECRUITMENT_OFFER_WITHDRAWN: "recruitment.offer.withdrawn",

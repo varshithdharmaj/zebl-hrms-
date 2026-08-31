@@ -95,20 +95,7 @@ function scopeWhere(scope: RecruitmentScope): Prisma.OfferWhereInput {
 function filtersWhere(filters?: OfferListFilters): Prisma.OfferWhereInput {
   const where: Prisma.OfferWhereInput = {};
   if (filters?.status && filters.status !== "all") {
-    if (filters.status === "expired") {
-      where.OR = [
-        {
-          status: OfferStatus.released,
-          expiresAt: { lt: new Date() },
-        },
-        {
-          status: OfferStatus.declined,
-          offerNotes: { contains: "Offer Expired" },
-        },
-      ];
-    } else {
-      where.status = filters.status as OfferStatus;
-    }
+    where.status = filters.status as OfferStatus;
   }
   if (filters?.department && filters.department !== "all") {
     where.department = filters.department;
@@ -181,36 +168,40 @@ function toOfferByApplication(row: OfferDetailRow): OfferByApplication {
 export const prismaOfferRepository: OfferRepository = {
   async createOffer(data, tx) {
     const client: Client = tx ?? prisma;
-    const created = await client.offer.create({
-      data: {
-        applicationId: data.applicationId,
-        hiringDecisionId: data.hiringDecisionId ?? null,
-        status: data.status ?? OfferStatus.draft,
-        currency: data.currency ?? "INR",
-        baseSalary: new Prisma.Decimal(data.baseSalary),
-        variablePay: data.variablePay != null ? new Prisma.Decimal(data.variablePay) : null,
-        benefitsNotes: data.benefitsNotes ?? null,
-        proposedStartDate: data.proposedStartDate ? new Date(data.proposedStartDate) : null,
-        expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
-        createdByUserId: data.createdByUserId ?? null,
+    const createData: Prisma.OfferCreateInput & Record<string, unknown> = {
+      application: { connect: { id: data.applicationId } },
+      ...(data.hiringDecisionId ? { hiringDecision: { connect: { id: data.hiringDecisionId } } } : {}),
+      status: data.status ?? OfferStatus.draft,
+      currency: data.currency ?? "INR",
+      baseSalary: new Prisma.Decimal(data.baseSalary),
+      variablePay: data.variablePay != null ? new Prisma.Decimal(data.variablePay) : null,
+      benefitsNotes: data.benefitsNotes ?? null,
+      proposedStartDate: data.proposedStartDate ? new Date(data.proposedStartDate) : null,
+      expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
+      declineReason: data.declineReason ?? null,
+      withdrawReason: data.withdrawReason ?? null,
+      ...(data.createdByUserId ? { createdBy: { connect: { id: data.createdByUserId } } } : {}),
 
-        // Additional fields
-        offerNumber: data.offerNumber ?? null,
-        employmentType: data.employmentType ?? null,
-        department: data.department ?? null,
-        location: data.location ?? null,
-        grade: data.grade ?? null,
-        reportingManagerId: data.reportingManagerId ?? null,
-        joiningDate: data.joiningDate ? new Date(data.joiningDate) : null,
-        ctc: data.ctc != null ? new Prisma.Decimal(data.ctc) : null,
-        salaryBreakdownJson: data.salaryBreakdownJson ?? {},
-        bonus: data.bonus != null ? new Prisma.Decimal(data.bonus) : null,
-        stock: data.stock ?? null,
-        probationDays: data.probationDays ?? null,
-        noticeBuyout: data.noticeBuyout ?? false,
-        offerPdfKey: data.offerPdfKey ?? null,
-        offerNotes: data.offerNotes ?? null,
-      },
+      // Additional fields
+      offerNumber: data.offerNumber,
+      employmentType: data.employmentType ?? null,
+      department: data.department ?? null,
+      location: data.location ?? null,
+      grade: data.grade ?? null,
+      reportingManagerId: data.reportingManagerId ?? null,
+      joiningDate: data.joiningDate ? new Date(data.joiningDate) : null,
+      ctc: data.ctc != null ? new Prisma.Decimal(data.ctc) : null,
+      salaryBreakdownJson: data.salaryBreakdownJson ?? {},
+      bonus: data.bonus != null ? new Prisma.Decimal(data.bonus) : null,
+      stock: data.stock ?? null,
+      probationDays: data.probationDays ?? null,
+      noticeBuyout: data.noticeBuyout ?? false,
+      offerPdfKey: data.offerPdfKey ?? null,
+      offerNotes: data.offerNotes ?? null,
+    };
+
+    const created = await client.offer.create({
+      data: createData as Prisma.OfferCreateInput,
     });
 
     return { id: created.id };
@@ -218,34 +209,41 @@ export const prismaOfferRepository: OfferRepository = {
 
   async updateOffer(id, patch, tx) {
     const client: Client = tx ?? prisma;
+    const updateData: Prisma.OfferUpdateInput & Record<string, unknown> = {
+      status: patch.status,
+      currency: patch.currency,
+      baseSalary: patch.baseSalary != null ? new Prisma.Decimal(patch.baseSalary) : undefined,
+      variablePay: patch.variablePay !== undefined ? (patch.variablePay != null ? new Prisma.Decimal(patch.variablePay) : null) : undefined,
+      benefitsNotes: patch.benefitsNotes,
+      proposedStartDate: patch.proposedStartDate ? new Date(patch.proposedStartDate) : undefined,
+      expiresAt: patch.expiresAt ? new Date(patch.expiresAt) : undefined,
+      declineReason: patch.declineReason,
+      withdrawReason: patch.withdrawReason,
+
+      // Additional fields
+      offerNumber: patch.offerNumber,
+      employmentType: patch.employmentType,
+      department: patch.department,
+      location: patch.location,
+      grade: patch.grade,
+      reportingManagerId: patch.reportingManagerId,
+      joiningDate: patch.joiningDate ? new Date(patch.joiningDate) : undefined,
+      ctc: patch.ctc != null ? new Prisma.Decimal(patch.ctc) : undefined,
+      salaryBreakdownJson: patch.salaryBreakdownJson,
+      bonus: patch.bonus !== undefined ? (patch.bonus != null ? new Prisma.Decimal(patch.bonus) : null) : undefined,
+      stock: patch.stock,
+      probationDays: patch.probationDays,
+      noticeBuyout: patch.noticeBuyout,
+      offerPdfKey: patch.offerPdfKey,
+      offerNotes: patch.offerNotes,
+      letterGeneratedAt: patch.letterGeneratedAt,
+      letterGeneratedByUserId: patch.letterGeneratedByUserId,
+      letterSentByUserId: patch.letterSentByUserId,
+    };
+
     await client.offer.update({
       where: { id },
-      data: {
-        status: patch.status,
-        currency: patch.currency,
-        baseSalary: patch.baseSalary != null ? new Prisma.Decimal(patch.baseSalary) : undefined,
-        variablePay: patch.variablePay !== undefined ? (patch.variablePay != null ? new Prisma.Decimal(patch.variablePay) : null) : undefined,
-        benefitsNotes: patch.benefitsNotes,
-        proposedStartDate: patch.proposedStartDate ? new Date(patch.proposedStartDate) : undefined,
-        expiresAt: patch.expiresAt ? new Date(patch.expiresAt) : undefined,
-
-        // Additional fields
-        offerNumber: patch.offerNumber,
-        employmentType: patch.employmentType,
-        department: patch.department,
-        location: patch.location,
-        grade: patch.grade,
-        reportingManagerId: patch.reportingManagerId,
-        joiningDate: patch.joiningDate ? new Date(patch.joiningDate) : undefined,
-        ctc: patch.ctc != null ? new Prisma.Decimal(patch.ctc) : undefined,
-        salaryBreakdownJson: patch.salaryBreakdownJson,
-        bonus: patch.bonus !== undefined ? (patch.bonus != null ? new Prisma.Decimal(patch.bonus) : null) : undefined,
-        stock: patch.stock,
-        probationDays: patch.probationDays,
-        noticeBuyout: patch.noticeBuyout,
-        offerPdfKey: patch.offerPdfKey,
-        offerNotes: patch.offerNotes,
-      },
+      data: updateData as Prisma.OfferUpdateInput,
     });
   },
 
@@ -291,7 +289,7 @@ export const prismaOfferRepository: OfferRepository = {
     return rows.map((row) => toOfferByApplication(row));
   },
 
-  async sendOffer(id, expiresAt, tx) {
+  async sendOffer(id, expiresAt, letterSentByUserId, tx) {
     const client: Client = tx ?? prisma;
     await client.offer.update({
       where: { id },
@@ -299,6 +297,7 @@ export const prismaOfferRepository: OfferRepository = {
         status: OfferStatus.released,
         releasedAt: new Date(),
         sentAt: new Date(),
+        letterSentByUserId,
         expiresAt: expiresAt ? new Date(expiresAt) : undefined,
       },
     });
@@ -317,44 +316,46 @@ export const prismaOfferRepository: OfferRepository = {
 
   async declineOffer(id, declinedAt, reason, tx) {
     const client: Client = tx ?? prisma;
+    const updateData: Record<string, unknown> = {
+      status: OfferStatus.declined,
+      declinedAt: declinedAt ? new Date(declinedAt) : new Date(),
+      declineReason: reason ?? null,
+    };
     await client.offer.update({
       where: { id },
-      data: {
-        status: OfferStatus.declined,
-        declinedAt: declinedAt ? new Date(declinedAt) : new Date(),
-        offerNotes: reason ? `Declined Reason: ${reason}` : undefined,
-      },
+      data: updateData as Prisma.OfferUpdateInput,
     });
   },
 
   async withdrawOffer(id, reason, tx) {
     const client: Client = tx ?? prisma;
+    const updateData: Record<string, unknown> = {
+      status: OfferStatus.withdrawn,
+      withdrawnAt: new Date(),
+      withdrawReason: reason ?? null,
+    };
     await client.offer.update({
       where: { id },
-      data: {
-        status: OfferStatus.withdrawn,
-        withdrawnAt: new Date(),
-        offerNotes: reason ? `Withdrawn Reason: ${reason}` : undefined,
-      },
+      data: updateData as Prisma.OfferUpdateInput,
     });
   },
 
   async expireOffer(id, tx) {
     const client: Client = tx ?? prisma;
+    const updateData: Record<string, unknown> = {
+      status: OfferStatus.declined,
+      declinedAt: new Date(),
+      declineReason: "Offer Expired",
+    };
     await client.offer.update({
       where: { id },
-      data: {
-        status: OfferStatus.declined,
-        declinedAt: new Date(),
-        offerNotes: "Offer Expired",
-      },
+      data: updateData as Prisma.OfferUpdateInput,
     });
   },
 
   async createRevision(offerId, snapshot, changeNote, actorUserId, tx) {
     const client: Client = tx ?? prisma;
-    
-    // Find latest version
+
     const latest = await client.offerRevision.findFirst({
       where: { offerId },
       orderBy: { version: "desc" },
@@ -387,12 +388,7 @@ export const prismaOfferRepository: OfferRepository = {
       where: {
         applicationId,
         status: {
-          in: [
-            OfferStatus.draft,
-            OfferStatus.manager_approval,
-            OfferStatus.hr_approval,
-            OfferStatus.released,
-          ],
+          in: [OfferStatus.draft, OfferStatus.released],
         },
       },
     });

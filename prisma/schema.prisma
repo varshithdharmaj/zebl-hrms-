@@ -1262,8 +1262,6 @@ enum HiringDecisionOutcome {
 
 enum OfferStatus {
   draft
-  manager_approval
-  hr_approval
   released
   accepted
   declined
@@ -1472,9 +1470,9 @@ model JobOpeningStage {
   label        String?
   slaDays      Int?                     @map("sla_days")
 
-  applications      Application[]
-  historyFromStage  ApplicationStageHistory[] @relation("StageHistoryFromStage")
-  historyToStage    ApplicationStageHistory[] @relation("StageHistoryToStage")
+  applications     Application[]
+  historyFromStage ApplicationStageHistory[] @relation("StageHistoryFromStage")
+  historyToStage   ApplicationStageHistory[] @relation("StageHistoryToStage")
 
   @@unique([jobOpeningId, stage])
   @@unique([jobOpeningId, sortOrder])
@@ -2182,11 +2180,8 @@ model Offer {
   benefitsNotes           String?         @map("benefits_notes")
   proposedStartDate       DateTime?       @map("proposed_start_date")
   expiresAt               DateTime?       @map("expires_at")
-  managerApprovalSkipped  Boolean         @default(false) @map("manager_approval_skipped")
-  managerApprovedByUserId String?         @map("manager_approved_by_user_id")
-  managerApprovedAt       DateTime?       @map("manager_approved_at")
-  hrApprovedByUserId      String?         @map("hr_approved_by_user_id")
-  hrApprovedAt            DateTime?       @map("hr_approved_at")
+  declineReason           String?         @map("decline_reason")
+  withdrawReason          String?         @map("withdraw_reason")
   releasedAt              DateTime?       @map("released_at")
   acceptedAt              DateTime?       @map("accepted_at")
   declinedAt              DateTime?       @map("declined_at")
@@ -2197,7 +2192,7 @@ model Offer {
   updatedAt               DateTime        @updatedAt @map("updated_at")
 
   // Additional fields for Phase 4.2 Offer Management
-  offerNumber         String?   @map("offer_number")
+  offerNumber         String    @unique @map("offer_number")
   employmentType      String?   @map("employment_type")
   department          String?   @map("department")
   location            String?   @map("location")
@@ -2213,6 +2208,11 @@ model Offer {
   offerPdfKey         String?   @map("offer_pdf_key")
   offerNotes          String?   @map("offer_notes")
   sentAt              DateTime? @map("sent_at")
+
+  // Offer letter generation & delivery
+  letterGeneratedAt       DateTime? @map("letter_generated_at")
+  letterGeneratedByUserId String?   @map("letter_generated_by_user_id")
+  letterSentByUserId      String?   @map("letter_sent_by_user_id")
 
   revisions          OfferRevision[]
   conversionSnapshot EmployeeConversionSnapshot?

@@ -10,7 +10,7 @@ export const createOfferSchema = z.object({
   benefitsNotes: z.string().trim().optional().nullable(),
   proposedStartDate: z.string().trim().optional().nullable(),
   expiresAt: z.string().trim().optional().nullable(),
-  offerNumber: z.string().trim().optional().nullable(),
+  offerNumber: z.string().trim().optional(),
   employmentType: z.string().trim().min(1, "Employment type is required."),
   department: z.string().trim().min(1, "Department is required."),
   location: z.string().trim().min(1, "Location is required."),
@@ -27,7 +27,9 @@ export const createOfferSchema = z.object({
   stock: z.string().trim().optional().nullable(),
   probationDays: z.coerce.number().int().nonnegative().optional().nullable(),
   noticeBuyout: z.boolean().optional().default(false),
-  offerPdfKey: z.string().trim().optional().nullable(),
+  // offerPdfKey is deliberately not client-writable here — it is only ever
+  // set server-side via generateOfferLetter()/attachOfferPdf() so a client
+  // can never point an offer at an arbitrary storage path.
   offerNotes: z.string().trim().optional().nullable(),
 });
 
@@ -74,5 +76,9 @@ export const attachOfferPdfSchema = z.object({
 });
 
 export const expireOfferSchema = z.object({
+  id: z.string().trim().min(1, "Offer ID is required."),
+});
+
+export const generateOfferLetterSchema = z.object({
   id: z.string().trim().min(1, "Offer ID is required."),
 });

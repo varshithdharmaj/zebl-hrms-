@@ -96,6 +96,20 @@ export const publicReviewPayloadSchema = z.object({
   skills: z.array(skillRowSchema).max(80).default([]),
   projects: z.array(projectRowSchema).max(30).default([]),
   certifications: z.array(certificationRowSchema).max(30).default([]),
+  // Candidate-entered only — never populated from resume parsing (see
+  // RESUME_IMPORT_DENIED_SCALAR_KEYS).
+  compensation: z
+    .object({
+      currentCtc: z
+        .string()
+        .trim()
+        .max(20)
+        .regex(/^\d+(\.\d{1,2})?$/, "Enter a numeric amount.")
+        .nullable()
+        .optional(),
+      noticePeriodDays: z.number().int().min(0).max(365).nullable().optional(),
+    })
+    .default({}),
 });
 
 export const publicSubmitSchema = z.object({

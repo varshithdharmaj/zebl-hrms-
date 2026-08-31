@@ -33,6 +33,11 @@ type ReviewProfessional = {
   willingToRelocate: boolean | null;
 };
 
+type ReviewCompensation = {
+  currentCtc: string | null;
+  noticePeriodDays: number | null;
+};
+
 type ExperienceRow = { company: string; title: string; startDate?: string | null; endDate?: string | null; description?: string | null };
 type EducationRow = { institution: string; degree?: string | null; field?: string | null };
 type SkillRow = { name: string; proficiency?: string | null };
@@ -42,6 +47,7 @@ type CertificationRow = { name: string; issuer?: string | null };
 type ReviewPayload = {
   personal: ReviewPersonal;
   professional: ReviewProfessional;
+  compensation: ReviewCompensation;
   experiences: ExperienceRow[];
   educations: EducationRow[];
   skills: SkillRow[];
@@ -49,14 +55,21 @@ type ReviewPayload = {
   certifications: CertificationRow[];
 };
 
-const STEP_LABEL: Record<Step, string> = {
-  basic: "Step 1 of 4 — Your details",
-  resume: "Step 2 of 4 — Resume",
-  parsing: "Step 2 of 4 — Resume",
-  review: "Step 3 of 4 — Review",
-  confirm: "Step 4 of 4 — Submit",
-  success: "Done",
+type Section = "basic" | "resume" | "review" | "confirm";
+
+/** Linear section order the form reveals progressively, one below the last as each completes. */
+const SECTION_ORDER = ["basic", "resume", "review", "confirm"] as const satisfies readonly Section[];
+const SECTION_TITLE: Record<Section, string> = {
+  basic: "Your details",
+  resume: "Resume & photo",
+  review: "Review",
+  confirm: "Submit",
 };
+
+/** "parsing" is a transient sub-state of the resume section, not its own slot. */
+function sectionOf(step: Step): Section | "success" {
+  return step === "parsing" ? "resume" : (step as Section | "success");
+}
 
 async function callApi<T>(path: string, options: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -82,6 +95,7 @@ export function PublicApplyFlow({ jobPublicSlug, jobTitle }: { jobPublicSlug: st
 
   const [basic, setBasic] = useState({ fullName: "", email: "", phone: "" });
   const [file, setFile] = useState<File | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [parseNote, setParseNote] = useState<string | null>(null);
   const [review, setReview] = useState<ReviewPayload | null>(null);
   const [consent, setConsent] = useState(false);
@@ -135,17 +149,25 @@ export function PublicApplyFlow({ jobPublicSlug, jobTitle }: { jobPublicSlug: st
   }
 
   async function handleResumeUpload() {
-    if (!file || !token) return;
+    if (!file || !photoFile || !token) return;
     setError(null);
     setBusy(true);
     setParseNote(null);
     try {
-      const form = new FormData();
-      form.append("resume", file);
-      await callApi(`/api/public/applications/${encodeURIComponent(token)}/resume`, {
-        method: "POST",
-        body: form,
-      });
+      const resumeForm = new FormData();
+      resumeForm.append("resume", file);
+      const photoForm = new FormData();
+      photoForm.append("photo", photoFile);
+      await Promise.all([
+        callApi(`/api/public/applications/${encodeURIComponent(token)}/resume`, {
+          method: "POST",
+          body: resumeForm,
+        }),
+        callApi(`/api/public/applications/${encodeURIComponent(token)}/photo`, {
+          method: "POST",
+          body: photoForm,
+        }),
+      ]);
       setStep("parsing");
 
       const outcome = await callApi<{ status: string; reason?: string }>(
@@ -230,17 +252,23 @@ export function PublicApplyFlow({ jobPublicSlug, jobTitle }: { jobPublicSlug: st
     );
   }
 
+  const activeSection = sectionOf(step);
+  const activeIndex = SECTION_ORDER.indexOf(activeSection as Section);
+
   return (
     <Card>
       <CardHeader>
-        <Badge className="w-fit">{STEP_LABEL[step]}</Badge>
+        <Badge className="w-fit">
+          Step {activeIndex + 1} of {SECTION_ORDER.length} — {SECTION_TITLE[activeSection as Section]}
+        </Badge>
         <CardTitle className="text-lg">Apply for {jobTitle}</CardTitle>
         <CardDescription>No account needed — this takes about 3 minutes.</CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-5 pt-0">
+      <CardContent className="flex flex-col gap-6 pt-0">
         {error ? <ErrorAlert message={error} /> : null}
 
-        {step === "basic" && (
+        {/* Section 1: your details */}
+        {activeIndex === 0 ? (
           <div className="flex flex-col gap-4">
             {/* Honeypot — hidden from sighted users and screen readers alike;
                 a filled-in value means a bot, not a candidate. */}
@@ -287,40 +315,67 @@ export function PublicApplyFlow({ jobPublicSlug, jobTitle }: { jobPublicSlug: st
               Continue
             </Button>
           </div>
+        ) : (
+          <CompletedSection
+            title={SECTION_TITLE.basic}
+            summary={[basic.fullName, basic.email, basic.phone].filter(Boolean).join(" · ")}
+          />
         )}
 
-        {step === "resume" && (
-          <div className="flex flex-col gap-4">
-            <Field label="Resume (PDF or Word, up to 10 MB)">
-              <Input
-                type="file"
-                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              />
-            </Field>
-            <Button onClick={handleResumeUpload} loading={busy} disabled={!file}>
-              Upload & continue
-            </Button>
-          </div>
-        )}
+        {/* Section 2: resume & photo */}
+        {activeIndex >= 1 &&
+          (activeIndex === 1 ? (
+            <div className="flex flex-col gap-4 border-t border-border pt-6">
+              {step === "parsing" ? (
+                <p className="py-8 text-center text-sm text-muted-foreground" aria-live="polite">
+                  Reading your resume…
+                </p>
+              ) : (
+                <>
+                  <Field label="Resume (PDF or Word, up to 10 MB)">
+                    <Input
+                      type="file"
+                      accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                    />
+                  </Field>
+                  <Field label="Passport-size photo (JPEG, PNG, or WebP, up to 5 MB)">
+                    <Input
+                      type="file"
+                      accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                      onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)}
+                    />
+                  </Field>
+                  <Button onClick={handleResumeUpload} loading={busy} disabled={!file || !photoFile}>
+                    Upload & continue
+                  </Button>
+                </>
+              )}
+            </div>
+          ) : (
+            <CompletedSection
+              title={SECTION_TITLE.resume}
+              summary={[file?.name, photoFile?.name].filter(Boolean).join(" · ")}
+            />
+          ))}
 
-        {step === "parsing" && (
-          <p className="py-8 text-center text-sm text-muted-foreground" aria-live="polite">
-            Reading your resume…
-          </p>
-        )}
+        {/* Section 3: review */}
+        {activeIndex >= 2 &&
+          review &&
+          (activeIndex === 2 ? (
+            <div className="flex flex-col gap-4 border-t border-border pt-6">
+              <ReviewForm review={review} onChange={setReview} parseNote={parseNote} />
+              <Button onClick={handleReviewContinue} loading={busy} disabled={!review.personal?.fullName?.trim()}>
+                Continue
+              </Button>
+            </div>
+          ) : (
+            <CompletedSection title={SECTION_TITLE.review} summary="Profile reviewed" />
+          ))}
 
-        {step === "review" && review && (
-          <ReviewForm review={review} onChange={setReview} parseNote={parseNote} />
-        )}
-        {step === "review" && (
-          <Button onClick={handleReviewContinue} loading={busy} disabled={!review?.personal.fullName.trim()}>
-            Continue
-          </Button>
-        )}
-
-        {step === "confirm" && review && (
-          <div className="flex flex-col gap-4">
+        {/* Section 4: submit */}
+        {activeIndex >= 3 && review && (
+          <div className="flex flex-col gap-4 border-t border-border pt-6">
             <p className="text-sm text-muted-foreground">
               Please review your information before submitting. Once submitted, you cannot edit this
               application.
@@ -343,6 +398,23 @@ export function PublicApplyFlow({ jobPublicSlug, jobTitle }: { jobPublicSlug: st
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function CompletedSection({ title, summary }: { title: string; summary: string }) {
+  return (
+    <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 p-3 text-sm">
+      <span
+        aria-hidden="true"
+        className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary"
+      >
+        ✓
+      </span>
+      <div className="min-w-0">
+        <p className="font-medium text-foreground">{title}</p>
+        {summary ? <p className="truncate text-muted-foreground">{summary}</p> : null}
+      </div>
+    </div>
   );
 }
 
@@ -383,6 +455,9 @@ function ReviewForm({
   }
   function setProfessional(patch: Partial<ReviewProfessional>) {
     onChange({ ...review, professional: { ...review.professional, ...patch } });
+  }
+  function setCompensation(patch: Partial<ReviewCompensation>) {
+    onChange({ ...review, compensation: { ...review.compensation, ...patch } });
   }
 
   return (
@@ -426,6 +501,30 @@ function ReviewForm({
           <Input
             value={review.professional.professionalSummary ?? ""}
             onChange={(e) => setProfessional({ professionalSummary: e.target.value })}
+          />
+        </Field>
+      </section>
+
+      <section className="flex flex-col gap-4">
+        <h3 className="text-sm font-semibold text-foreground">Compensation & availability</h3>
+        <Field label="Current CTC (annual, INR)">
+          <Input
+            type="text"
+            inputMode="decimal"
+            placeholder="e.g. 1200000"
+            value={review.compensation.currentCtc ?? ""}
+            onChange={(e) => setCompensation({ currentCtc: e.target.value || null })}
+          />
+        </Field>
+        <Field label="Notice period (days)">
+          <Input
+            type="number"
+            min={0}
+            placeholder="e.g. 30"
+            value={review.compensation.noticePeriodDays ?? ""}
+            onChange={(e) =>
+              setCompensation({ noticePeriodDays: e.target.value === "" ? null : Number(e.target.value) })
+            }
           />
         </Field>
       </section>

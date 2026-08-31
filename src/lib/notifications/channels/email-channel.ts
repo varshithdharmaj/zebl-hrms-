@@ -10,7 +10,8 @@ import {
 
 let transporter: Transporter | null = null;
 
-function getTransporter(): Transporter | null {
+/** Shared SMTP transport — reused by the notification channel and by direct-send paths (e.g. offer letters). */
+export function getTransporter(): Transporter | null {
   if (transporter) return transporter;
 
   const host = process.env.SMTP_HOST;

@@ -11,9 +11,6 @@ export const offerListFiltersSchema = z.object({
       OfferStatus.accepted,
       OfferStatus.declined,
       OfferStatus.withdrawn,
-      "expired",
-      OfferStatus.manager_approval,
-      OfferStatus.hr_approval,
     ])
     .default("all"),
   jobOpeningId: z.string().trim().optional().default("all"),

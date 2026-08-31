@@ -82,7 +82,7 @@ export type OfferCreateData = {
   proposedStartDate?: string | Date | null;
   expiresAt?: string | Date | null;
   createdByUserId?: string | null;
-  offerNumber?: string | null;
+  offerNumber: string;
   employmentType?: string | null;
   department?: string | null;
   location?: string | null;
@@ -97,6 +97,8 @@ export type OfferCreateData = {
   noticeBuyout?: boolean;
   offerPdfKey?: string | null;
   offerNotes?: string | null;
+  declineReason?: string | null;
+  withdrawReason?: string | null;
 };
 
 export type OfferUpdateData = Partial<OfferCreateData> & {
@@ -106,6 +108,11 @@ export type OfferUpdateData = Partial<OfferCreateData> & {
   acceptedAt?: Date | null;
   declinedAt?: Date | null;
   withdrawnAt?: Date | null;
+  declineReason?: string | null;
+  withdrawReason?: string | null;
+  letterGeneratedAt?: Date | null;
+  letterGeneratedByUserId?: string | null;
+  letterSentByUserId?: string | null;
 };
 
 export type OfferRevisionSnapshot = Prisma.InputJsonValue;
@@ -118,7 +125,12 @@ export type OfferRepository = {
   getOffer(id: string): Promise<OfferDetail | null>;
   listOffers(args: ScopedListArgs): Promise<PageResult<OfferDetail>>;
   listByApplication(applicationId: string): Promise<readonly OfferByApplication[]>;
-  sendOffer(id: string, expiresAt: Date | null, tx?: RepositoryTx): Promise<void>;
+  sendOffer(
+    id: string,
+    expiresAt: Date | null,
+    letterSentByUserId: string,
+    tx?: RepositoryTx
+  ): Promise<void>;
   acceptOffer(id: string, acceptedAt: Date | null, tx?: RepositoryTx): Promise<void>;
   declineOffer(
     id: string,

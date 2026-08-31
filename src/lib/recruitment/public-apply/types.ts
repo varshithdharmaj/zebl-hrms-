@@ -55,9 +55,20 @@ export const TERMINAL_STATUSES: readonly PublicSubmissionStatus[] = [
 
 export type PublicReviewSection = "experiences" | "educations" | "skills" | "projects" | "certifications";
 
-/** Candidate-editable review payload — same shape as ResumeImportMappedDraft,
- * never includes fieldConfidence or any parser-internal metadata. */
-export type PublicReviewPayload = ResumeImportMappedDraft;
+/** Candidate-supplied compensation/availability — deliberately NOT part of
+ * ResumeImportMappedDraft (see RESUME_IMPORT_DENIED_SCALAR_KEYS): these must
+ * always come from the candidate typing them in, never from resume parsing. */
+export type PublicCompensationMapped = {
+  currentCtc?: string | null;
+  noticePeriodDays?: number | null;
+};
+
+/** Candidate-editable review payload — same shape as ResumeImportMappedDraft
+ * plus a candidate-entered compensation section, never includes
+ * fieldConfidence or any parser-internal metadata. */
+export type PublicReviewPayload = ResumeImportMappedDraft & {
+  compensation: PublicCompensationMapped;
+};
 
 export type PublicErrorCode =
   | "JOB_UNAVAILABLE"

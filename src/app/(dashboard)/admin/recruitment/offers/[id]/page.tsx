@@ -13,7 +13,6 @@ import {
   type SalaryBreakdownCardOffer,
 } from "@/components/recruitment/offers/salary-breakdown-card";
 import { OfferTimelineCard } from "@/components/recruitment/offers/offer-timeline-card";
-import { OfferApprovalCard } from "@/components/recruitment/offers/offer-approval-card";
 import { OfferPDFViewer } from "@/components/recruitment/offers/offer-pdf-viewer";
 import { OfferActivityCard } from "@/components/recruitment/offers/offer-activity-card";
 import { OfferDetailActions } from "@/components/recruitment/offers/offer-detail-actions";
@@ -157,6 +156,7 @@ export default async function OfferDetailPage({
   const backHref = resolveRecruitmentReturnTo(nav.returnTo, "/admin/recruitment/offers");
 
   const revisionCount = offer.revisions?.length ?? 0;
+  const offerRecord = offer as unknown as Record<string, unknown>;
 
   return (
     <div className="space-y-6 lg:space-y-8">
@@ -187,6 +187,13 @@ export default async function OfferDetailPage({
                 (Object.values(OfferStatus) as string[]).includes(offer.status)
                   ? (offer.status as OfferStatus)
                   : OfferStatus.draft,
+              offerPdfKey: asNullableString(offer.offerPdfKey),
+              releasedAt: asDateOrString(offerRecord.releasedAt),
+              acceptedAt: asDateOrString(offerRecord.acceptedAt),
+              declinedAt: asDateOrString(offerRecord.declinedAt),
+              withdrawnAt: asDateOrString(offerRecord.withdrawnAt),
+              declineReason: asNullableString(offerRecord.declineReason),
+              withdrawReason: asNullableString(offerRecord.withdrawReason),
             }}
             userRole={session.role}
           />
@@ -199,7 +206,7 @@ export default async function OfferDetailPage({
           <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
             Status:
           </span>
-          <OfferStatusBadge status={offer.status} />
+          <OfferStatusBadge status={offer.status} expiresAt={asDateOrString(offerRecord.expiresAt)} />
         </div>
         <div className="h-4 w-px bg-border hidden sm:block" />
         <div className="flex items-center gap-2">
@@ -216,36 +223,8 @@ export default async function OfferDetailPage({
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Left 2 Columns */}
         <div className="lg:col-span-2 space-y-6">
-          <OfferSummaryCard offer={toOfferSummaryCardOffer(offer)} />
-          <SalaryBreakdownCard offer={toSalaryBreakdownCardOffer(offer)} />
-          <OfferApprovalCard
-            offer={{
-              managerApprovedAt:
-                offer.managerApprovedAt instanceof Date
-                  ? offer.managerApprovedAt
-                  : typeof offer.managerApprovedAt === "string"
-                    ? new Date(offer.managerApprovedAt)
-                    : null,
-              managerApprovalSkipped:
-                typeof offer.managerApprovalSkipped === "boolean"
-                  ? offer.managerApprovalSkipped
-                  : false,
-              managerApprovedByUserId:
-                typeof offer.managerApprovedByUserId === "string"
-                  ? offer.managerApprovedByUserId
-                  : null,
-              hrApprovedAt:
-                offer.hrApprovedAt instanceof Date
-                  ? offer.hrApprovedAt
-                  : typeof offer.hrApprovedAt === "string"
-                    ? new Date(offer.hrApprovedAt)
-                    : null,
-              hrApprovedByUserId:
-                typeof offer.hrApprovedByUserId === "string"
-                  ? offer.hrApprovedByUserId
-                  : null,
-            }}
-          />
+          <OfferSummaryCard offer={toOfferSummaryCardOffer(offerRecord)} />
+          <SalaryBreakdownCard offer={toSalaryBreakdownCardOffer(offerRecord)} />
           <OfferRevisionPanel
             offerId={offer.id}
             revisions={(offer.revisions ?? []) as never[]}

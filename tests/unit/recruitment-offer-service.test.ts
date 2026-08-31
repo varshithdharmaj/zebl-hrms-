@@ -4,6 +4,8 @@ import { createOfferService } from "@/lib/recruitment/services/offer-service";
 import type { OfferRepository } from "@/lib/recruitment/repositories/offer-repository";
 import type { SessionUser } from "@/lib/session";
 import { RecruitmentDomainError } from "@/lib/recruitment/shared/errors";
+import type { SendOfferLetterEmailResult } from "@/lib/recruitment/email/send-offer-letter-email";
+import type { StorageAdapter } from "@/lib/recruitment/storage";
 
 const findUniqueSettings = vi.fn(async () => ({ requireDecisionForOffer: true }));
 const findCurrentDecision = vi.fn(async () => ({
@@ -74,6 +76,23 @@ vi.mock("@/lib/recruitment/repositories/prisma-application-repository", () => ({
   },
 }));
 
+vi.mock("@/lib/audit", () => ({
+  writeAuditLog: vi.fn(async () => undefined),
+  AUDIT_ACTIONS: {
+    RECRUITMENT_OFFER_SENT: "recruitment.offer.sent",
+    RECRUITMENT_OFFER_LETTER_GENERATED: "recruitment.offer.letter_generated",
+    RECRUITMENT_OFFER_LETTER_SEND_FAILED: "recruitment.offer.letter_send_failed",
+  },
+}));
+
+vi.mock("@/lib/recruitment/repositories/prisma-communication-repository", () => ({
+  prismaCommunicationRepository: {
+    createCommunication: vi.fn(async () => ({ id: "comm-1" })),
+    updateCommunication: vi.fn(async () => undefined),
+    addAttachment: vi.fn(async () => ({ id: "att-1" })),
+  },
+}));
+
 const hrSession: SessionUser = {
   id: "user-hr",
   email: "hr@example.com",
@@ -107,6 +126,8 @@ const offerInput = {
 
 describe("OfferService", () => {
   let mockRepo: OfferRepository;
+  let mockStorage: StorageAdapter;
+  let sendEmail: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -116,6 +137,19 @@ describe("OfferService", () => {
       applicationId: "app-1",
       outcome: HiringDecisionOutcome.hire,
     });
+    mockStorage = {
+      save: vi.fn(async () => undefined),
+      read: vi.fn(async () => Buffer.from("%PDF-fake")),
+      delete: vi.fn(async () => undefined),
+      exists: vi.fn(async () => true),
+      getMetadata: vi.fn(async () => null),
+    };
+    sendEmail = vi.fn(
+      async (): Promise<SendOfferLetterEmailResult> => ({
+        success: true,
+        providerMessageId: "msg-1",
+      })
+    );
     mockRepo = {
       createOffer: vi.fn(async () => ({ id: "off-1" })),
       updateOffer: vi.fn(async () => undefined),
@@ -127,9 +161,12 @@ describe("OfferService", () => {
         baseSalary: "1000000",
         ctc: "1200000",
         currency: "INR",
+        offerPdfKey: "offers/off-1/pdf/existing-letter.pdf",
         application: {
           candidateId: "cand-1",
           jobOpeningId: "job-1",
+          candidate: { fullName: "Jane Doe", email: "jane@example.com" },
+          jobOpening: { title: "Software Engineer" },
         },
       })),
       listOffers: vi.fn(async () => ({ items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 })),
@@ -248,10 +285,16 @@ describe("OfferService", () => {
   });
 
   it("should send offer successfully", async () => {
-    const service = createOfferService(mockRepo);
+    const service = createOfferService(mockRepo, mockStorage, sendEmail);
     await service.sendOffer(hrSession, { id: "off-1", expiresAt: "2026-08-15" });
 
-    expect(mockRepo.sendOffer).toHaveBeenCalled();
+    expect(sendEmail).toHaveBeenCalled();
+    expect(mockRepo.sendOffer).toHaveBeenCalledWith(
+      "off-1",
+      new Date("2026-08-15"),
+      "user-hr",
+      expect.anything()
+    );
   });
 
   it("should allow HR to withdraw offer", async () => {
@@ -266,14 +309,14 @@ describe("OfferService", () => {
       },
     }));
 
-    const service = createOfferService(mockRepo);
+    const service = createOfferService(mockRepo, mockStorage, sendEmail);
     await service.withdrawOffer(hrSession, { id: "off-1", reason: "Budget cut" });
 
     expect(mockRepo.withdrawOffer).toHaveBeenCalled();
   });
 
   it("should prevent Manager from withdrawing offer", async () => {
-    const service = createOfferService(mockRepo);
+    const service = createOfferService(mockRepo, mockStorage, sendEmail);
 
     await expect(
       service.withdrawOffer(managerSession, { id: "off-1", reason: "Budget cut" })
