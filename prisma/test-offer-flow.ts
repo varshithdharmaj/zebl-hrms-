@@ -181,12 +181,12 @@ async function main(): Promise<void> {
     const outPath = resolve(process.cwd(), "storage", "test-offer-flow-letter.pdf");
     writeFileSync(outPath, pdfBuffer);
     console.log(`[AMS] Step 6 — Offer letter rendered: ${pageCount} page(s) -> ${outPath}`);
-    // A hard 2-page target isn't achievable for all 20 clauses + annexure at
-    // legible size without overlapping the letterhead footer (verified via
-    // direct rendering) — 3 is the correct, defect-free result. Flag anything
-    // else since that would mean the layout genuinely regressed.
-    if (pageCount !== 3) {
-      console.warn(`[AMS] WARNING: expected 3 pages (verified safe layout), got ${pageCount}.`);
+    // Verified via direct rendering: page 1 holds clauses 1-13, page 2 holds
+    // clauses 14-20 + Authorized Signatory sign-off + Annexure + Candidate
+    // Acceptance, with confirmed clearance above the letterhead footer band
+    // on both pages. Flag anything else as a real layout regression.
+    if (pageCount !== 2) {
+      console.warn(`[AMS] WARNING: expected 2 pages (verified safe layout), got ${pageCount}.`);
     }
 
     console.log("\n[AMS] Flow complete. Open in browser:");

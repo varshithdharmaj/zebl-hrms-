@@ -57,7 +57,7 @@ function createPrismaClient(): PrismaClient {
 
 const APP_BASE_URL = "http://localhost:3000";
 
-const CANDIDATE_EMAIL = "ananya.reddy.test@example.com";
+const CANDIDATE_EMAIL = "testname@example.com";
 const JOB_TITLE = "Senior Medical Billing Specialist";
 const JOB_DEPARTMENT = "Billing & Collections";
 const JOB_LOCATION = "Hyderabad";
@@ -90,9 +90,9 @@ async function main(): Promise<void> {
     } else {
       candidate = await prisma.candidate.create({
         data: {
-          fullName: "Ananya Reddy",
-          firstName: "Ananya",
-          lastName: "Reddy",
+          fullName: "testname",
+          firstName: "test",
+          lastName: "name",
           email: CANDIDATE_EMAIL,
           currentTitle: "Senior Medical Billing Specialist",
           location: "Hyderabad",
