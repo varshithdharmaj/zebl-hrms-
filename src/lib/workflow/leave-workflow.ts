@@ -162,7 +162,9 @@ function toWorkflowDomainError(error: unknown): never {
     if (
       error.message.startsWith("Insufficient ") ||
       error.message.includes("was already deducted") ||
-      error.message.includes("already has a")
+      error.message.includes("already has a") ||
+      error.message.startsWith("Accrual already posted:") ||
+      error.message.includes("EL lot balance changed concurrently")
     ) {
       throw new WorkflowError(error.message);
     }

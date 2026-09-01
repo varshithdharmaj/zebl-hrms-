@@ -28,13 +28,59 @@ describe("getElEligibilityDate", () => {
     expect(d).toEqual(new Date(2027, 0, 28));
   });
 
-  it("DOJ on leap day 29-Feb-2028 normalizes via calendar-month overflow into a non-leap target year", () => {
-    const d = getElEligibilityDate(new Date(2028, 1, 29), policy);
-    // 2028 is a leap year but 2029 is not (Feb 2029 has 28 days), so the
-    // naive +12-month Date arithmetic overflows Feb 29 into 1-Mar-2029.
-    // This is real calendar-month arithmetic (not a fixed-365-day
-    // approximation) — the overflow itself is a known, documented edge case.
-    expect(d).toEqual(new Date(2029, 2, 1));
+  it("DOJ on leap day 29-Feb-2024 clamps into a non-leap target year (2025 Feb has 28 days)", () => {
+    const d = getElEligibilityDate(new Date(2024, 1, 29), policy);
+    expect(d).toEqual(new Date(2025, 1, 28));
+  });
+});
+
+describe("addCalendarMonths month-end clamping (via getElEligibilityDate, +12 months)", () => {
+  // Confirmed rule: clamp to the last valid day of the target month rather
+  // than letting JS Date overflow into the next month (e.g. 31 Dec + 12mo
+  // must land on 31 Dec next year, never early January).
+  const cases: [string, Date, Date][] = [
+    ["28-Jan", new Date(2026, 0, 28), new Date(2027, 0, 28)],
+    ["29-Jan", new Date(2026, 0, 29), new Date(2027, 0, 29)],
+    ["30-Jan", new Date(2026, 0, 30), new Date(2027, 0, 30)],
+    ["31-Jan", new Date(2026, 0, 31), new Date(2027, 0, 31)],
+    ["28-Feb", new Date(2026, 1, 28), new Date(2027, 1, 28)],
+    ["29-Feb (leap source)", new Date(2024, 1, 29), new Date(2025, 1, 28)],
+    ["30-Mar", new Date(2026, 2, 30), new Date(2027, 2, 30)],
+    ["31-Mar", new Date(2026, 2, 31), new Date(2027, 2, 31)],
+    ["30-Apr", new Date(2026, 3, 30), new Date(2027, 3, 30)],
+    ["31-May", new Date(2026, 4, 31), new Date(2027, 4, 31)],
+    ["30-Nov", new Date(2026, 10, 30), new Date(2027, 10, 30)],
+    ["31-Dec", new Date(2026, 11, 31), new Date(2027, 11, 31)],
+  ];
+
+  it.each(cases)("%s + 12 months", (_label, doj, expected) => {
+    expect(getElEligibilityDate(doj, policy)).toEqual(expected);
+  });
+
+  it("31-Dec-2025 + 12 months = 31-Dec-2026 (does not overflow into January)", () => {
+    expect(getElEligibilityDate(new Date(2025, 11, 31), policy)).toEqual(new Date(2026, 11, 31));
+  });
+});
+
+describe("first applicable 26th after month-end-clamped eligibility", () => {
+  it("31-Jan DOJ -> eligibility 31-Jan next year -> first accrual 26th of the following month", () => {
+    const eligibility = getElEligibilityDate(new Date(2026, 0, 31), policy);
+    expect(eligibility).toEqual(new Date(2027, 0, 31));
+    // day 31 > cycleStartDay 26 -> next month's 26th
+    expect(getFirstElAccrualDate(eligibility, policy)).toEqual(new Date(2027, 1, 26));
+  });
+
+  it("30-Nov DOJ -> eligibility 30-Nov next year -> first accrual next month's 26th", () => {
+    const eligibility = getElEligibilityDate(new Date(2026, 10, 30), policy);
+    expect(eligibility).toEqual(new Date(2027, 10, 30));
+    expect(getFirstElAccrualDate(eligibility, policy)).toEqual(new Date(2027, 11, 26));
+  });
+
+  it("29-Feb (leap) DOJ -> eligibility clamped to 28-Feb next year -> first accrual same month's 26th", () => {
+    const eligibility = getElEligibilityDate(new Date(2024, 1, 29), policy);
+    expect(eligibility).toEqual(new Date(2025, 1, 28));
+    // day 28 > cycleStartDay 26 -> next month's 26th
+    expect(getFirstElAccrualDate(eligibility, policy)).toEqual(new Date(2025, 2, 26));
   });
 });
 
@@ -68,6 +114,28 @@ describe("getFirstElAccrualDate", () => {
     const eligibility = getElEligibilityDate(new Date(2026, 0, 26), policy);
     expect(eligibility).toEqual(new Date(2027, 0, 26));
     expect(getFirstElAccrualDate(eligibility, policy)).toEqual(new Date(2027, 0, 26));
+  });
+
+  it("DOJ one day before the 26th (25th) -> eligibility 25th next year -> first accrual same month's 26th", () => {
+    const eligibility = getElEligibilityDate(new Date(2026, 0, 25), policy);
+    expect(eligibility).toEqual(new Date(2027, 0, 25));
+    expect(getFirstElAccrualDate(eligibility, policy)).toEqual(new Date(2027, 0, 26));
+  });
+
+  it("DOJ one day after the 26th (27th) -> eligibility 27th next year -> first accrual next month's 26th", () => {
+    const eligibility = getElEligibilityDate(new Date(2026, 0, 27), policy);
+    expect(eligibility).toEqual(new Date(2027, 0, 27));
+    expect(getFirstElAccrualDate(eligibility, policy)).toEqual(new Date(2027, 1, 26));
+  });
+
+  it("eligibility on the 27th (one day after cycle day) -> next month's 26th", () => {
+    const eligibility = new Date(2027, 0, 27);
+    expect(getFirstElAccrualDate(eligibility, policy)).toEqual(new Date(2027, 1, 26));
+  });
+
+  it("eligibility on a month-end date (31st) -> next month's 26th", () => {
+    const eligibility = new Date(2027, 0, 31);
+    expect(getFirstElAccrualDate(eligibility, policy)).toEqual(new Date(2027, 1, 26));
   });
 
   it("is generic to any configured eligibility period, e.g. 6 months", () => {

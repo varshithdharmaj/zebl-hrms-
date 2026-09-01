@@ -31,8 +31,14 @@ function loadEnvFile(path: string) {
 loadEnvFile(".env");
 loadEnvFile(".env.local");
 
-// Prefer direct (session) connection for concurrent transactions when available.
-if (process.env.DIRECT_URL?.trim()) {
+// Prefer direct (session) connection for concurrent transactions when
+// available — but only when the caller opts in (LEAVE_CONCURRENCY_FORCE_DIRECT_URL).
+// The direct/session connection has a low connection cap (observed:
+// pool_size 15 on this project's Supabase instance); a caller spawning many
+// concurrent workers (see leave-accrual-idempotency.pg.test.ts) needs the
+// pgbouncer transaction-pooled DATABASE_URL instead, which multiplexes many
+// logical connections over few backend ones.
+if (process.env.LEAVE_CONCURRENCY_FORCE_DIRECT_URL && process.env.DIRECT_URL?.trim()) {
   process.env.DATABASE_URL = process.env.DIRECT_URL.trim();
 }
 
@@ -62,6 +68,10 @@ type Payload =
   | {
       op: "accrue";
       employeeId: number;
+    }
+  | {
+      op: "accrueEl";
+      employeeId: number;
     };
 
 async function main() {
@@ -74,6 +84,7 @@ async function main() {
   const { advanceWorkflow, cancelWorkflow, toWorkflowActor, WorkflowError } =
     await import("@/lib/workflow/leave-workflow");
   const { processPendingLeaveAccruals } = await import("@/lib/leave");
+  const { runElAccrualForEmployeeId } = await import("@/lib/leave/el-accrual-engine");
   const { prisma } = await import("@/lib/prisma");
 
   try {
@@ -107,10 +118,20 @@ async function main() {
           message: result.message,
         }) + "\n"
       );
-    } else {
+    } else if (payload.op === "accrue") {
       await processPendingLeaveAccruals(payload.employeeId);
       process.stdout.write(
         JSON.stringify({ ok: true, op: "accrue", employeeId: payload.employeeId }) + "\n"
+      );
+    } else {
+      const result = await runElAccrualForEmployeeId(payload.employeeId);
+      process.stdout.write(
+        JSON.stringify({
+          ok: true,
+          op: "accrueEl",
+          employeeId: payload.employeeId,
+          lotsCreated: result.lotsCreated,
+        }) + "\n"
       );
     }
   } catch (error) {

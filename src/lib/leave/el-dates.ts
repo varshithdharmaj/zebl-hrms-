@@ -7,13 +7,26 @@ export type ElPolicyDates = {
 };
 
 /**
- * Adds calendar months using Date's own month-overflow normalization
- * (e.g. 31 Jan + 1 month -> 3 Mar, never approximated as 30-day months).
- * Mirrors the technique already proven in attendance-cycle.ts.
+ * Adds calendar months, clamping to the last valid day of the target month
+ * when the source day doesn't exist there (e.g. 31 Jan + 1 month -> 28/29
+ * Feb, never overflowing into March). This is a deliberate business rule
+ * (confirmed): a 29th/30th/31st DOJ must land on the corresponding month-end,
+ * not silently roll into the next month via raw Date-overflow arithmetic.
+ *
+ * Examples:
+ *   31 Dec 2025 + 12mo -> 31 Dec 2026
+ *   30 Nov 2025 + 12mo -> 30 Nov 2026
+ *   31 Jan 2026 + 12mo -> 31 Jan 2027
+ *   29 Feb 2024 (leap) + 12mo -> 28 Feb 2025 (2025 is not a leap year)
  */
 function addCalendarMonths(date: Date, months: number): Date {
   const d = startOfDay(date);
-  return new Date(d.getFullYear(), d.getMonth() + months, d.getDate());
+  const targetMonthIndex = d.getMonth() + months;
+  // Day 0 of (targetMonthIndex + 1) is the last day of targetMonthIndex —
+  // `new Date` normalizes the month/year overflow either way.
+  const daysInTargetMonth = new Date(d.getFullYear(), targetMonthIndex + 1, 0).getDate();
+  const day = Math.min(d.getDate(), daysInTargetMonth);
+  return new Date(d.getFullYear(), targetMonthIndex, day);
 }
 
 /** DOJ + elEligibilityMonths calendar months, via proper month arithmetic. */

@@ -77,23 +77,27 @@ vi.mock("@/lib/prisma", () => ({
 import { prisma } from "@/lib/prisma";
 import { processPendingLeaveAccruals, getLeaveBalanceSummaries } from "@/lib/leave";
 
-describe("processPendingLeaveAccruals query depth", () => {
+describe("processPendingLeaveAccruals query depth and transaction shape", () => {
   beforeEach(() => {
     vi.mocked(prisma.employee.findUnique).mockReset();
     vi.mocked(prisma.$transaction).mockReset();
     vi.mocked(prisma.leaveTransaction.findMany).mockReset();
+    vi.mocked(prisma.leaveTransaction.create).mockReset();
     vi.mocked(prisma.employeeLeaveBalance.findUnique).mockReset();
+    vi.mocked(prisma.employeeLeaveBalance.create).mockReset();
+    vi.mocked(prisma.employeeLeaveBalance.update).mockReset();
     vi.mocked(prisma.leavePolicySettings.findUnique).mockReset();
     vi.mocked(prisma.leavePolicySettings.findUnique).mockResolvedValue(POLICY_ROW as never);
   });
 
-  it("batches accrual existence into one findMany and parallels it with balance ensure", async () => {
+  it("batches the existence check with balance-ensure as one parallel round-trip (not inside a mutating transaction)", async () => {
     const joiningDate = new Date();
     joiningDate.setMonth(joiningDate.getMonth() - 3);
 
     vi.mocked(prisma.employee.findUnique).mockResolvedValue({
       id: 1,
       joiningDate,
+      isActive: true,
     } as never);
 
     let findManyCalls = 0;
@@ -101,42 +105,26 @@ describe("processPendingLeaveAccruals query depth", () => {
     let maxInFlight = 0;
     let inFlight = 0;
 
-    vi.mocked(prisma.$transaction).mockImplementation(async (fn) => {
-      const tx = {
-        employeeLeaveBalance: {
-          findUnique: async () => {
-            inFlight += 1;
-            maxInFlight = Math.max(maxInFlight, inFlight);
-            balanceCalls += 1;
-            await Promise.resolve();
-            inFlight -= 1;
-            return {
-              id: 1,
-              employeeId: 1,
-              elBalance: 0,
-              clBalance: 10,
-              slBalance: 8,
-            };
-          },
-          create: vi.fn(),
-          update: vi.fn(),
-        },
-        leaveTransaction: {
-          findMany: async () => {
-            inFlight += 1;
-            maxInFlight = Math.max(maxInFlight, inFlight);
-            findManyCalls += 1;
-            await Promise.resolve();
-            inFlight -= 1;
-            return [
-              { reason: `CL yearly allocation ${getCalendarYear()}` },
-              { reason: `SL yearly allocation ${getCalendarYear()}` },
-            ];
-          },
-          create: vi.fn(),
-        },
-      };
-      return fn(tx as never);
+    vi.mocked(prisma.employeeLeaveBalance.findUnique).mockImplementation(async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      balanceCalls += 1;
+      await Promise.resolve();
+      inFlight -= 1;
+      return { id: 1, employeeId: 1, elBalance: 0, clBalance: 10, slBalance: 8 } as never;
+    });
+    vi.mocked(prisma.leaveTransaction.findMany).mockImplementation(async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      findManyCalls += 1;
+      await Promise.resolve();
+      inFlight -= 1;
+      // Both CL and SL already granted this year -> nothing left to insert,
+      // so no per-item $transaction call happens at all.
+      return [
+        { reason: `CL yearly allocation ${getCalendarYear()}` },
+        { reason: `SL yearly allocation ${getCalendarYear()}` },
+      ] as never;
     });
 
     const result = await processPendingLeaveAccruals(1);
@@ -144,6 +132,8 @@ describe("processPendingLeaveAccruals query depth", () => {
     expect(findManyCalls).toBe(1);
     expect(balanceCalls).toBe(1);
     expect(maxInFlight).toBe(2);
+    // Nothing pending -> no per-item transaction opened.
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it("is idempotent: does not create when all candidate reasons already exist", async () => {
@@ -154,35 +144,65 @@ describe("processPendingLeaveAccruals query depth", () => {
     vi.mocked(prisma.employee.findUnique).mockResolvedValue({
       id: 9,
       joiningDate,
+      isActive: true,
     } as never);
+    vi.mocked(prisma.employeeLeaveBalance.findUnique).mockResolvedValue({
+      id: 1,
+      employeeId: 9,
+      elBalance: 0,
+      clBalance: 10,
+      slBalance: 8,
+    } as never);
+    vi.mocked(prisma.leaveTransaction.findMany).mockResolvedValue([
+      { reason: `CL yearly allocation ${year}` },
+      { reason: `SL yearly allocation ${year}` },
+    ] as never);
 
-    const create = vi.fn();
+    await processPendingLeaveAccruals(9);
+    expect(prisma.leaveTransaction.create).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("commits each pending item in its OWN transaction — one failure never poisons another item's insert", async () => {
+    // Postgres aborts an entire transaction on the first failed statement
+    // (25P02) — this test locks in that pending CL and SL accruals are each
+    // committed via a separate prisma.$transaction call, so a duplicate-key
+    // race on one can never take down the other (regression test for the
+    // bug this exact scenario surfaced under real concurrency).
+    const joiningDate = new Date();
+    joiningDate.setMonth(joiningDate.getMonth() - 2);
+
+    vi.mocked(prisma.employee.findUnique).mockResolvedValue({
+      id: 12,
+      joiningDate,
+      isActive: true,
+    } as never);
+    vi.mocked(prisma.employeeLeaveBalance.findUnique).mockResolvedValue({
+      id: 1,
+      employeeId: 12,
+      elBalance: 0,
+      clBalance: 0,
+      slBalance: 0,
+    } as never);
+    vi.mocked(prisma.leaveTransaction.findMany).mockResolvedValue([] as never);
+
+    let transactionCalls = 0;
     vi.mocked(prisma.$transaction).mockImplementation(async (fn) => {
+      transactionCalls += 1;
       const tx = {
         employeeLeaveBalance: {
-          findUnique: async () => ({
-            id: 1,
-            employeeId: 9,
-            elBalance: 0,
-            clBalance: 10,
-            slBalance: 8,
-          }),
+          findUnique: async () => ({ id: 1, employeeId: 12, elBalance: 0, clBalance: 0, slBalance: 0 }),
           create: vi.fn(),
           update: vi.fn(),
         },
-        leaveTransaction: {
-          findMany: async () => [
-            { reason: `CL yearly allocation ${year}` },
-            { reason: `SL yearly allocation ${year}` },
-          ],
-          create,
-        },
+        leaveTransaction: { create: vi.fn() },
       };
-      return fn(tx as never);
+      return (fn as (tx: unknown) => Promise<unknown>)(tx);
     });
 
-    await processPendingLeaveAccruals(9);
-    expect(create).not.toHaveBeenCalled();
+    await processPendingLeaveAccruals(12);
+    // Two pending items (CL + SL) -> two separate transaction calls.
+    expect(transactionCalls).toBe(2);
   });
 });
 
@@ -206,30 +226,6 @@ describe("getLeaveBalanceSummaries with processAccruals", () => {
       joiningDate,
     } as never);
 
-    vi.mocked(prisma.$transaction).mockImplementation(async (fn) => {
-      const tx = {
-        employeeLeaveBalance: {
-          findUnique: async () => ({
-            id: 1,
-            employeeId: 5,
-            elBalance: 0,
-            clBalance: 12,
-            slBalance: 8,
-          }),
-          create: vi.fn(),
-          update: vi.fn(),
-        },
-        leaveTransaction: {
-          findMany: async () => [
-            { reason: `CL yearly allocation ${getCalendarYear()}` },
-            { reason: `SL yearly allocation ${getCalendarYear()}` },
-          ],
-          create: vi.fn(),
-        },
-      };
-      return fn(tx as never);
-    });
-
     vi.mocked(prisma.employeeLeaveBalance.findUnique).mockResolvedValue({
       id: 1,
       employeeId: 5,
@@ -237,8 +233,13 @@ describe("getLeaveBalanceSummaries with processAccruals", () => {
       clBalance: 12,
       slBalance: 8,
     } as never);
+    // Both already granted this year -> processPendingLeaveAccruals has
+    // nothing pending, so no $transaction call is needed for accrual.
+    vi.mocked(prisma.leaveTransaction.findMany).mockResolvedValue([
+      { reason: `CL yearly allocation ${getCalendarYear()}` },
+      { reason: `SL yearly allocation ${getCalendarYear()}` },
+    ] as never);
     vi.mocked(prisma.leaveTransaction.groupBy).mockResolvedValue([] as never);
-    vi.mocked(prisma.leaveTransaction.findMany).mockResolvedValue([] as never);
 
     const summaries = await getLeaveBalanceSummaries(5, { processAccruals: true });
 

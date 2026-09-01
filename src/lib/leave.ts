@@ -206,6 +206,37 @@ export function buildPendingAccrualReasons(
  * unique index as accruals — see migration 20260825090000). CL is untouched
  * — it has no lapse rule and keeps accumulating, unchanged from before.
  */
+type PendingSystemItem = {
+  leaveType: LeaveType;
+  transactionType: LeaveTransactionType;
+  amount: number;
+  reason: string;
+};
+
+/**
+ * Attempts one system-generated ledger insert, treating a concurrent
+ * duplicate (unique-index violation, surfaced by recordLeaveTransactionInTx
+ * as "Accrual already posted: ...") as a benign race rather than an error.
+ * Must be the ONLY statement attempted in its transaction: once one
+ * statement in a Postgres transaction fails, the whole transaction is
+ * poisoned (25P02) and every subsequent statement in it fails too — so this
+ * cannot be safely called more than once inside a shared transaction without
+ * the caller accepting that a failure here aborts everything after it.
+ */
+async function postSystemLeaveItemOrSkipIfRaced(
+  inner: TxClient,
+  employeeId: number,
+  item: PendingSystemItem
+): Promise<void> {
+  try {
+    await recordLeaveTransactionInTx(inner, { employeeId, createdBy: "system", ...item });
+  } catch (error) {
+    if (!(error instanceof Error && error.message.startsWith("Accrual already posted:"))) {
+      throw error;
+    }
+  }
+}
+
 export async function processPendingLeaveAccruals(
   employeeId: number,
   tx?: TxClient
@@ -221,81 +252,58 @@ export async function processPendingLeaveAccruals(
   const pending = buildPendingAccrualReasons(policy, year);
   const candidateReasons = pending.map((p) => p.reason);
   const slLapseReason = `SL yearly lapse ${year - 1}`;
+  const slReason = `SL yearly allocation ${year}`;
 
-  const run = async (inner: TxClient) => {
-    // Balance ensure + existence check are independent — one round-trip instead of N.
-    const [balance, existing] = await Promise.all([
-      getOrCreateLeaveBalanceRow(employeeId, inner),
-      inner.leaveTransaction.findMany({
-        where: {
-          employeeId,
-          reason: { in: [...candidateReasons, slLapseReason] },
-        },
-        select: { reason: true },
-      }),
-    ]);
+  // Balance ensure + existence check are independent — one round-trip instead of N.
+  const [balance, existing] = await Promise.all([
+    getOrCreateLeaveBalanceRow(employeeId, tx),
+    client.leaveTransaction.findMany({
+      where: { employeeId, reason: { in: [...candidateReasons, slLapseReason] } },
+      select: { reason: true },
+    }),
+  ]);
+  const existingSet = new Set(
+    existing.map((row) => row.reason).filter((r): r is string => Boolean(r))
+  );
 
-    const existingSet = new Set(
-      existing.map((row) => row.reason).filter((r): r is string => Boolean(r))
-    );
-
-    const slReason = `SL yearly allocation ${year}`;
-    const slNotYetGranted = !existingSet.has(slReason);
-    if (
-      !policy.slCarryForward &&
-      slNotYetGranted &&
-      !existingSet.has(slLapseReason) &&
-      balance.slBalance > 0
-    ) {
-      try {
-        await recordLeaveTransactionInTx(inner, {
-          employeeId,
-          leaveType: "SL",
-          transactionType: "expiry",
-          amount: -balance.slBalance,
-          reason: slLapseReason,
-          createdBy: "system",
-        });
-        existingSet.add(slLapseReason);
-      } catch (error) {
-        if (error instanceof Error && error.message.startsWith("Accrual already posted:")) {
-          existingSet.add(slLapseReason);
-        } else {
-          throw error;
-        }
-      }
-    }
-
-    for (const item of pending) {
-      if (existingSet.has(item.reason)) continue;
-      try {
-        await recordLeaveTransactionInTx(inner, {
-          employeeId,
-          leaveType: item.leaveType,
-          transactionType: "accrual",
-          amount: item.amount,
-          reason: item.reason,
-          createdBy: "system",
-        });
-        existingSet.add(item.reason);
-      } catch (error) {
-        // Concurrent accrual of the same reason — treat as already posted.
-        if (
-          error instanceof Error &&
-          error.message.startsWith("Accrual already posted:")
-        ) {
-          existingSet.add(item.reason);
-          continue;
-        }
-        throw error;
-      }
-    }
-  };
+  const items: PendingSystemItem[] = [];
+  const slNotYetGranted = !existingSet.has(slReason);
+  if (
+    !policy.slCarryForward &&
+    slNotYetGranted &&
+    !existingSet.has(slLapseReason) &&
+    balance.slBalance > 0
+  ) {
+    items.push({
+      leaveType: "SL",
+      transactionType: "expiry",
+      amount: -balance.slBalance,
+      reason: slLapseReason,
+    });
+  }
+  for (const item of pending) {
+    if (existingSet.has(item.reason)) continue;
+    items.push({ leaveType: item.leaveType, transactionType: "accrual", amount: item.amount, reason: item.reason });
+  }
 
   if (tx) {
-    await run(tx);
+    // Already inside the caller's transaction — cannot open a nested one.
+    // Each item is still attempted individually and a race is tolerated,
+    // but if a *different* (non-race) error occurs, or a race happens on
+    // an earlier item, the whole outer transaction aborts here — that's
+    // correct: Postgres has already poisoned it, so the caller must retry
+    // the whole operation (same as any other transaction conflict in this
+    // codebase, e.g. optimistic-lock version mismatches).
+    for (const item of items) {
+      await postSystemLeaveItemOrSkipIfRaced(tx, employeeId, item);
+    }
   } else {
-    await prisma.$transaction(run);
+    // Standalone: each item gets its OWN transaction (mirrors the proven
+    // el-accrual-engine.ts pattern) — a duplicate-key race on one item can
+    // never roll back another item that already committed successfully.
+    for (const item of items) {
+      await prisma.$transaction((inner) => postSystemLeaveItemOrSkipIfRaced(inner, employeeId, item));
+    }
   }
 
   return { joiningDate, isActive };

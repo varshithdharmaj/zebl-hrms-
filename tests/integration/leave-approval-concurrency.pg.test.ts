@@ -95,6 +95,7 @@ async function runWorker(payload: unknown): Promise<WorkerResult> {
           ...process.env,
           // Force worker onto the same URL the parent resolved (direct preferred).
           DATABASE_URL: process.env.DATABASE_URL,
+          LEAVE_CONCURRENCY_FORCE_DIRECT_URL: "1",
         },
         stdio: ["pipe", "pipe", "pipe"],
       }
@@ -644,20 +645,11 @@ describe("P0-2 leave approval concurrency (real PostgreSQL)", () => {
     expect(snap.deductions.filter((d) => d.leaveRequestId === leave.id).length).toBeLessThanOrEqual(
       1
     );
-    // Without the system-accrual unique index, duplicate yearly rows remain possible.
-    // Assert the stronger invariant we can enforce today: at most one deduction and
-    // non-negative balance; report duplicate accruals explicitly if present.
     expect(snap.balance.clBalance).toBeGreaterThanOrEqual(0);
-    expect(clYearly.length).toBeGreaterThanOrEqual(1);
-    expect(slYearly.length).toBeGreaterThanOrEqual(1);
-
-    if (clYearly.length > 1 || slYearly.length > 1) {
-      console.warn(
-        "[Scenario E] Duplicate system accruals observed — expected until migration leave_transactions_system_accrual_reason_uidx is applied after cleaning existing duplicates."
-      );
-    } else {
-      expect(clYearly).toHaveLength(1);
-      expect(slYearly).toHaveLength(1);
-    }
+    // migration 20260826070000_leave_transaction_idempotency_fix now enforces
+    // this at the DB level (leave_transactions_system_accrual_reason_uidx) —
+    // no more tolerating duplicates here.
+    expect(clYearly).toHaveLength(1);
+    expect(slYearly).toHaveLength(1);
   });
 });
