@@ -16,14 +16,35 @@ import type { ResumeImportDraftContent } from "@/lib/recruitment/resume-import/t
 import type { ResumeParseResult } from "./types";
 import { EMPTY_PARSED_RESUME_DRAFT } from "./types";
 import {
-  LLM_RESUME_PARSE_SYSTEM_PROMPT,
+  RESUME_INTELLIGENCE_SYSTEM_PROMPT,
   buildLlmResumeUserPrompt,
   buildLlmResumeDocumentUserPrompt,
 } from "./llm-parse-prompt";
-import { parseLlmResumeResponse, type LlmResumeResponse } from "./llm-parse-schema";
+import {
+  parseLlmResumeResponse,
+  GEMINI_RESUME_RESPONSE_SCHEMA,
+  type LlmResumeResponse,
+} from "./llm-parse-schema";
 import { RESUME_UPLOAD_MAX_BYTES } from "@/lib/recruitment/resume-import/file-validation";
+import type { ResumeImportAiInsights, ResumeImportExtractionMeta } from "@/lib/recruitment/resume-import/types";
 
-const LLM_RESUME_PARSER_VERSION = "llm-v2-native-doc";
+const LLM_RESUME_PARSER_VERSION = "llm-v3-single-pass";
+
+const EMPTY_AI_INSIGHTS: ResumeImportAiInsights = {
+  executiveSummary: null,
+  strengths: [],
+  gaps: [],
+  matchScore: { value: null, rationale: null },
+  clarificationFlags: [],
+};
+
+const EMPTY_EXTRACTION_META = (
+  documentQuality: ResumeImportExtractionMeta["documentQuality"] = "image_only"
+): ResumeImportExtractionMeta => ({
+  documentQuality,
+  fieldsRequiringReview: [],
+  languageDetected: null,
+});
 
 /**
  * Maximum characters of extracted resume text to send to the LLM in fallback/text mode.
@@ -124,7 +145,7 @@ async function postGeminiResumeExtraction(input: GeminiResumePostInput): Promise
       },
       body: JSON.stringify({
         systemInstruction: {
-          parts: [{ text: LLM_RESUME_PARSE_SYSTEM_PROMPT }],
+          parts: [{ text: RESUME_INTELLIGENCE_SYSTEM_PROMPT }],
         },
         contents: [
           {
@@ -134,8 +155,10 @@ async function postGeminiResumeExtraction(input: GeminiResumePostInput): Promise
         ],
         generationConfig: {
           temperature: 0.1,
-          maxOutputTokens: 8192,
+          // Raised from 8192: single-pass responses now also carry aiInsights + extractionMeta.
+          maxOutputTokens: 16384,
           responseMimeType: "application/json",
+          responseSchema: GEMINI_RESUME_RESPONSE_SCHEMA,
         },
       }),
       signal: AbortSignal.timeout(LLM_REQUEST_TIMEOUT_MS),
@@ -250,6 +273,27 @@ function mapLlmResponseToDraft(
   };
 }
 
+function mapLlmResponseToAiInsights(data: LlmResumeResponse): ResumeImportAiInsights {
+  return {
+    executiveSummary: data.aiInsights?.executiveSummary ?? null,
+    strengths: data.aiInsights?.strengths ?? [],
+    gaps: data.aiInsights?.gaps ?? [],
+    matchScore: {
+      value: data.aiInsights?.matchScore?.value ?? null,
+      rationale: data.aiInsights?.matchScore?.rationale ?? null,
+    },
+    clarificationFlags: data.aiInsights?.clarificationFlags ?? [],
+  };
+}
+
+function mapLlmResponseToExtractionMeta(data: LlmResumeResponse): ResumeImportExtractionMeta {
+  return {
+    documentQuality: data.extractionMeta?.documentQuality ?? "clean",
+    fieldsRequiringReview: data.extractionMeta?.fieldsRequiringReview ?? [],
+    languageDetected: data.extractionMeta?.languageDetected ?? null,
+  };
+}
+
 function buildFieldConfidence(
   mapped: ResumeImportDraftContent["mapped"],
 ): Record<string, number> {
@@ -305,6 +349,8 @@ export type ParseResumeDocumentInput = {
   fileName: string;
   mimeType: string;
   documentId?: string | null;
+  /** Optional JD text — enables aiInsights.matchScore. Omit/null leaves matchScore null. */
+  jobDescription?: string | null;
 };
 
 /**
@@ -369,6 +415,8 @@ export async function parseResumeWithLlm(
           raw: { fileSizeBytes: 0 },
           mapped: mapLlmResponseToDraft({} as LlmResumeResponse),
           fieldConfidence: {},
+          aiInsights: EMPTY_AI_INSIGHTS,
+          extractionMeta: EMPTY_EXTRACTION_META(),
           metadata: {
             parserVersion: LLM_RESUME_PARSER_VERSION,
             note: "Empty file buffer.",
@@ -397,6 +445,8 @@ export async function parseResumeWithLlm(
           raw: { fileSizeBytes },
           mapped: mapLlmResponseToDraft({} as LlmResumeResponse),
           fieldConfidence: {},
+          aiInsights: EMPTY_AI_INSIGHTS,
+          extractionMeta: EMPTY_EXTRACTION_META(),
           metadata: {
             parserVersion: LLM_RESUME_PARSER_VERSION,
             note: "Resume file too large for Gemini parsing.",
@@ -426,6 +476,8 @@ export async function parseResumeWithLlm(
           raw: { fileName: inputOrText.fileName, mimeType: inputOrText.mimeType },
           mapped: mapLlmResponseToDraft({} as LlmResumeResponse),
           fieldConfidence: {},
+          aiInsights: EMPTY_AI_INSIGHTS,
+          extractionMeta: EMPTY_EXTRACTION_META(),
           metadata: {
             parserVersion: LLM_RESUME_PARSER_VERSION,
             note: "Unsupported document type.",
@@ -435,7 +487,7 @@ export async function parseResumeWithLlm(
     }
 
     base64Data = bytes.toString("base64");
-    userPromptText = buildLlmResumeDocumentUserPrompt();
+    userPromptText = buildLlmResumeDocumentUserPrompt(inputOrText.jobDescription);
 
     logger.info("recruitment.resume.llm_parse_started", {
       entityType: "resume",
@@ -466,6 +518,8 @@ export async function parseResumeWithLlm(
           raw: { textLength: 0 },
           mapped: mapLlmResponseToDraft({} as LlmResumeResponse),
           fieldConfidence: {},
+          aiInsights: EMPTY_AI_INSIGHTS,
+          extractionMeta: EMPTY_EXTRACTION_META(),
           metadata: {
             parserVersion: LLM_RESUME_PARSER_VERSION,
             note: "Empty resume text.",
@@ -494,6 +548,8 @@ export async function parseResumeWithLlm(
           raw: { textLength: resumeText.length },
           mapped: mapLlmResponseToDraft({} as LlmResumeResponse),
           fieldConfidence: {},
+          aiInsights: EMPTY_AI_INSIGHTS,
+          extractionMeta: EMPTY_EXTRACTION_META(),
           metadata: {
             parserVersion: LLM_RESUME_PARSER_VERSION,
             note: "Resume text too large for LLM parsing.",
@@ -553,6 +609,8 @@ export async function parseResumeWithLlm(
           raw: isDocInput ? { fileSizeBytes } : { textLength: (resumeText ?? "").length },
           mapped: mapLlmResponseToDraft({} as LlmResumeResponse),
           fieldConfidence: {},
+          aiInsights: EMPTY_AI_INSIGHTS,
+          extractionMeta: EMPTY_EXTRACTION_META(),
           metadata: {
             parserVersion: LLM_RESUME_PARSER_VERSION,
             note: "GEMINI_API_KEY not configured.",
@@ -605,6 +663,8 @@ export async function parseResumeWithLlm(
         raw: isDocInput ? { fileSizeBytes } : { textLength: (resumeText ?? "").length },
         mapped: mapLlmResponseToDraft({} as LlmResumeResponse),
         fieldConfidence: {},
+        aiInsights: EMPTY_AI_INSIGHTS,
+        extractionMeta: EMPTY_EXTRACTION_META(),
         metadata: {
           parserVersion: LLM_RESUME_PARSER_VERSION,
           note: `LLM request failed: ${posted.error}`,
@@ -643,6 +703,8 @@ export async function parseResumeWithLlm(
         raw: isDocInput ? { fileSizeBytes } : { textLength: (resumeText ?? "").length },
         mapped: mapLlmResponseToDraft({} as LlmResumeResponse),
         fieldConfidence: {},
+        aiInsights: EMPTY_AI_INSIGHTS,
+        extractionMeta: EMPTY_EXTRACTION_META(),
         metadata: {
           parserVersion: LLM_RESUME_PARSER_VERSION,
           note: "LLM returned malformed JSON.",
@@ -679,6 +741,8 @@ export async function parseResumeWithLlm(
         raw: isDocInput ? { fileSizeBytes } : { textLength: (resumeText ?? "").length },
         mapped: mapLlmResponseToDraft({} as LlmResumeResponse),
         fieldConfidence: {},
+        aiInsights: EMPTY_AI_INSIGHTS,
+        extractionMeta: EMPTY_EXTRACTION_META(),
         metadata: {
           parserVersion: LLM_RESUME_PARSER_VERSION,
           note: validated.error,
@@ -690,12 +754,17 @@ export async function parseResumeWithLlm(
   // --- Map to draft ---
   const mapped = mapLlmResponseToDraft(validated.data);
   const fieldConfidence = buildFieldConfidence(mapped);
+  const aiInsights = mapLlmResponseToAiInsights(validated.data);
+  const extractionMeta = mapLlmResponseToExtractionMeta(validated.data);
 
   logger.info("recruitment.resume.llm_parse_succeeded", {
     entityType: "resume",
     parseMode: "llm",
     durationMs: String(durationMs),
     status: "success",
+    documentQuality: extractionMeta.documentQuality,
+    fieldsRequiringReview: String(extractionMeta.fieldsRequiringReview.length),
+    hasMatchScore: String(aiInsights.matchScore.value !== null),
   });
 
   const draftContent: ResumeImportDraftContent = {
@@ -707,6 +776,8 @@ export async function parseResumeWithLlm(
       : { textLength: (resumeText ?? "").length },
     mapped,
     fieldConfidence,
+    aiInsights,
+    extractionMeta,
     metadata: {
       parserVersion: LLM_RESUME_PARSER_VERSION,
     },

@@ -17,11 +17,13 @@ import { prismaTimelineProjectionRepository } from "@/lib/recruitment/repositori
 import { RecruitmentDomainError } from "@/lib/recruitment/shared/errors";
 import { withRecruitmentTransaction } from "@/lib/recruitment/shared/transaction";
 import { createCandidateService } from "@/lib/recruitment/services/candidate-service";
-import { parseResumeDocument } from "@/lib/recruitment/resume-import/parser";
+import { parseResumeWithLlm } from "@/lib/recruitment/resume-import/parser/llm-parse-resume";
 import { parseResumeImportDraftContent } from "@/lib/recruitment/resume-import/draft-content";
 import { RESUME_IMPORT_DENIED_SCALAR_KEYS } from "@/lib/recruitment/resume-import/types";
 import type {
+  ResumeImportAiInsights,
   ResumeImportDraftContent,
+  ResumeImportExtractionMeta,
   ResumeImportMappedDraft,
 } from "@/lib/recruitment/resume-import/types";
 import {
@@ -51,6 +53,8 @@ export type NewCandidateResumeReviewDraft = {
   parseOk: boolean;
   errorNote?: string;
   mapped: ResumeImportMappedDraft;
+  aiInsights: ResumeImportAiInsights | null;
+  extractionMeta: ResumeImportExtractionMeta | null;
 };
 
 export type CreateCandidateFromResumeResult = {
@@ -242,7 +246,7 @@ export function createCandidateFromResumeService(
         throw err;
       }
 
-      const { result, draftContent } = await parseResumeDocument({
+      const { result, draftContent } = await parseResumeWithLlm({
         content: bytes,
         fileName: input.fileName,
         mimeType: input.mimeType || "application/octet-stream",
@@ -279,6 +283,8 @@ export function createCandidateFromResumeService(
         parseOk: result.ok,
         errorNote: result.ok ? undefined : result.error.message,
         mapped: mappedToReviewDefaults(draftContent.mapped),
+        aiInsights: draftContent.aiInsights ?? null,
+        extractionMeta: draftContent.extractionMeta ?? null,
       };
     },
 
@@ -357,6 +363,48 @@ export function createCandidateFromResumeService(
 
       let candidateId = existingCandidateId;
 
+      // Built once, up front, so it can ride into the SAME transaction as the
+      // candidate row when this is a fresh single-pass creation. documentId is
+      // patched in after the permanent copy exists (storage I/O can't be part
+      // of the DB transaction) — see the tx block below.
+      const insightContent: ResumeImportDraftContent = {
+        ...draftContent,
+        documentId: null,
+        source: "parser",
+        mapped: {
+          personal: {
+            fullName: review.candidate.fullName,
+            firstName: review.candidate.firstName ?? null,
+            lastName: review.candidate.lastName ?? null,
+            email: review.candidate.email ?? null,
+            phone: sanitizePhoneForCreate(review.candidate.phone),
+            location: review.candidate.location ?? null,
+          },
+          professional: {
+            headline: review.candidate.headline ?? null,
+            professionalSummary: review.candidate.professionalSummary ?? null,
+            currentCompany: review.candidate.currentCompany ?? null,
+            currentTitle: review.candidate.currentTitle ?? null,
+            githubUrl: review.candidate.githubUrl ?? null,
+            linkedinUrl: review.candidate.linkedinUrl ?? null,
+            portfolioUrl: review.candidate.portfolioUrl ?? null,
+            totalExperienceYears: review.candidate.totalExperienceYears ?? null,
+            preferredWorkMode: review.candidate.preferredWorkMode ?? null,
+            willingToRelocate: review.candidate.willingToRelocate ?? null,
+          },
+          experiences: review.experiences,
+          educations: review.educations,
+          skills: review.skills,
+          projects: review.projects,
+          certifications: review.certifications,
+        },
+      };
+
+      // Set only when this call creates a brand-new candidate — the resume_parse
+      // insight then already exists (same tx as the candidate) before we ever
+      // reach the document-attach step below.
+      let insightId: string | null = null;
+
       if (!candidateId) {
         const scalar: Record<string, unknown> = {
           ...review.candidate,
@@ -433,8 +481,15 @@ export function createCandidateFromResumeService(
           })),
         };
 
-        const created = await candidateService.createCandidate(session, createInput);
+        const created = await candidateService.createCandidate(session, {
+          ...createInput,
+          initialAiInsight: {
+            contentJson: insightContent,
+            modelId: draftContent.metadata?.parserVersion ?? null,
+          },
+        });
         candidateId = created.id;
+        insightId = created.insightId ?? null;
 
         // Claim intake immediately so retries do not create a second candidate.
         await repository.updateIntake(review.intakeId, {
@@ -532,87 +587,67 @@ export function createCandidateFromResumeService(
             resolvedDocumentId = createdDoc.id;
           }
 
-          const existingInsightId = await findExistingResumeParseInsight(
-            candidateId,
-            resolvedDocumentId
-          );
+          let resolvedInsightId = insightId;
 
-          let insightId = existingInsightId;
-          if (!insightId) {
-            const insightContent: ResumeImportDraftContent = {
-              ...draftContent,
-              documentId: resolvedDocumentId,
-              source: "parser",
-              mapped: {
-                personal: {
-                  fullName: review.candidate.fullName,
-                  firstName: review.candidate.firstName ?? null,
-                  lastName: review.candidate.lastName ?? null,
-                  email: review.candidate.email ?? null,
-                  phone: sanitizePhoneForCreate(review.candidate.phone),
-                  location: review.candidate.location ?? null,
-                },
-                professional: {
-                  headline: review.candidate.headline ?? null,
-                  professionalSummary:
-                    review.candidate.professionalSummary ?? null,
-                  currentCompany: review.candidate.currentCompany ?? null,
-                  currentTitle: review.candidate.currentTitle ?? null,
-                  githubUrl: review.candidate.githubUrl ?? null,
-                  linkedinUrl: review.candidate.linkedinUrl ?? null,
-                  portfolioUrl: review.candidate.portfolioUrl ?? null,
-                  totalExperienceYears:
-                    review.candidate.totalExperienceYears ?? null,
-                  preferredWorkMode: review.candidate.preferredWorkMode ?? null,
-                  willingToRelocate: review.candidate.willingToRelocate ?? null,
-                },
-                experiences: review.experiences,
-                educations: review.educations,
-                skills: review.skills,
-                projects: review.projects,
-                certifications: review.certifications,
-              },
-            };
+          if (resolvedInsightId) {
+            // resume_parse insight already exists — created in the SAME transaction
+            // as the candidate row (see candidate-service.ts::createCandidate).
+            // Only the documentId was unknown at that point; patch it in now.
+            await repository.updateInsightContent(
+              resolvedInsightId,
+              { ...insightContent, documentId: resolvedDocumentId },
+              tx
+            );
+          } else {
+            // Retry / legacy path: candidate already existed with no resume_parse
+            // insight yet (e.g. a previous attempt failed after candidate commit
+            // but before this step). Reuse if one showed up since, else create.
+            resolvedInsightId = await findExistingResumeParseInsight(
+              candidateId,
+              resolvedDocumentId
+            );
+          }
 
+          if (!resolvedInsightId) {
             const createdInsight = await repository.createInsight(
               candidateId,
               {
                 insightType: AiInsightType.resume_parse,
                 status: AiInsightStatus.accepted,
                 title: "Resume import (new candidate)",
-                contentJson: insightContent,
+                contentJson: { ...insightContent, documentId: resolvedDocumentId },
                 confidence: null,
-                modelId: null,
+                modelId: draftContent.metadata?.parserVersion ?? null,
                 createdByUserId: session.id,
               },
               tx
             );
-            insightId = createdInsight.id;
+            resolvedInsightId = createdInsight.id;
 
             await repository.updateInsightStatus(
-              insightId,
+              resolvedInsightId,
               AiInsightStatus.accepted,
               tx,
               { reviewedByUserId: session.id, reviewedAt: new Date() }
             );
-
-            await prismaTimelineProjectionRepository.append(
-              {
-                entityType: "candidate",
-                entityId: candidateId,
-                candidateId,
-                eventType: "candidate_created_from_resume",
-                summary: "Candidate created from resume",
-                actorUserId: session.id,
-                metadata: {
-                  intakeId: review.intakeId,
-                  documentId: resolvedDocumentId,
-                  insightId,
-                },
-              },
-              tx
-            );
           }
+
+          await prismaTimelineProjectionRepository.append(
+            {
+              entityType: "candidate",
+              entityId: candidateId,
+              candidateId,
+              eventType: "candidate_created_from_resume",
+              summary: "Candidate created from resume",
+              actorUserId: session.id,
+              metadata: {
+                intakeId: review.intakeId,
+                documentId: resolvedDocumentId,
+                insightId: resolvedInsightId,
+              },
+            },
+            tx
+          );
 
           await repository.updateIntake(
             review.intakeId,
@@ -624,7 +659,7 @@ export function createCandidateFromResumeService(
             tx
           );
 
-          return insightId;
+          return resolvedInsightId;
         });
 
         // Only after permanent document + insight + confirmed intake:

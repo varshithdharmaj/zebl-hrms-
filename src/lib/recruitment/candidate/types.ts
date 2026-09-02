@@ -161,6 +161,16 @@ export type CandidateCreateData = {
   certifications?: CandidateCertificationInput[];
   documents?: CandidateDocumentInput[];
   notes?: CandidateNoteInput[];
+  /**
+   * Single-pass resume parse output (resume_parse insight: candidate fields +
+   * aiInsights + extractionMeta). Created in the SAME transaction as the
+   * candidate row — see createCandidate in candidate-service.ts.
+   */
+  initialAiInsight?: {
+    contentJson: Record<string, unknown>;
+    confidence?: number | null;
+    modelId?: string | null;
+  };
 };
 
 export type CandidateUpdateData = Partial<Omit<CandidateCreateData, "createdByUserId">>;

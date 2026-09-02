@@ -15,14 +15,28 @@ import { Button } from "@/components/ui/button";
 import { parseResumeForNewCandidateAction } from "@/actions/recruitment-new-candidate-resume";
 import type { NewCandidateResumeReviewDraft } from "@/lib/recruitment/services/create-candidate-from-resume-service";
 
-type FlowStep = "choose" | "manual" | "upload" | "parsing" | "review";
+/**
+ * idle      — method chooser (or "manual" branch, a sibling exit from the linear lifecycle)
+ * uploading — file picked, not yet submitted to the single-pass parser
+ * processing — one request: file upload + Gemini extraction + insight generation
+ * review    — three-pane review; recruiter edits are local state only, never re-trigger processing
+ * (submitting/submitted live inside the review component itself, via useTransition + redirect)
+ */
+type FlowStep = "idle" | "manual" | "uploading" | "processing" | "review";
+
+const STEP_QUERY: Record<Exclude<FlowStep, "idle">, string> = {
+  manual: "manual",
+  uploading: "upload",
+  processing: "parsing",
+  review: "review",
+};
 
 function parseStep(method: string | null): FlowStep {
   if (method === "manual") return "manual";
-  if (method === "upload") return "upload";
-  if (method === "parsing") return "parsing";
+  if (method === "upload") return "uploading";
+  if (method === "parsing") return "processing";
   if (method === "review") return "review";
-  return "choose";
+  return "idle";
 }
 
 export function NewCandidateFlow({ employees }: { employees: EmployeeOption[] }) {
@@ -54,38 +68,35 @@ export function NewCandidateFlow({ employees }: { employees: EmployeeOption[] })
     [pathname, router, searchParams]
   );
 
-  function goToStep(next: FlowStep, query: Record<string, string | null>) {
+  function goToStep(next: FlowStep) {
     setStep(next);
-    replaceQuery(query);
+    replaceQuery({ method: next === "idle" ? null : STEP_QUERY[next] });
   }
 
   function handleMethodSelect(method: AddCandidateMethod) {
-    if (method === "manual") {
-      goToStep("manual", { method: "manual" });
-      return;
-    }
-    goToStep("upload", { method: "upload" });
+    goToStep(method === "manual" ? "manual" : "uploading");
   }
 
   function handleUploadContinue() {
     if (!file) return;
     setParseError(null);
-    goToStep("parsing", { method: "parsing" });
+    goToStep("processing");
 
     startTransition(async () => {
       const formData = new FormData();
       formData.set("file", file);
+      // Single request: upload + Gemini single-pass extraction + insight generation.
       const result = await parseResumeForNewCandidateAction(formData);
       if (result.error || !result.draft) {
         setParseError(result.error ?? "Failed to analyze resume.");
         return;
       }
       setDraft(result.draft);
-      goToStep("review", { method: "review" });
+      goToStep("review");
     });
   }
 
-  if (step === "choose") {
+  if (step === "idle") {
     return (
       <SectionCard>
         <AddCandidateMethodChooser onSelect={handleMethodSelect} />
@@ -93,7 +104,7 @@ export function NewCandidateFlow({ employees }: { employees: EmployeeOption[] })
     );
   }
 
-  if (step === "upload") {
+  if (step === "uploading") {
     return (
       <ResumeUploadPanel
         file={file}
@@ -102,18 +113,18 @@ export function NewCandidateFlow({ employees }: { employees: EmployeeOption[] })
         onBack={() => {
           setFile(null);
           setDraft(null);
-          goToStep("choose", { method: null });
+          goToStep("idle");
         }}
         onContinue={handleUploadContinue}
       />
     );
   }
 
-  if (step === "parsing") {
+  if (step === "processing") {
     return (
       <SectionCard
-        title="Extracting candidate information"
-        description="Reading the resume with the deterministic parser. This is not AI analysis."
+        title="Analyzing resume"
+        description="Sending the document to our AI resume parser for structured extraction and screening insights."
       >
         <div className="mx-auto flex w-full max-w-md flex-col items-center gap-4 py-6 text-center">
           {parseError ? (
@@ -122,36 +133,22 @@ export function NewCandidateFlow({ employees }: { employees: EmployeeOption[] })
                 {parseError}
               </p>
               <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-center">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => goToStep("upload", { method: "upload" })}
-                >
+                <Button type="button" variant="outline" onClick={() => goToStep("uploading")}>
                   Back to upload
                 </Button>
-                <Button
-                  type="button"
-                  onClick={() => goToStep("manual", { method: "manual" })}
-                >
+                <Button type="button" onClick={() => goToStep("manual")}>
                   Enter details manually
                 </Button>
               </div>
             </>
           ) : (
             <>
-              <Loader2
-                className="h-8 w-8 animate-spin text-muted-foreground"
-                aria-hidden
-              />
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden />
               <p className="text-sm font-semibold text-foreground">
-                Extracting candidate information...
+                Reading document and generating insights...
               </p>
-              <p className="text-xs text-muted-foreground">
-                {file?.name ?? "Resume"}
-              </p>
-              {pending ? null : (
-                <p className="text-xs text-muted-foreground">Starting…</p>
-              )}
+              <p className="text-xs text-muted-foreground">{file?.name ?? "Resume"}</p>
+              {pending ? null : <p className="text-xs text-muted-foreground">Starting…</p>}
             </>
           )}
         </div>
@@ -163,11 +160,12 @@ export function NewCandidateFlow({ employees }: { employees: EmployeeOption[] })
     return (
       <NewCandidateResumeReview
         draft={draft}
+        file={file}
         onBack={() => {
           setDraft(null);
-          goToStep("upload", { method: "upload" });
+          goToStep("uploading");
         }}
-        onContinueManual={() => goToStep("manual", { method: "manual" })}
+        onContinueManual={() => goToStep("manual")}
       />
     );
   }

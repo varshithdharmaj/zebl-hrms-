@@ -84,10 +84,10 @@ vi.mock("@/lib/recruitment/storage/recruitment-storage", () => ({
   }),
 }));
 
-const parseResumeDocument = vi.fn();
+const parseResumeWithLlm = vi.fn();
 
-vi.mock("@/lib/recruitment/resume-import/parser", () => ({
-  parseResumeDocument: (...args: unknown[]) => parseResumeDocument(...args),
+vi.mock("@/lib/recruitment/resume-import/parser/llm-parse-resume", () => ({
+  parseResumeWithLlm: (...args: unknown[]) => parseResumeWithLlm(...args),
 }));
 
 const hrSession: SessionUser = {
@@ -315,7 +315,7 @@ describe("createCandidateFromResumeService attach safety", () => {
       findDocumentByChecksum: vi.fn(async () => null),
     } as unknown as CandidateRepository;
 
-    parseResumeDocument.mockResolvedValue({
+    parseResumeWithLlm.mockResolvedValue({
       result: {
         ok: true,
         draft: {},
@@ -344,6 +344,14 @@ describe("createCandidateFromResumeService attach safety", () => {
         insightType: AiInsightType.resume_parse,
         status: AiInsightStatus.accepted,
       }),
+      expect.anything()
+    );
+    // Insight is created ONCE, inside the candidate-creation transaction —
+    // the later document-attach step must patch it, never create a second row.
+    expect(mockRepo.createInsight).toHaveBeenCalledTimes(1);
+    expect(mockRepo.updateInsightContent).toHaveBeenCalledWith(
+      "insight-resume",
+      expect.objectContaining({ documentId: "doc-1" }),
       expect.anything()
     );
     expect(mockRepo.updateIntake).toHaveBeenCalledWith(
@@ -462,6 +470,26 @@ describe("createCandidateFromResumeService attach safety", () => {
     expect(result.sourceDraftId).toBe("insight-resume");
   });
 
+  it("retry path (candidate exists, no insight yet) falls back to create-if-missing in the doc-attach step", async () => {
+    // Candidate already claimed by a previous partial attempt; this run never
+    // calls candidateService.createCandidate, so there is no insightId yet.
+    mockRepo.findIntake = vi.fn(async () =>
+      baseIntake({ candidateId: "cand-new", status: IntakeItemStatus.parse_ready })
+    );
+    // No existing resume_parse insight for this candidate/document.
+    mockRepo.listInsights = vi.fn(async () => []);
+
+    const service = createCandidateFromResumeService(mockRepo);
+    const review = mapParsedDraftToReviewDefaults("intake-1", sampleMapped());
+    const result = await service.createFromReview(hrSession, review);
+
+    expect(mockRepo.createCandidate).not.toHaveBeenCalled();
+    expect(mockRepo.createInsight).toHaveBeenCalledTimes(1);
+    expect(mockRepo.updateInsightContent).not.toHaveBeenCalled();
+    expect(result.resumeAttached).toBe(true);
+    expect(result.sourceDraftId).toBe("insight-resume");
+  });
+
   it("confirmed intake cleanup is idempotent and does not recreate candidate", async () => {
     mockRepo.findIntake = vi.fn(async () =>
       baseIntake({
@@ -517,7 +545,7 @@ describe("createCandidateFromResumeService attach safety", () => {
   });
 
   it("handles empty document parse failure without creating candidate", async () => {
-    parseResumeDocument.mockResolvedValue({
+    parseResumeWithLlm.mockResolvedValue({
       result: {
         ok: false,
         error: { code: "EMPTY_DOCUMENT", message: "Resume text is empty." },

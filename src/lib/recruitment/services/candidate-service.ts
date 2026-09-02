@@ -1,4 +1,9 @@
-import { CandidateStatus, CandidateSource, AiInsightType } from "@/generated/prisma/enums";
+import {
+  CandidateStatus,
+  CandidateSource,
+  AiInsightType,
+  AiInsightStatus,
+} from "@/generated/prisma/enums";
 import type { SessionUser } from "@/lib/session";
 import { PermissionError } from "@/lib/permissions";
 import {
@@ -91,7 +96,7 @@ export function createCandidateService(repository: CandidateRepository = prismaC
     async createCandidate(
       session: SessionUser,
       input: CandidateCreateData
-    ): Promise<{ id: string }> {
+    ): Promise<{ id: string; insightId?: string }> {
       RecruitmentPermissionService.requireModuleEnabled();
       await RecruitmentPermissionService.assertCanManageCandidates(session);
       const actor = toRecruitmentActor(session);
@@ -157,7 +162,7 @@ export function createCandidateService(repository: CandidateRepository = prismaC
         ),
       });
 
-      const candidateId = await withRecruitmentTransaction(async (tx) => {
+      const { candidateId, insightId } = await withRecruitmentTransaction(async (tx) => {
         const created = await repository.createCandidate(
           {
             ...input,
@@ -185,7 +190,27 @@ export function createCandidateService(repository: CandidateRepository = prismaC
           })
         );
 
-        return created.id;
+        // Single-pass resume parse: candidate row + resume_parse AiInsight commit
+        // together, or neither does — no separate write, no partial state.
+        let createdInsightId: string | undefined;
+        if (input.initialAiInsight) {
+          const createdInsight = await repository.createInsight(
+            created.id,
+            {
+              insightType: AiInsightType.resume_parse,
+              status: AiInsightStatus.accepted,
+              title: "Resume import (single-pass)",
+              contentJson: input.initialAiInsight.contentJson,
+              confidence: input.initialAiInsight.confidence ?? null,
+              modelId: input.initialAiInsight.modelId ?? null,
+              createdByUserId: session.id,
+            },
+            tx
+          );
+          createdInsightId = createdInsight.id;
+        }
+
+        return { candidateId: created.id, insightId: createdInsightId };
       });
 
       await events.flush();
@@ -201,7 +226,7 @@ export function createCandidateService(repository: CandidateRepository = prismaC
         metadata: { fullName: parsed.fullName },
       });
 
-      return { id: candidateId };
+      return { id: candidateId, insightId };
     },
 
     async updateCandidate(

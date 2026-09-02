@@ -79,8 +79,24 @@ export type ResumeImportMappedDraft = {
   certifications: ResumeImportCertificationMapped[];
 };
 
+export type ResumeImportAiInsights = {
+  executiveSummary: string | null;
+  strengths: string[];
+  gaps: string[];
+  matchScore: { value: number | null; rationale: string | null };
+  clarificationFlags: string[];
+};
+
+export type ResumeImportExtractionMeta = {
+  documentQuality: "clean" | "degraded" | "image_only";
+  fieldsRequiringReview: string[];
+  languageDetected: string | null;
+};
+
 /**
- * Stored in CandidateAiInsight.contentJson.
+ * Stored in CandidateAiInsight.contentJson (insightType: resume_parse).
+ * Single-pass LLM parsing writes `aiInsights` + `extractionMeta` alongside
+ * `mapped` in the same record — no separate candidate_summary insight call.
  * Future parsers fill `raw` + `mapped` and call CreateResumeImportDraft.
  */
 export type ResumeImportDraftContent = {
@@ -90,6 +106,9 @@ export type ResumeImportDraftContent = {
   raw: Record<string, unknown>;
   mapped: ResumeImportMappedDraft;
   fieldConfidence: Record<string, number>;
+  /** Present only when source === "ai" and the single-pass contract produced them. */
+  aiInsights?: ResumeImportAiInsights | null;
+  extractionMeta?: ResumeImportExtractionMeta | null;
   metadata: {
     parserVersion?: string;
     note?: string;

@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import type { ActionState } from "@/actions/types";
 import { requireRecruitmentAdminSession } from "@/lib/auth-guards";
 import { isRecruitmentModuleEnabled } from "@/lib/recruitment/config/feature-flags";
-import { scheduleCandidateAiEnrichment } from "@/lib/recruitment/ai/schedule-enrichment";
 import { scheduleCandidateAiFieldRecovery } from "@/lib/recruitment/ai/schedule-recovery";
 import {
   createCandidateFromResumeService,
@@ -75,8 +74,15 @@ export async function parseResumeForNewCandidateAction(
 }
 
 /**
- * Create Candidate from recruiter-reviewed Parser V2 fields + intake resume.
- * Schedules AI enrichment only when resume attach + resume_parse insight succeeded.
+ * Create Candidate from recruiter-reviewed single-pass resume fields + intake resume.
+ *
+ * aiInsights are already persisted (same transaction as the candidate row — see
+ * createFromReview / candidateService.createCandidate). No secondary enrichment call:
+ * candidate-ai-enrichment-service.ts is on-demand only now (e.g. re-scoring against a
+ * JD attached after creation), never auto-invoked from initial candidate creation.
+ *
+ * Field recovery (filling genuinely missing fields post-creation) is a separate
+ * concern and still runs.
  */
 export async function createCandidateFromResumeReviewAction(
   _prev: CreateCandidateFromResumeActionState,
@@ -92,11 +98,6 @@ export async function createCandidateFromResumeReviewAction(
     const result = await service.createFromReview(session, input);
 
     if (result.resumeAttached && result.sourceDraftId) {
-      scheduleCandidateAiEnrichment({
-        candidateId: result.candidateId,
-        sourceDraftId: result.sourceDraftId,
-        createdByUserId: session.id,
-      });
       scheduleCandidateAiFieldRecovery({
         candidateId: result.candidateId,
         sourceDraftId: result.sourceDraftId,

@@ -52,6 +52,28 @@ export const llmCertificationSchema = z.object({
   credentialUrl: z.string().nullable().optional().default(null),
 });
 
+export const llmMatchScoreSchema = z.object({
+  /** Null whenever no job description was supplied in the prompt — never fabricated. */
+  value: z.number().min(0).max(100).nullable().optional().default(null),
+  rationale: z.string().nullable().optional().default(null),
+});
+
+export const llmAiInsightsSchema = z.object({
+  executiveSummary: z.string().nullable().optional().default(null),
+  strengths: z.array(z.string()).optional().default([]),
+  /** Phrased as open questions for a recruiter, not conclusions. See bias guard in the system prompt. */
+  gaps: z.array(z.string()).optional().default([]),
+  matchScore: llmMatchScoreSchema.optional().default({ value: null, rationale: null }),
+  clarificationFlags: z.array(z.string()).optional().default([]),
+});
+
+export const llmExtractionMetaSchema = z.object({
+  documentQuality: z.enum(["clean", "degraded", "image_only"]).optional().default("clean"),
+  /** Dot-paths into the response, e.g. "experiences.2.endDate" — drives review-screen highlighting. */
+  fieldsRequiringReview: z.array(z.string()).optional().default([]),
+  languageDetected: z.string().nullable().optional().default(null),
+});
+
 export const llmResumeResponseSchema = z.object({
   fullName: z.string().nullable().optional().default(null),
   firstName: z.string().nullable().optional().default(null),
@@ -72,9 +94,151 @@ export const llmResumeResponseSchema = z.object({
   skills: z.array(llmSkillSchema).optional().default([]),
   projects: z.array(llmProjectSchema).optional().default([]),
   certifications: z.array(llmCertificationSchema).optional().default([]),
+  aiInsights: llmAiInsightsSchema.optional().default({
+    executiveSummary: null,
+    strengths: [],
+    gaps: [],
+    matchScore: { value: null, rationale: null },
+    clarificationFlags: [],
+  }),
+  extractionMeta: llmExtractionMetaSchema.optional().default({
+    documentQuality: "clean",
+    fieldsRequiringReview: [],
+    languageDetected: null,
+  }),
 });
 
 export type LlmResumeResponse = z.infer<typeof llmResumeResponseSchema>;
+export type LlmAiInsights = z.infer<typeof llmAiInsightsSchema>;
+export type LlmExtractionMeta = z.infer<typeof llmExtractionMetaSchema>;
+
+/**
+ * Gemini `generationConfig.responseSchema` — OpenAPI 3.0 subset, uppercase types.
+ * Constrains decode-time output shape; Zod above still enforces domain rules
+ * (date ordering, enum-adjacent cross-field checks) that responseSchema can't express.
+ */
+const nullableString = { type: "STRING", nullable: true } as const;
+
+export const GEMINI_RESUME_RESPONSE_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    fullName: nullableString,
+    firstName: nullableString,
+    lastName: nullableString,
+    email: nullableString,
+    phone: nullableString,
+    location: nullableString,
+    headline: nullableString,
+    professionalSummary: nullableString,
+    currentCompany: nullableString,
+    currentTitle: nullableString,
+    totalExperienceYears: nullableString,
+    linkedinUrl: nullableString,
+    githubUrl: nullableString,
+    portfolioUrl: nullableString,
+    experiences: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          company: { type: "STRING" },
+          title: { type: "STRING" },
+          location: nullableString,
+          startDate: nullableString,
+          endDate: nullableString,
+          isCurrent: { type: "BOOLEAN" },
+          description: nullableString,
+        },
+        required: ["company", "title"],
+      },
+    },
+    educations: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          institution: { type: "STRING" },
+          degree: nullableString,
+          field: nullableString,
+          startYear: { type: "INTEGER", nullable: true },
+          endYear: { type: "INTEGER", nullable: true },
+          grade: nullableString,
+        },
+        required: ["institution"],
+      },
+    },
+    skills: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          name: { type: "STRING" },
+          proficiency: nullableString,
+          yearsOfExperience: { type: "NUMBER", nullable: true },
+        },
+        required: ["name"],
+      },
+    },
+    projects: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          title: { type: "STRING" },
+          summary: nullableString,
+          techStack: nullableString,
+          url: nullableString,
+          role: nullableString,
+          duration: nullableString,
+        },
+        required: ["title"],
+      },
+    },
+    certifications: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          name: { type: "STRING" },
+          issuer: nullableString,
+          issuedAt: nullableString,
+          expiresAt: nullableString,
+          credentialId: nullableString,
+          credentialUrl: nullableString,
+        },
+        required: ["name"],
+      },
+    },
+    aiInsights: {
+      type: "OBJECT",
+      properties: {
+        executiveSummary: nullableString,
+        strengths: { type: "ARRAY", items: { type: "STRING" } },
+        gaps: { type: "ARRAY", items: { type: "STRING" } },
+        matchScore: {
+          type: "OBJECT",
+          properties: {
+            value: { type: "NUMBER", nullable: true },
+            rationale: nullableString,
+          },
+          required: ["value", "rationale"],
+        },
+        clarificationFlags: { type: "ARRAY", items: { type: "STRING" } },
+      },
+      required: ["executiveSummary", "strengths", "gaps", "matchScore", "clarificationFlags"],
+    },
+    extractionMeta: {
+      type: "OBJECT",
+      properties: {
+        documentQuality: { type: "STRING", enum: ["clean", "degraded", "image_only"] },
+        fieldsRequiringReview: { type: "ARRAY", items: { type: "STRING" } },
+        languageDetected: nullableString,
+      },
+      required: ["documentQuality", "fieldsRequiringReview"],
+    },
+  },
+  required: ["fullName", "aiInsights", "extractionMeta"],
+} as const;
 
 /**
  * Parse and validate raw LLM JSON output against the schema.

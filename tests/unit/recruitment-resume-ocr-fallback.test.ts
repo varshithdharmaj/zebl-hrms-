@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LlmResumeGenerator } from "@/lib/recruitment/resume-import/parser/llm-parse-resume";
 import type { LlmResumeResponse } from "@/lib/recruitment/resume-import/parser/llm-parse-schema";
 
@@ -72,11 +72,27 @@ const VALID_LLM_RESPONSE: LlmResumeResponse = {
 describe("extraction-quality gate → Gemini Vision fallback (Divya scanned-PDF case)", () => {
   let parseResumeDocument: typeof import("@/lib/recruitment/resume-import/parser").parseResumeDocument;
 
+  // This suite exercises the deterministic pipeline's own quality-gate →
+  // Gemini-Vision-fallback path specifically, independent of the platform's
+  // default RESUME_PARSE_MODE (which is "llm" as of Phase 3 — see parse-mode.ts).
+  // Without pinning this, getResumeParseMode() would return "llm" and
+  // parseResumeDocument would skip the deterministic path this suite tests.
+  const originalParseMode = process.env.RESUME_PARSE_MODE;
+
   beforeEach(async () => {
     vi.resetModules();
+    process.env.RESUME_PARSE_MODE = "deterministic";
     extractResumeTextSpy.mockClear();
     const mod = await import("@/lib/recruitment/resume-import/parser");
     parseResumeDocument = mod.parseResumeDocument;
+  });
+
+  afterEach(() => {
+    if (originalParseMode === undefined) {
+      delete process.env.RESUME_PARSE_MODE;
+    } else {
+      process.env.RESUME_PARSE_MODE = originalParseMode;
+    }
   });
 
   it("falls back to Gemini Vision when extraction yields empty/untrustworthy text", async () => {

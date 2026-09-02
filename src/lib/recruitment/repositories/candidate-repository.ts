@@ -116,6 +116,11 @@ export type CandidateRepository = {
     data: Record<string, unknown>,
     tx?: RepositoryTx
   ): Promise<{ id: string }>;
+  updateInsightContent(
+    insightId: string,
+    contentJson: Record<string, unknown>,
+    tx?: RepositoryTx
+  ): Promise<void>;
   getInsight(insightId: string): Promise<CandidateAiInsight | null>;
   listInsights(
     candidateId: string,

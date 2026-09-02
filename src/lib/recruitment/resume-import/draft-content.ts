@@ -38,6 +38,12 @@ export function parseResumeImportDraftContent(raw: unknown): ResumeImportDraftCo
     fieldConfidence: isObject(raw.fieldConfidence)
       ? (raw.fieldConfidence as Record<string, number>)
       : {},
+    aiInsights: isObject(raw.aiInsights)
+      ? (raw.aiInsights as ResumeImportDraftContent["aiInsights"])
+      : null,
+    extractionMeta: isObject(raw.extractionMeta)
+      ? (raw.extractionMeta as ResumeImportDraftContent["extractionMeta"])
+      : null,
     metadata: isObject(raw.metadata)
       ? (raw.metadata as ResumeImportDraftContent["metadata"])
       : {},

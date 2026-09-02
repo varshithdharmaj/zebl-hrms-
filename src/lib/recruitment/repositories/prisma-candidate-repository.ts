@@ -1249,6 +1249,14 @@ export const prismaCandidateRepository: CandidateRepository = {
     });
   },
 
+  async updateInsightContent(insightId, contentJson, tx) {
+    const client: Client = tx ?? prisma;
+    await client.candidateAiInsight.update({
+      where: { id: insightId },
+      data: { contentJson: contentJson as Prisma.InputJsonValue },
+    });
+  },
+
   async createIntake(data, tx) {
     const client: Client = tx ?? prisma;
     const created = await client.intakeItem.create({
